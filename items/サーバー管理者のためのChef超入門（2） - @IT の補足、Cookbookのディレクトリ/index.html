@@ -1,0 +1,117 @@
+<p>私の管理している<code>Knife-Zero</code>(<a href="https://github.com/higanworks/knife-zero" rel="nofollow noopener" target="_blank">higanworks/knife-zero</a>)について＠ITさんで紹介記事が出ていまいした。</p>
+
+<p><a href="http://www.atmarkit.co.jp/ait/articles/1503/24/news030.html" title="サーバー管理者のためのChef超入門（2）：Knife-ZeroでCookbookの作成／実行／削除＆git cloneコマンドでCookbookの取得 (1/2) - ＠IT" rel="nofollow noopener" target="_blank">サーバー管理者のためのChef超入門（2）：Knife-ZeroでCookbookの作成／実行／削除＆git cloneコマンドでCookbookの取得 (1/2) - ＠IT</a></p>
+
+<p>丁寧に解説いただいており、使う人も増えたらいいかなと思いました。<br>
+しかし次に引用する注釈については、一応やり方があるので書いておきます。</p>
+
+<blockquote>
+<p>注釈</p>
+
+<p>　本来のChefの作法では、個人で作成したCookbookは「chef-repo/site-cookbooks」に格納し、Chef社が公開しているCookbookや第三者が作成したCookbookを「chef-repo/cookbooks」に格納することが推奨されています。</p>
+
+<p>　しかし2015年3月現在、Chef-Zeroの仕様で、「site-cookbooks」配下を参照しないため、個人作成のCookbookを「chef-repo/cookbooks」に作成するような手順としています。</p>
+</blockquote>
+
+<p>地味に<code>site-cookbooks</code>作法って公式で言ってたかは気になったりします。ドキュメントにちらほら出てくるけどはっきりどこかで明言してたかなあ。<br>
+BarkShelfは言ってたかも？ 確かに自分はだいたいLibrarian-Chefでそのようにしているのでそれは置いて本題へ。</p>
+
+<blockquote>
+<p>追記: site-cookbooksのお作法<br>
+<a href="http://qiita.com/DQNEO/items/7843c50f1b74ae497b3c" class="autolink" id="reference-2efc49297cd69b02c17f">http://qiita.com/DQNEO/items/7843c50f1b74ae497b3c</a> のコメントにも書きましたが、<br>
+ごく初期からChefで想定されている使い方でした。(4コミット目)</p>
+
+<p><a href="https://github.com/chef/chef/blob/3dd77b260393bae93bb27677e3f8a45f407981c1/lib/chef/config.rb" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/chef/chef/blob/3dd77b260393bae93bb27677e3f8a45f407981c1/lib/chef/config.rb</a><br>
+   def set_defaults<br>
+     @cookbook_path = [ <br>
+       "/etc/chef/site-cookbook",<br>
+       "/etc/chef/cookbook",<br>
+     ]<br>
+   end</p>
+
+<p>初期すぎてむしろUndocumentedなんですかね。</p>
+</blockquote>
+
+<h2>
+<span id="実はknifeの設定" class="fragment"></span><a href="#%E5%AE%9F%E3%81%AFknife%E3%81%AE%E8%A8%AD%E5%AE%9A"><i class="fa fa-link"></i></a>実はKnifeの設定</h2>
+
+<p>Chef-Zero単品ではcookbooksだけですが、実はChef本体側でパスを指定するようになってます。</p>
+
+<p>具体的にはknife.rbの<code>cookbook_path</code>。 参考: <a href="https://docs.chef.io/config_rb_knife.html" title="knife.rb — Chef Docs" rel="nofollow noopener" target="_blank">knife.rb — Chef Docs</a></p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">knife.rb</span></div>
+<div class="highlight"><pre><span class="n">local_mode</span> <span class="kp">true</span>
+
+<span class="n">cookbook_path</span> <span class="p">[</span>
+  <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'../cookbooks'</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">),</span>     <span class="c1">## knfie.rbのある場所からcookbooksへ絶対パス変換</span>
+  <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'../site-cookbooks'</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span> <span class="c1">## knfie.rbのある場所からsite-cookbooksへ絶対パス変換</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="cookbook一覧を確認しよう" class="fragment"></span><a href="#cookbook%E4%B8%80%E8%A6%A7%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>Cookbook一覧を確認しよう</h2>
+
+<p>ほいほいっと<code>cookbooks</code>, <code>site-cookbooks</code>の下に1つずつcookbookを作成します。 (※Chef-DKでもOK)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife cookbook create book1 -o cookbooks
+** Creating cookbook book1 in /Users/sawanoboriyu/worktemp/knife-zero-cookbooks/cookbooks
+** Creating README for cookbook: book1
+** Creating CHANGELOG for cookbook: book1
+** Creating metadata for cookbook: book1
+
+$ ./bin/knife cookbook create site_book1 -o site-cookbooks
+** Creating cookbook site_book1 in /Users/sawanoboriyu/worktemp/knife-zero-cookbooks/site-cookbooks
+** Creating README for cookbook: site_book1
+** Creating CHANGELOG for cookbook: site_book1
+** Creating metadata for cookbook: site_book1
+</pre></div></div>
+
+<p><code>knife cookbook list</code>で確認すると、両方のCookbookがリストアップされます。(<code>knife serve</code> でも同様)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife cookbook list
+book1        0.1.0
+site_book1   0.1.0
+</pre></div></div>
+
+<h2>
+<span id="site-cookbooks内のレシピを適用してみる" class="fragment"></span><a href="#site-cookbooks%E5%86%85%E3%81%AE%E3%83%AC%E3%82%B7%E3%83%94%E3%82%92%E9%81%A9%E7%94%A8%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>site-cookbooks内のレシピを適用してみる</h2>
+
+<p>ひとまず分かりやすいように<code>package "tmux"</code>とでも書いておきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ echo 'package "tmux"' &gt;&gt; site-cookbooks/site_book1/recipes/default.rb 
+</pre></div></div>
+
+<p>では<code>knife zero bootstrap</code>に<code>--run-list site_book1</code>を実行、適用されます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife zero bootstrap hoge.example.com --run-list site_book1
+
+
+## 省略
+
+hoge.example.com resolving cookbooks for run list: ["site_book1"]
+hoge.example.com Synchronizing Cookbooks:
+hoge.example.com   - site_book1
+hoge.example.com Compiling Cookbooks...
+hoge.example.com Converging 1 resources
+hoge.example.com Recipe: site_book1::default     # `site-cookbooks/site_book1` を見つけている。
+hoge.example.com   * apt_package[tmux] action install (up to date)
+hoge.example.com 
+hoge.example.com Running handlers:
+hoge.example.com Running handlers complete
+hoge.example.com Chef Client finished, 0/1 resources updated in 3.293436307 seconds
+</pre></div></div>
+
+<p><code>knife zero chef_client</code>もOK。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife zero chef_client 'name:hoge.example.com' -o site_book1
+
+## 省略
+
+hoge.example.com Recipe: site_book1::default
+hoge.example.com   * apt_package[tmux] action install (up to date)
+hoge.example.com [2015-03-24T11:51:55+00:00] WARN: Skipping final node save because override_runlist was given
+</pre></div></div>
+
+<p>以上補足でした。</p>

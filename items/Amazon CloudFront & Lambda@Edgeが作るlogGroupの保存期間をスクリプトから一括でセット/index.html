@@ -1,0 +1,70 @@
+<p>Lambda@Edgeでは実行ログの出力先が特殊で、CloudFrontが処理したエッジリージョンのCloudWatch Logsをつかいます。<br>
+デフォルトの保存期間がNever Expiresで、かつ初回アクセス発生時に作られるので、あとから保存期間をスクリプトで一括セットしたい。</p>
+
+<h2>
+<span id="コード" class="fragment"></span><a href="#%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>コード</h2>
+
+<p>logGroupNameのprefixはどのリージョンでも<code>/aws/lambda/us-east-1/{function_name}</code>になるのに注意ですかね。</p>
+
+<div class="code-frame" data-lang="python">
+<div class="code-lang"><span class="bold">set_log_retention_days.py</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env python
+</span><span class="kn">import</span> <span class="nn">boto3</span>
+
+
+<span class="n">ec2_client</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s">'ec2'</span><span class="p">)</span>
+<span class="n">all_region_items</span> <span class="o">=</span> <span class="n">ec2_client</span><span class="o">.</span><span class="n">describe_regions</span><span class="p">()</span>
+<span class="n">all_regions</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="s">'RegionName'</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">all_region_items</span><span class="p">[</span><span class="s">'Regions'</span><span class="p">]]</span>
+
+<span class="n">policies</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s">'prefix'</span><span class="p">:</span> <span class="s">'/aws/lambda/us-east-1.myservice-production-'</span><span class="p">,</span>
+        <span class="s">'days'</span><span class="p">:</span> <span class="mi">90</span>
+    <span class="p">},</span>
+    <span class="p">{</span>
+        <span class="s">'prefix'</span><span class="p">:</span> <span class="s">'/aws/lambda/us-east-1.myservice-development-'</span><span class="p">,</span>
+        <span class="s">'days'</span><span class="p">:</span> <span class="mi">14</span>
+    <span class="p">},</span>
+<span class="p">]</span>
+
+<span class="k">for</span> <span class="n">pol</span> <span class="ow">in</span> <span class="n">policies</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">all_regions</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="n">logs_client</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s">'logs'</span><span class="p">,</span> <span class="n">region_name</span><span class="o">=</span><span class="n">r</span><span class="p">)</span>
+        <span class="n">log_groups</span> <span class="o">=</span> <span class="n">logs_client</span><span class="o">.</span><span class="n">describe_log_groups</span><span class="p">(</span><span class="n">logGroupNamePrefix</span><span class="o">=</span><span class="n">pol</span><span class="p">[</span><span class="s">'prefix'</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">log_group</span> <span class="ow">in</span> <span class="n">log_groups</span><span class="p">[</span><span class="s">'logGroups'</span><span class="p">]:</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">log_group</span><span class="p">[</span><span class="s">'logGroupName'</span><span class="p">])</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">logs_client</span><span class="o">.</span><span class="n">put_retention_policy</span><span class="p">(</span>
+                <span class="n">logGroupName</span><span class="o">=</span><span class="n">log_group</span><span class="p">[</span><span class="s">'logGroupName'</span><span class="p">],</span>
+                <span class="n">retentionInDays</span><span class="o">=</span><span class="n">pol</span><span class="p">[</span><span class="s">'days'</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s">'ResponseMetadata'</span><span class="p">][</span><span class="s">'HTTPStatusCode'</span><span class="p">])</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="実行してみた" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%81%9F"><i class="fa fa-link"></i></a>実行してみた</h2>
+
+<p>リリースしてしばらくしたら実行。現状どうなってるかは気にしなくて良いタイプ。</p>
+
+<div class="code-frame" data-lang="shell-session"><div class="highlight"><pre><span class="gp">$</span><span class="w"> </span>./scripts/set_log_retention_days.py 
+<span class="go">ap-south-1
+eu-west-3
+eu-west-2
+eu-west-1
+ap-northeast-2
+/aws/lambda/us-east-1.myservice-production-origin_request
+200
+/aws/lambda/us-east-1.myservice-production-origin_response
+200
+/aws/lambda/us-east-1.myservice-production-viewer_request
+200
+ap-northeast-1
+/aws/lambda/us-east-1.myservice-production-origin_request
+200
+
+</span><span class="c">...
+</span><span class="go">
+</span></pre></div></div>
+
+<p>先立って作っておく、でも良いのかもですが、リージョン自体が増えたりするのでスクリプトにしておくほうがよいかなと。</p>

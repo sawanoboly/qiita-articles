@@ -1,0 +1,53 @@
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd653d606-2b2e-e686-036f-bafae0553787.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=00a143acee9140797c640108332a60f2" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd653d606-2b2e-e686-036f-bafae0553787.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=00a143acee9140797c640108332a60f2" alt="スクリーンショット_10_23_14__4_12_PM.png" title="スクリーンショット_10_23_14__4_12_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d653d606-2b2e-e686-036f-bafae0553787.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd653d606-2b2e-e686-036f-bafae0553787.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=d837535f28a5e7eddb1a53da00d93f32 1x" loading="lazy"></a></p>
+
+<p>最近<a href="http://www.backlog.jp/" rel="nofollow noopener" target="_blank">Backlog</a>を使う相手が多いので、更新情報をSlackにも流すことにしました。</p>
+
+<h2>
+<span id="方針" class="fragment"></span><a href="#%E6%96%B9%E9%87%9D"><i class="fa fa-link"></i></a>方針</h2>
+
+<p>連携には自前のサーバやプログラムをできれば使いたくない。<br>
+BacklogのダッシュボードにRSS(Basic認証)があるので、それを使ってみよう。</p>
+
+<h2>
+<span id="段取り" class="fragment"></span><a href="#%E6%AE%B5%E5%8F%96%E3%82%8A"><i class="fa fa-link"></i></a>段取り</h2>
+
+<ol>
+<li>RSSフィードが読めるように、Backlogにゲストユーザを作成</li>
+<li>ゲストユーザをプロジェクトに参加させる</li>
+<li>IFTTTで<code>RSS then Slack</code>
+</li>
+</ol>
+
+<h2>
+<span id="backlogにゲストユーザを作成" class="fragment"></span><a href="#backlog%E3%81%AB%E3%82%B2%E3%82%B9%E3%83%88%E3%83%A6%E3%83%BC%E3%82%B6%E3%82%92%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>Backlogにゲストユーザを作成</h2>
+
+<p>RSSフィードはAPIキーで取れない気がしたので、Basic認証ができるように適当なゲストユーザを作成しました。メインユーザのID/Passを使うのは一応避けておきます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6b9070f3-41bc-bb2a-ef7b-c52eff196d31.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=469d36876adf70813dd8d1b488025581" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6b9070f3-41bc-bb2a-ef7b-c52eff196d31.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=469d36876adf70813dd8d1b488025581" alt="HiganWorks_チケット取り扱い所-_Backlog.png" title="HiganWorks_チケット取り扱い所-_Backlog.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/6b9070f3-41bc-bb2a-ef7b-c52eff196d31.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6b9070f3-41bc-bb2a-ef7b-c52eff196d31.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=3834d0ef835547e18f88785c17033a98 1x" loading="lazy"></a></p>
+
+<p>ゲストのメールアドレスはgmailの<code>+</code>でつくるエイリアスにしておくといいです。</p>
+
+<p>RSSが取れるかチェックしよう、URLは次のようにすればOK。</p>
+
+<p><code>https://{user-id}:{password}@{org-name}.backlog.jp/rss/{Project-ID}</code></p>
+
+<h2>
+<span id="あとはifttt" class="fragment"></span><a href="#%E3%81%82%E3%81%A8%E3%81%AFifttt"><i class="fa fa-link"></i></a>あとはIFTTT</h2>
+
+<p>で、If Then。</p>
+
+<p>If: new feed item from Backlog(RSS)<br>
+Then: post a message to a Slack channel</p>
+
+<p>RSSなので15分おきにまとめて通知されます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F48433655-5685-c306-cbe8-b000c8b64630.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b3f1f47f1d0147e29e37654293fa2a55" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F48433655-5685-c306-cbe8-b000c8b64630.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b3f1f47f1d0147e29e37654293fa2a55" alt="Slack.png" title="Slack.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/48433655-5685-c306-cbe8-b000c8b64630.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F48433655-5685-c306-cbe8-b000c8b64630.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=8bc3e1323138b31ba4e9ab7acd302899 1x" loading="lazy"></a></p>
+
+<p>RSSにフィルタを掛けて、複数のチャンネルに振り分けてもいいですね。</p>
+
+<p>Messageフィールドのオススメはこう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{{EntryAuthor}} {{EntryContent}}
+</pre></div></div>
+
+<p>ああ、15分で50件以上の更新があったら漏れますが。</p>

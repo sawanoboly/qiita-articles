@@ -1,0 +1,287 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://www.cucumber-chef.org/" rel="nofollow noopener" target="_blank">Cucumber-chef</a>はBDDでのインフラ構築を支援するためのツール。<br>
+<strong>テスト実行用の仮想マシン</strong>を用意してレシピを適用するヘルパが強力だ。</p>
+
+<p>公式のチュートリアルをさっと流してみる。</p>
+
+<h2>
+<span id="準備" class="fragment"></span><a href="#%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>準備</h2>
+
+<p>チュートリアル通りにやるにはこれらが必要。</p>
+
+<ul>
+<li>opscodeのアカウントとOrganaization、無料版で可
+
+<ul>
+<li>クライアントキー</li>
+<li>valirdation key</li>
+<li>テストサーバはOpscodeにNodeとして登録されるのでNode1枠</li>
+</ul>
+</li>
+<li>awsのアカウント
+
+<ul>
+<li>アクセスキー (権限はEC2だけでいいはず)</li>
+<li>シークレット</li>
+</ul>
+</li>
+<li>rvm (必須ではない)</li>
+</ul>
+
+<p>knife.rb を書けるなら<code>opscode</code>の部分は既存のchef-serverでも大丈夫だとおもう。</p>
+
+<h2>
+<span id="setup" class="fragment"></span><a href="#setup"><i class="fa fa-link"></i></a>Setup</h2>
+
+<p>gemsetを作って<code>bundle init</code>したら、Gemfileで開発版の<code>cucumber-chef</code>を指定しよう安定版はnodeのアトリビュートが古い。<br>
+<code>chef</code>もAPIに変更があるので<code>0.10.x</code>を使う。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s2">"cucumber-chef"</span><span class="p">,</span> <span class="ss">:git</span> <span class="o">=&gt;</span> <span class="s2">"git://github.com/Atalanta/cucumber-chef.git"</span>
+<span class="n">gem</span> <span class="s2">"chef"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"0.10.10"</span><span class="p">]</span>
+
+</pre></div>
+</div>
+
+<h2>
+<span id="まずは-init" class="fragment"></span><a href="#%E3%81%BE%E3%81%9A%E3%81%AF-init"><i class="fa fa-link"></i></a>まずは init</h2>
+
+<p>bundleが終わったら、<br>
+<code>cucumber-chef init</code><br>
+とすればインタラクティブに必要情報を入力することができる、opscodeのアカウントとか、aws関係のキーだ。</p>
+
+<p>入力できたら一応<code>.cucumber-chef/config.rb</code>を確認しよう。</p>
+
+<h2>
+<span id="setup検証サーバがaws上に作られる" class="fragment"></span><a href="#setup%E6%A4%9C%E8%A8%BC%E3%82%B5%E3%83%BC%E3%83%90%E3%81%8Caws%E4%B8%8A%E3%81%AB%E4%BD%9C%E3%82%89%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a>setup、検証サーバがAWS上に作られる</h2>
+
+<p><code>cucumber-chef setup</code>は<strong>テストするコンテナをホストするためのインスタンス</strong>をEC2上に作成する。</p>
+
+<ul>
+<li>cucumber-chef用のイメージ、ubuntu12.04のマシンが作られる(いくらか変更可)</li>
+<li>lxcのホスト、リゾルバとゲートウェイを兼ねる
+
+<ul>
+<li>bridgeとiptablesを使い、コンテナ用内部ネットワークをマスカレードする</li>
+</ul>
+</li>
+<li>テストするcookbookを置くchef-server
+
+<ul>
+<li>opscodeのaptリポジトリからセットアップして起動</li>
+</ul>
+</li>
+<li>レシピ適用とテストは<strong>このホスト上のコンテナ</strong>で行われる</li>
+</ul>
+
+<p>セットアップのログを見れば何をしているかわかる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cucumber-chef setup                                                               [1443/1900]
+cucumber-chef v2.0.3.pre
+
+Provisioning cucumber-chef test lab platform.
+Waiting for instance...done.
+Waiting for 20 seconds...done.
+Waiting for SSHD...done.
+Bootstrapping AWS EC2 instance...done.
+Waiting for Chef-Server...done.
+Waiting for Chef-WebUI...done.
+Downloading chef-server credentials...done.
+Building 'cc-knife' configuration...done.
+Uploading cucumber-chef cookbooks...\zlib(finalizer): the stream was freed prematurely.
+done.
+Uploading cucumber-chef test lab role...done.
+Tagging cucumber-chef test lab node...done.
+Setting up cucumber-chef test lab run list...done.
+Performing chef-client run to setup and configure the cucumber-chef test lab...done.
+Downloading container SSH credentials...done.
+Rebooting test lab; please wait...done.
+Waiting for SSHD...done.
+Waiting for Chef-Server...done.
+Waiting for Chef-WebUI...done.
+
+Your cucumber-chef test lab has now been provisioned!
+
+Be sure to log into the chef-server webui and change the default credentials.
+
+  Chef-Server WebUI:
+    http://xxx.xxx.xxx.xxx:4040/
+  Username:
+    admin
+  Password:
+    *******
+</pre></div></div>
+
+<p>ローカルでvagrantを使うという選択肢もある、I/Oのスペックに余裕があるなら。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>追記：VagrantのBootstrapはまだ実装されていなかった。
+</pre></div></div>
+
+<h2>
+<span id="cookbookとprojectテストのためのセット作成" class="fragment"></span><a href="#cookbook%E3%81%A8project%E3%83%86%E3%82%B9%E3%83%88%E3%81%AE%E3%81%9F%E3%82%81%E3%81%AE%E3%82%BB%E3%83%83%E3%83%88%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>cookbookとproject(テストのためのセット)作成</h2>
+
+<p>testbookというcookbookのレシピを、<br>
+<code>cc-knife cookbook create testbook</code></p>
+
+<p>usersという名のコンテナでテストする。<br>
+<code>cucumber-chef create users</code></p>
+
+<p><code>cucumber-chef create</code>で作られるものはcucumberのテストが含まれ、プロジェクトと呼んでいる。</p>
+
+<h2>
+<span id="cookbookをアップロード" class="fragment"></span><a href="#cookbook%E3%82%92%E3%82%A2%E3%83%83%E3%83%97%E3%83%AD%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>cookbookをアップロード</h2>
+
+<p>testbookには何もしてないが、とりあえずlabにアップする。</p>
+
+<p><code>cc-knife cookbook upload testbook</code></p>
+
+<p>cc-knifeはknifeのラッパ、コンフィグに<code>.cucumber-chef/knife.rb</code>を使う。</p>
+
+<p>chefserverのWEBUIからもtestbookがリストされていることを確認できる。</p>
+
+<h2>
+<span id="テストの概要を修正" class="fragment"></span><a href="#%E3%83%86%E3%82%B9%E3%83%88%E3%81%AE%E6%A6%82%E8%A6%81%E3%82%92%E4%BF%AE%E6%AD%A3"><i class="fa fa-link"></i></a>テストの概要を修正</h2>
+
+<p><code>features/users/users.feature</code>を修正、runlistを<code>testbook::default</code>にする。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/users/users.feature</span></div>
+<div class="highlight"><pre><span class="err">--</span> <span class="err">snip</span> <span class="err">--</span>
+  <span class="kn">Background</span><span class="p">:</span>
+    <span class="nf">* </span>I have a server called <span class="s">"users"</span>
+    <span class="nf">* </span><span class="s">"users"</span> is running <span class="s">"ubuntu"</span> <span class="s">"lucid"</span>
+    <span class="nf">* </span><span class="s">"users"</span> has been provisioned
+    <span class="err">* the "testbook</span><span class="p">::</span><span class="err">default"</span> <span class="err">recipe</span> <span class="err">has</span> <span class="err">been</span> <span class="err">added</span> <span class="err">to</span> <span class="err">the</span> <span class="err">"users"</span> <span class="err">run</span> <span class="err">list</span>
+    <span class="nf">* </span>the chef-client has been run on <span class="s">"users"</span>
+    <span class="err">* I ssh to "users" with the following credentials</span><span class="p">:</span>
+      <span class="p">|</span> <span class="nv">username</span> <span class="p">|</span> <span class="nv">keyfile</span> <span class="p">|</span>
+      <span class="p">|</span> <span class="n">root</span> <span class="p">|</span> <span class="n">../.ssh/id_rsa</span> <span class="p">|</span>
+<span class="err">--</span> <span class="err">snip</span> <span class="err">--</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="テスト実行" class="fragment"></span><a href="#%E3%83%86%E3%82%B9%E3%83%88%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>テスト実行</h2>
+
+<p>プロジェクト作成時に付いてくるサンプルのテストをそのまま流す。<br>
+ランリストの適用とCucumberのテストが実施される。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cucumber-chef test 
+cucumber-chef v2.0.3.pre
+
+Using features directory: /Users/sawanoboriyu/Dev/sandbox/chef-cucumber/features
+Cucumber-Chef Test Runner Initalized!
+Cleaning up any previous test runs...done.
+Uploading files required for this test run...done.
+Executing Cucumber-Chef Test Runner
+@users
+Feature: Perform test driven infrastructure with Cucumber-Chef
+  In order to learn how to develop test driven infrastructure
+  As an infrastructure developer
+  I want to better understand how to use Cucumber-Chef
+
+  Background:                                                            # ./users/users.feature:7
+  &gt;&gt;&gt; servers are being preserved
+    * I have a server called "users"                                     # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/provision_steps.rb:22
+    * "users" is running "ubuntu" "lucid"                                # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/provision_steps.rb:26
+    * "users" has been provisioned                                       # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/provision_steps.rb:46
+    * the "test4::default" recipe has been added to the "users" run list # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/provision_steps.rb:54
+  &gt;&gt;&gt; chef-client ran on node 'users'
+    * the chef-client has been run on "users"                            # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/provision_steps.rb:62
+    * I ssh to "users" with the following credentials:                   # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:57
+      | username | keyfile        |
+      | root     | ../.ssh/id_rsa |
+
+  Scenario: Can connect to the provisioned server via SSH authentication # ./users/users.feature:17
+    When I run "hostname"                                                # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:77
+    Then I should see "users" in the output                              # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+
+  Scenario: Default root shell is bash                                   # ./users/users.feature:21
+  &gt;&gt;&gt; servers are being preserved
+  &gt;&gt;&gt; chef-client ran on node 'users'
+    When I run "echo $SHELL"                                             # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:77
+    Then I should see "bash" in the output                               # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+
+  Scenario: Default gateway and resolver are using Cucumber-Chef Test Lab # ./users/users.feature:25
+  &gt;&gt;&gt; servers are being preserved
+  &gt;&gt;&gt; chef-client ran on node 'users'
+    When I run "route -n | grep 'UG'"                                     # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:77
+    Then I should see "192.168.255.254" in the output                     # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+    When I run "cat /etc/resolv.conf"                                     # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:77
+    Then I should see "192.168.255.254" in the output                     # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+    And I should see "8.8.8.8" in the output                              # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+    And I should see "8.8.4.4" in the output                              # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+
+
+  Scenario: Primary interface is configured with my IP address and MAC address # ./users/users.feature:33
+  &gt;&gt;&gt; servers are being preserved
+  &gt;&gt;&gt; chef-client ran on node 'users'
+    When I run "ifconfig eth0"                                                 # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:77
+    Then I should see the "IP" of "users" in the output                        # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:89
+    And I should see the "MAC" of "users" in the output                        # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:89
+
+  Scenario: Local interface is not configured with my IP address or MAC address # ./users/users.feature:38
+  &gt;&gt;&gt; servers are being preserved
+  &gt;&gt;&gt; chef-client ran on node 'users'
+    When I run "ifconfig lo"                                                    # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:77
+    Then I should see "127.0.0.1" in the output                                 # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+    And I should not see the "IP" of "users" in the output                      # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:89
+    And I should not see the "MAC" of "users" in the output                     # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:89
+
+  Scenario: Chef-Client is running as a daemon                           # ./users/users.feature:44
+  &gt;&gt;&gt; servers are being preserved
+  &gt;&gt;&gt; chef-client ran on node 'users'
+    When I run "ps aux | grep [c]hef-client"                             # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:77
+    Then I should see "chef-client" in the output                        # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+      expected: /chef-client/
+           got: nil (using =~) (RSpec::Expectations::ExpectationNotMetError)
+      ./users/users.feature:46:in `Then I should see "chef-client" in the output'
+    And I should see "-d" in the output                                  # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+    And I should see "-i 1800" in the output                             # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+    And I should see "-s 20" in the output                               # cucumber-chef-2.0.3.pre/lib/cucumber/chef/steps/ssh_steps.rb:81
+      exit (SystemExit)
+      /home/ubuntu/features/support/env.rb:50:in `exit'
+      /home/ubuntu/features/support/env.rb:50:in `After'
+
+Failing Scenarios:
+cucumber ./users/users.feature:44 # Scenario: Chef-Client is running as a daemon
+
+6 scenarios (1 failed, 5 passed)
+58 steps (1 failed, 3 skipped, 54 passed)
+0m34.626s
+</pre></div></div>
+
+<p>chef-clientが <code>-d -i 1800 -s 20</code>で上がってないのでそのステップがこけたようだが、lxc上でテストが走った。</p>
+
+<h2>
+<span id="コンテナにssh" class="fragment"></span><a href="#%E3%82%B3%E3%83%B3%E3%83%86%E3%83%8A%E3%81%ABssh"><i class="fa fa-link"></i></a>コンテナにssh</h2>
+
+<p>labからlxc-consoleとかでもよいが。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cucumber-chef ssh mytestserver
+cucumber-chef v2.0.3.pre
+
+Attempting SSH connection to cucumber-chef container 'mytestserver'...
+      _____                           _                _____ _           __
+     / ____|                         | |              / ____| |         / _|
+    | |    _   _  ___ _   _ _ __ ___ | |__   ___ _ __| |    | |__   ___| |_
+    | |   | | | |/ __| | | | '_ ` _ \| '_ \ / _ \ '__| |    | '_ \ / _ \  _|
+    | |___| |_| | (__| |_| | | | | | | |_) |  __/ |  | |____| | | |  __/ |
+     \_____\__,_|\___|\__,_|_| |_| |_|_.__/ \___|_|   \_____|_| |_|\___|_|
+
+
+    Welcome to the Cucumber Chef Test Lab v2.0.3.pre
+
+    You are now logged in to the LXC 'mytestserver'
+
+</pre></div></div>
+
+<p><code>chef-client -d -i 1800 -s 20</code> して、もう一度テストをしてみようか。</p>

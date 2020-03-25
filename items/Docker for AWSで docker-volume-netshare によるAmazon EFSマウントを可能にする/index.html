@@ -1,0 +1,88 @@
+<blockquote>
+<p><del>これ失敗。</del> からやっぱり成功。</p>
+</blockquote>
+
+<p>少々義理人情的によくないやりかたなので、詳細は省きます。</p>
+
+<p><a href="https://github.com/sawanoboly/docker-efs-mounter-for-docker-for-aws" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/sawanoboly/docker-efs-mounter-for-docker-for-aws</a></p>
+
+<p>Docker for AWSのCFnテンプレートに2箇所、これを入れます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>"mkdir -p /var/lib/docker-volumes/netshare/efs\n",
+"mount --bind /var/lib/docker-volumes/netshare/efs /var/lib/docker-volumes/netshare/efs\n",
+"mount --make-shared /var/lib/docker-volumes/netshare/efs\n",
+"docker run --restart=always -d ",
+"--name=netshare-efs-for-d4aws ",
+"--privileged ",
+"-v /var/run/docker/plugins:/var/run/docker/plugins ",
+"-v /etc/resolv.conf:/etc/resolv.conf ",
+"-v /var/lib/docker-volumes/netshare/efs:/var/lib/docker-volumes/netshare/efs:shared ",
+"sawanoboly/docker-efs-mounter-for-docker-for-aws:0.20-1\n"
+
+</pre></div></div>
+
+<p>システムコンテナを増やしちゃうわけですね。2箇所入れれば全部のノードで起動するはずです。<br>
+ついでにD4xのフィードバックにはこれがデフォルトだったらうれしいなーと送信しました。</p>
+
+<h2>
+<span id="managerで様子を確認" class="fragment"></span><a href="#manager%E3%81%A7%E6%A7%98%E5%AD%90%E3%82%92%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>Managerで様子を確認</h2>
+
+<p><code>docker@{ELB endpoint}</code> でログインしたら、勝手に追加したDockerコンテナを確認します。ありますね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker ps
+CONTAINER ID        IMAGE                                       COMMAND                  CREATED             STATUS              PORTS                NAMES
+9700c6b85cc6        sawanoboly/netshare-efs-for-d4aws:latest    "/usr/bin/docker-volu"   7 minutes ago       Up 7 minutes                             netshare-efs-for-d4aws
+de98d7bb17ad        docker4x/controller:aws-v1.12.1-rc1-beta5   "loadbalancer run --l"   7 minutes ago       Up 7 minutes                             editions_controller
+61e479c6aa9b        docker4x/shell-aws:aws-v1.12.1-rc1-beta5    "/entry.sh /usr/sbin/"   7 minutes ago       Up 7 minutes        0.0.0.0:22-&gt;22/tcp   evil_turing
+385d6257417e        docker4x/guide-aws:aws-v1.12.1-rc1-beta5    "/entry.sh"              7 minutes ago       Up 7 minutes                             determined_mahavira
+</pre></div></div>
+
+<h2>
+<span id="docker-volume-netshareによるvolume-driverefsの動作確認" class="fragment"></span><a href="#docker-volume-netshare%E3%81%AB%E3%82%88%E3%82%8Bvolume-driverefs%E3%81%AE%E5%8B%95%E4%BD%9C%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>docker-volume-netshareによるvolume-driver=efsの動作確認</h2>
+
+<blockquote>
+<p>EFSのSGは<code>SwarmWideSG</code>をつけたらOK。</p>
+</blockquote>
+
+<p>docker-volume-netshareのログをみます、起動してるねー。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker logs 9700c6b85cc6
+time="2016-08-16T10:29:31Z" level=info msg="== docker-volume-netshare :: Version: 0.17 - Built: 2016-05-18T09:50:31-07:00 ==" 
+time="2016-08-16T10:29:31Z" level=info msg="Starting EFS :: availability-zone: , resolve: false, ns: " 
+</pre></div></div>
+
+<p>serviceは書式が面倒なので、取り急ぎubuntuのコンテナをRUNして終わらせます。EFSのIDだけで良いのが楽だよね。</p>
+
+<p><code><br>
+docker pull ubuntu:latest<br>
+docker run -it --rm --volume-driver=efs -v fs-xxxxxx:/mount ubuntu /bin/true<br>
+</code>`</p>
+
+<p>もう一度docker-volume-netshareのログをみます、バッチリMount/Unmountされてますわ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker  logs 9700c6b85cc6
+time="2016-08-16T10:29:31Z" level=info msg="== docker-volume-netshare :: Version: 0.17 - Built: 2016-05-18T09:50:31-07:00 ==" 
+time="2016-08-16T10:29:31Z" level=info msg="Starting EFS :: availability-zone: , resolve: false, ns: " 
+time="2016-08-16T10:39:25Z" level=info msg="Mounting EFS volume 192.168.34.130:/ on /var/lib/docker-volumes/netshare/efs/fs-xxxxxxxx" 
+time="2016-08-16T10:39:37Z" level=info msg="Unmounting volume 192.168.34.130:/ from /var/lib/docker-volumes/netshare/efs/fs-xxxxxxxx" 
+</pre></div></div>
+
+<h2>
+<span id="一言" class="fragment"></span><a href="#%E4%B8%80%E8%A8%80"><i class="fa fa-link"></i></a>一言</h2>
+
+<p>テンプレート改変はねー。。おすすめしたくないので公式に送ったフィードバックに期待しよう。</p>
+
+<hr>
+
+<h2>
+<span id="追記" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98"><i class="fa fa-link"></i></a>追記</h2>
+
+<p><code>docker service</code>でもこんな感じの指定で使えました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>docker service create --name mysite0003 -p 10002:8080 \
+--mount type=volume,src=fs-xxxx/mysite0003,dst=/var/www/html,volume-driver=efs \
+--with-registry-auth \
+xxxxxxxxxxxxxxx.dkr.ecr.us-west-2.amazonaws.com/static-site-hosting
+</pre></div></div>
+
+<p>マウントソースのEFSに指定したディレクトリがなくてもマウントする際に作ってくれるのでわりとハッピー。</p>

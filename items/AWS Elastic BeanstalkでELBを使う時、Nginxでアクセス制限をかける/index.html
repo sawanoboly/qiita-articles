@@ -1,0 +1,121 @@
+<p>Ruby(Puma)を使う場合の話。SingleならSGでいいんだけど。</p>
+
+<ul>
+<li>環境ごとに許可対象を管理したい。</li>
+<li>許可対象の変更でアプリごとデプロイは嫌。</li>
+<li>許可対象の追加削除は自動で適用してほしい。</li>
+</ul>
+
+<p>サンプルのSinatraアプリはこちら。 <a href="https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB" rel="nofollow noopener" target="_blank">https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB</a></p>
+
+<h2>
+<span id="elb-x-nginx" class="fragment"></span><a href="#elb-x-nginx"><i class="fa fa-link"></i></a>ELB x Nginx</h2>
+
+<p>周知のとおりELBは一般的なLBと同様に<code>X-Forwarded-For</code>にクライアントのIPを入れてきます。<br>
+なのでnginxにはこんな感じで設定しておけば接続元で<code>allow/deny</code>をつかえます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>set_real_ip_from 0.0.0.0/0;
+real_ip_header X-Forwarded-For;
+allow xxx.xxx.xxx.xxx/32;
+deny all;
+</pre></div></div>
+
+<h2>
+<span id="hookに仕込む" class="fragment"></span><a href="#hook%E3%81%AB%E4%BB%95%E8%BE%BC%E3%82%80"><i class="fa fa-link"></i></a>Hookに仕込む</h2>
+
+<p>環境ごとに値を変えたいので、<code>ALLOW_HOSTS</code>なる変数をEBに置いて、カンマ区切りで許可対象を与えられるようにします。<br>
+Ruby(Puma)環境のNginxは<code>/etc/nginx/conf.d/*.conf</code>を読むようになっているので、ポリシーはそこに設置しましょう。</p>
+
+<p><code>Configration</code>を変更したら適用してほしいので、Hookは<code>configdeploy::enact</code>にしてみます。アクセスポリシーファイルの生成とNginxのリロードを設置。<br>
+インスタンスの追加や環境のリビルド時やにも有効にするため、<code>postinit</code>にも同じものを置いときます。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.ebextensions/01_nginx_access.config</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">files</span><span class="pi">:</span>
+  <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/hooks/configdeploy/enact/10_nginx_access.rb"</span><span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">000755"</span>
+    <span class="na">owner</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">group</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="s">#!/usr/bin/env ruby</span>
+
+      <span class="s">require '/opt/elasticbeanstalk/support/get_envvars'</span>
+      <span class="s">require 'erb'</span>
+
+      <span class="s">envs = get_env_vars</span>
+
+      <span class="s">erb = ERB.new(DATA.read, nil, '-')</span>
+      <span class="s">File.open("/etc/nginx/conf.d/access.conf", "w") do |file|</span>
+        <span class="s">file.puts(erb.result(binding))</span>
+      <span class="s">end</span>
+
+
+      <span class="s">__END__</span>
+      <span class="s">set_real_ip_from 0.0.0.0/0;</span>
+      <span class="s">real_ip_header X-Forwarded-For;</span>
+      <span class="s">&lt;% envs['ALLOW_HOSTS'].split(',').each do |host| -%&gt;</span>
+      <span class="s">allow &lt;%= host -%&gt;;</span>
+      <span class="s">&lt;% end if envs['ALLOW_HOSTS'] -%&gt;</span>
+      <span class="s">deny all;</span>
+  <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/hooks/configdeploy/enact/11_nginx_reload.sh"</span><span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">000755"</span>
+    <span class="na">owner</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">group</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="s">#!/usr/bin/env bash</span>
+
+      <span class="s">set -xe</span>
+      <span class="s">service nginx reload \|\| service nginx start</span>
+  <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/hooks/postinit/10_nginx_access.rb"</span><span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">000755"</span>
+    <span class="na">owner</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">group</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="s">#!/usr/bin/env ruby</span>
+
+      <span class="s">require '/opt/elasticbeanstalk/support/get_envvars'</span>
+      <span class="s">require 'erb'</span>
+
+      <span class="s">envs = get_env_vars</span>
+
+      <span class="s">erb = ERB.new(DATA.read, nil, '-')</span>
+      <span class="s">File.open("/etc/nginx/conf.d/access.conf", "w") do |file|</span>
+        <span class="s">file.puts(erb.result(binding))</span>
+      <span class="s">end</span>
+
+
+      <span class="s">__END__</span>
+      <span class="s">set_real_ip_from 0.0.0.0/0;</span>
+      <span class="s">real_ip_header X-Forwarded-For;</span>
+      <span class="s">&lt;% envs['ALLOW_HOSTS'].split(',').each do |host| -%&gt;</span>
+      <span class="s">allow &lt;%= host -%&gt;;</span>
+      <span class="s">&lt;% end if envs['ALLOW_HOSTS'] -%&gt;</span>
+      <span class="s">deny all;</span>
+  <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/hooks/postinit/11_nginx_reload.sh"</span><span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">000755"</span>
+    <span class="na">owner</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">group</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="s">#!/usr/bin/env bash</span>
+
+      <span class="s">set -xe</span>
+      <span class="s">service nginx reload \|\| service nginx start</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="eb-setenvでアクセスポリシー操作" class="fragment"></span><a href="#eb-setenv%E3%81%A7%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B9%E3%83%9D%E3%83%AA%E3%82%B7%E3%83%BC%E6%93%8D%E4%BD%9C"><i class="fa fa-link"></i></a>eb setenvでアクセスポリシー操作</h2>
+
+<p>configdeployのフックが無事設置できれば、あとはWebからでも<code>eb</code>からでも、ALLOW_HOSTSを適当に変更すればOK.</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ eb setenv ALLOW_HOSTS="xxx.xx.xxx.xxx/32,xxx.xxx.xxx.xxx/28" -e YOUR_ENV_NAME
+</pre></div></div>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F246b3c30-8313-e3ee-3fdd-a24be965e9b0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9ea8e6451e98579de99ec02b9f6963bb" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F246b3c30-8313-e3ee-3fdd-a24be965e9b0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9ea8e6451e98579de99ec02b9f6963bb" alt="allow_hosts.png" title="allow_hosts.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/246b3c30-8313-e3ee-3fdd-a24be965e9b0.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F246b3c30-8313-e3ee-3fdd-a24be965e9b0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=1193b0297c0f0c103935de5de3cadca4 1x" loading="lazy"></a></p>
+
+<p>↑Configureに許可リスト。</p>
+
+<p>↓ELB配下へのRubyアプリへのアクセス。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2afc515d-82b7-d1d1-9736-2faaae952e08.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=da1dab03d1cc2a1d1008bcab0ca094b7" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2afc515d-82b7-d1d1-9736-2faaae952e08.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=da1dab03d1cc2a1d1008bcab0ca094b7" alt="nginx_403.png" title="nginx_403.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/2afc515d-82b7-d1d1-9736-2faaae952e08.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2afc515d-82b7-d1d1-9736-2faaae952e08.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=f542451fb1f4ef3222c919edda1d8f56 1x" loading="lazy"></a></p>

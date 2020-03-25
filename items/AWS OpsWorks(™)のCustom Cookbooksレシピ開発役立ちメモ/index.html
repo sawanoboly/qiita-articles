@@ -1,0 +1,226 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>OpsWorksでCustom Cookbooksを使う際はやや癖があるため、インスタンスの中で色々試したくなりますのでやりましょう。</p>
+
+<h2>
+<span id="カスタムクックブックを更新したい" class="fragment"></span><a href="#%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%A0%E3%82%AF%E3%83%83%E3%82%AF%E3%83%96%E3%83%83%E3%82%AF%E3%82%92%E6%9B%B4%E6%96%B0%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>カスタムクックブックを更新したい</h2>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cd</span> /opt/aws/opsworks/current/site-cookbooks
+<span class="nv">$ </span>git pull origin master
+</pre></div>
+</div>
+
+<h2>
+<span id="ec2-なコマンドを使いたい" class="fragment"></span><a href="#ec2-%E3%81%AA%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E3%82%92%E4%BD%BF%E3%81%84%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>ec2-**なコマンドを使いたい</h2>
+
+<p>amazon linuxなら<code>/opt/aws</code>に<code>amitools/apitools</code>入っており、パスが通っているので使いましょう。<br>
+デフォルトの権限はレイヤ設定<code>iam role</code>に基づきます。</p>
+
+<h2>
+<span id="chef-shellで作業したい" class="fragment"></span><a href="#chef-shell%E3%81%A7%E4%BD%9C%E6%A5%AD%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>chef-shellで作業したい</h2>
+
+<p><code>/opt/aws/opsworks/current</code>で作業すれば、普通のChefクライアントを操作出来ます。</p>
+
+<h3>
+<span id="114-の場合" class="fragment"></span><a href="#114-%E3%81%AE%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>11.4 の場合</h3>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cd</span> /opt/aws/opsworks/current
+<span class="nv">$ </span>bundle <span class="nb">exec </span>chef-shell <span class="nt">-s</span> <span class="nt">-c</span> conf/solo.rb 
+loading configuration: conf/solo.rb
+Session <span class="nb">type</span>: solo
+Loading.......done.
+
+This is the chef-shell.
+ Chef Version: 11.4.4
+ http://www.opscode.com/chef
+ http://wiki.opscode.com/display/chef/Home
+
+run <span class="sb">`</span><span class="nb">help</span><span class="s1">' for help, `exit'</span> or ^D to quit.
+
+Ohai2u ec2-user@single1.localdomain!
+chef <span class="o">&gt;</span> Chef::VERSION 
+ <span class="o">=&gt;</span> <span class="s2">"11.4.4"</span> 
+</pre></div>
+</div>
+
+<h3>
+<span id="1110-の場合" class="fragment"></span><a href="#1110-%E3%81%AE%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>11.10 の場合</h3>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cd</span> /opt/aws/opsworks/current
+<span class="nv">$ </span>/opt/aws/opsworks/current/bin/chef-client <span class="nt">-c</span> /var/lib/aws/opsworks/client.rb <span class="nt">-v</span>
+Chef: 11.10.4
+
+<span class="nv">$ </span><span class="nb">sudo</span> <span class="nt">-i</span>
+<span class="c"># /opt/aws/opsworks/current/bin/chef-shell -j /var/lib/aws/opsworks/chef/2016-08-26-14-10-03-01.json</span>
+
+<span class="c">### ↑jsonのファイル名は動的なので適当に置き換えてください</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="スタックの情報を確認したい" class="fragment"></span><a href="#%E3%82%B9%E3%82%BF%E3%83%83%E3%82%AF%E3%81%AE%E6%83%85%E5%A0%B1%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>スタックの情報を確認したい</h2>
+
+<p><code>opsworks-agent-cli</code> が便利です。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="c"># opsworks-agent-cli get_json</span>
+<span class="o">{</span>
+  <span class="s2">"opsworks_rubygems"</span>: <span class="o">{</span>
+    <span class="s2">"version"</span>: <span class="s2">"1.8.24"</span>
+  <span class="o">}</span>,
+  <span class="s2">"deploy"</span>: <span class="o">{</span>
+  <span class="o">}</span>,
+  <span class="s2">"ssh_users"</span>: <span class="o">{</span>
+  <span class="o">}</span>,
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="opsworks-agentを停止したい" class="fragment"></span><a href="#opsworks-agent%E3%82%92%E5%81%9C%E6%AD%A2%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>opsworks-agentを停止したい</h2>
+
+<p>monit配下にいるので任意で停止できます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>monit stop opsworks-agent
+<span class="nv">$ </span>monit summary
+The Monit daemon 5.2.5 <span class="nb">uptime</span>: 29m 
+
+Process <span class="s1">'opsworks-agent'</span>            not monitored
+Process <span class="s1">'opsworks-agent-master-running'</span> running
+File <span class="s1">'opsworks-agent-statistic-daemons-log'</span> accessible
+File <span class="s1">'opsworks-agent-process-command-daemons-log'</span> accessible
+File <span class="s1">'opsworks-agent-keep-alive-daemons-log'</span> accessible
+System <span class="s1">'system_single1.localdomain'</span> running
+</pre></div>
+</div>
+
+<h2>
+<span id="ohaiプラグインを追加したい" class="fragment"></span><a href="#ohai%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%82%92%E8%BF%BD%E5%8A%A0%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>Ohaiプラグインを追加したい</h2>
+
+<p><code>/opt/aws/opsworks/current/plugins</code>に追加するとOKです。</p>
+
+<h2>
+<span id="デプロイされたアプリの場所" class="fragment"></span><a href="#%E3%83%87%E3%83%97%E3%83%AD%E3%82%A4%E3%81%95%E3%82%8C%E3%81%9F%E3%82%A2%E3%83%97%E3%83%AA%E3%81%AE%E5%A0%B4%E6%89%80"><i class="fa fa-link"></i></a>デプロイされたアプリの場所</h2>
+
+<p><code>/srv/www/</code>以下にアプリ名でディレクトリが作られています。</p>
+
+<h2>
+<span id="ログが見たい" class="fragment"></span><a href="#%E3%83%AD%E3%82%B0%E3%81%8C%E8%A6%8B%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>ログが見たい</h2>
+
+<p><code>/var/lib/aws/opsworks/chef/</code>にChefRun時のログが出ています。</p>
+
+<h2>
+<span id="chefrunに使われたjsonが確認したい" class="fragment"></span><a href="#chefrun%E3%81%AB%E4%BD%BF%E3%82%8F%E3%82%8C%E3%81%9Fjson%E3%81%8C%E7%A2%BA%E8%AA%8D%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>ChefRunに使われたJsonが確認したい</h2>
+
+<p><code>/var/lib/aws/opsworks/chef/</code>にChefRun時に使われたJSONが置いてあります、ログと対のタイムスタンプがついています。</p>
+
+<p>jsonがあるのでこの様にリトライしてみることができます。Chef 11.4 なら、</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>bundle <span class="nb">exec </span>chef-solo <span class="nt">-c</span> conf/solo.rb <span class="nt">-j</span> /var/lib/aws/opsworks/chef/2013-08-09-04-24-42-01.json
+</pre></div>
+</div>
+
+<p>11.10 なら、</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>/opt/aws/opsworks/current/bin/chef-client <span class="nt">-c</span> /var/lib/aws/opsworks/client.rb <span class="nt">-j</span> /var/lib/aws/opsworks/chef/2013-08-09-04-24-42-01.json
+</pre></div>
+</div>
+
+<h3>
+<span id="再取得したい" class="fragment"></span><a href="#%E5%86%8D%E5%8F%96%E5%BE%97%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>再取得したい</h3>
+
+<p><code>opsworks-agent-cli get_json</code> で表示できるのでリダイレクトしてファイルにすれば<code>chef-solo</code>に渡すJsonとして利用できます。</p>
+
+<h2>
+<span id="ライフサイクルイベントを手動で実行したい" class="fragment"></span><a href="#%E3%83%A9%E3%82%A4%E3%83%95%E3%82%B5%E3%82%A4%E3%82%AF%E3%83%AB%E3%82%A4%E3%83%99%E3%83%B3%E3%83%88%E3%82%92%E6%89%8B%E5%8B%95%E3%81%A7%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>ライフサイクルイベントを手動で実行したい</h2>
+
+<p><code>opsworks-agent-cli run_command</code> </p>
+
+<p>configureをやってみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>opsworks-agent-cli run_command configure
+<span class="o">[</span>2013-08-09 05:13:15] INFO <span class="o">[</span>opsworks-agent <span class="o">(</span>5946<span class="o">)]</span> About to re-run <span class="s1">'configure'</span> from 2013-08-09T04:24:42
+Waiting <span class="k">for </span>process 5950
+Starting Chef Client, version 11.4.4
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="更新したカスタムクックブックのレシピを実行したい" class="fragment"></span><a href="#%E6%9B%B4%E6%96%B0%E3%81%97%E3%81%9F%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%A0%E3%82%AF%E3%83%83%E3%82%AF%E3%83%96%E3%83%83%E3%82%AF%E3%81%AE%E3%83%AC%E3%82%B7%E3%83%94%E3%82%92%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>更新したカスタムクックブックのレシピを実行したい</h2>
+
+<p>ChefSoloを普通に実行することができます。Chef 11.4 なら、</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>bundle <span class="nb">exec </span>chef-solo <span class="nt">-c</span> conf/solo.rb <span class="nt">-o</span> <span class="s1">'my_pkgs::memcached'</span>
+Starting Chef Client, version 11.4.4
+<span class="o">[</span>2013-08-09T05:15:00+00:00] INFO: <span class="k">***</span> Chef 11.4.4 <span class="k">***</span>
+<span class="o">[</span>2013-08-09T05:15:03+00:00] DEBUG: Building node object <span class="k">for </span>single1.localdomain
+<span class="o">[</span>2013-08-09T05:15:03+00:00] DEBUG: Extracting run list from JSON attributes provided on <span class="nb">command </span>line
+<span class="o">[</span>2013-08-09T05:15:03+00:00] DEBUG: Applying attributes from json file
+<span class="o">[</span>2013-08-09T05:15:03+00:00] DEBUG: Platform is amazon version 2013.03
+<span class="o">[</span>2013-08-09T05:15:03+00:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-08-09T05:15:03+00:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-08-09T05:15:03+00:00] WARN: Overridden Run List: <span class="o">[</span>recipe[my_pkgs::memcached]]
+<span class="nt">--</span> snip <span class="nt">--</span>
+</pre></div>
+</div>
+
+<p>11.10 なら、</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>/opt/aws/opsworks/current/bin/chef-client <span class="nt">-c</span> /var/lib/aws/opsworks/client.rb <span class="nt">-o</span> <span class="s1">'my_pkgs::memcached'</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="chef-applyしたい" class="fragment"></span><a href="#chef-apply%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>chef-applyしたい</h2>
+
+<p>そのままです。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="c"># echo "package 'nginx'" | bundle exec chef-apply -s</span>
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> package[nginx] action <span class="nb">install</span>
+    - <span class="nb">install </span>version 1.4.2-1.el6.ngx of package nginx
+</pre></div>
+</div>
+
+<p>Chefバージョンが<code>11.4.4</code>なので、why_runにはコツが要ります。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">echo</span> <span class="s2">"Chef::Config[:why_run] = true ; package 'nginx'"</span> | bundle <span class="nb">exec </span>chef-apply <span class="nt">-s</span>
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> package[nginx] action <span class="nb">install</span>
+    - Would <span class="nb">install </span>version 1.4.2-1.el6.ngx of package nginx
+</pre></div>
+</div>
+
+<hr>
+
+<p>他にも役に立ちそうなことを思いついたら追記します。</p>

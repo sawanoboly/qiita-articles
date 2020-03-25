@@ -1,0 +1,776 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>実践Opscode Chefシリーズ。</p>
+
+<p>LWRPを使うと任意のリソースをプリセットのChefリソース群と同じようにレシピに記述することができます。<br>
+それにより、他のリソースと同じようにChefによる収束管理がしやすくなります。つまりは冪等性・バックアップ・ログ出力、そしてWhy-Runに対応できると。</p>
+
+<p>最初に補足しておくと、何でもかんでもChefでやれば良いというものではありません、ただ使うならChefらしく。そうでなければSSHでコマンド叩いて来たほうがよほど手堅く安全です。</p>
+
+<blockquote>
+<p>記事中のCookbookとChefSolo設定一式はこちらに公開しています。<br>
+<a href="https://github.com/OpsRockin/lwrp_http_userdb" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/lwrp_http_userdb</a></p>
+</blockquote>
+
+<h2>
+<span id="まずレシピに書く内容を想像する" class="fragment"></span><a href="#%E3%81%BE%E3%81%9A%E3%83%AC%E3%82%B7%E3%83%94%E3%81%AB%E6%9B%B8%E3%81%8F%E5%86%85%E5%AE%B9%E3%82%92%E6%83%B3%E5%83%8F%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>まずレシピに書く内容を想像する</h2>
+
+<p>今回はHTTPサーバが認証に使う、<code>.htpasswd</code>や<code>.htdigest</code>を取り上げてLWRPの作り方をフルコースで紹介してみます、ファイルをユーザDBとして扱うケースですね。</p>
+
+<p>まずベーシック認証、必要なのはこのへんですかね。</p>
+
+<ul>
+<li>ユーザDBに使うファイル</li>
+<li>ユーザ名</li>
+<li>パスワード</li>
+</ul>
+
+<p>じゃあ、こんな風に書けると良いんじゃないかな？</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipe_sample_basic.rb</span></div>
+<div class="highlight"><pre><span class="n">httpsv_auth_basic</span> <span class="s1">'/var/www/site1'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:create</span>
+  <span class="n">user</span> <span class="s1">'hoge'</span>
+  <span class="n">password</span> <span class="s1">'password'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>ほらリソースっぽい、これをChef Clientを実行すればユーザDBが作成/更新されるとレシピもスッキリです。</p>
+
+<p>そして何よりも、レシピが何をするかをぱっと見で分かるようになることで可読性が向上し、作成後の保守性も良好になります。</p>
+
+<p>続いてDigest、こちらは<code>realm</code>が必要になるので指定できるとうれしい、と。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipe_sample_digest.rb</span></div>
+<div class="highlight"><pre><span class="n">httpsv_auth_digest</span> <span class="s1">'/var/www/site1'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:delete</span>
+  <span class="n">user</span> <span class="s1">'hoge'</span>
+  <span class="n">realm</span> <span class="s1">'realm1'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>actionを<code>:delete</code>にしてみました、<code>password</code>が必要ないので省略されていますね。</p>
+
+<p>ちなみに最終形はこれより少しだけ複雑になります。</p>
+
+<h2>
+<span id="cookbookを用意しlwrpで作るリソースの名称を決定する" class="fragment"></span><a href="#cookbook%E3%82%92%E7%94%A8%E6%84%8F%E3%81%97lwrp%E3%81%A7%E4%BD%9C%E3%82%8B%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E3%81%AE%E5%90%8D%E7%A7%B0%E3%82%92%E6%B1%BA%E5%AE%9A%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Cookbookを用意し、LWRPで作るリソースの名称を決定する</h2>
+
+<p>LWRPはcookbookに格納し、レシピに記述するリソース名は<code>{cookbook名}_{リソース名}</code> に自動で変換されます。</p>
+
+<p>先程の妄想レシピでは<code>httpsv_*</code>というリソースだったので、<code>cookbook::httpsv</code>を作成しました。</p>
+
+<div class="code-frame" data-lang="Tree_of_cookbooks"><div class="highlight"><pre>cookbooks/httpsv/
+├── CHANGELOG.md
+├── README.md
+├── attributes
+├── metadata.rb
+├── providers
+├── recipes
+│   └── default.rb
+└── resources
+</pre></div></div>
+
+<p>ということは、<code>resources/</code>の下に作成するファイルは？ そう、<code>auth_basic.rb</code>です。</p>
+
+<p>作りましょう。</p>
+
+<div class="code-frame" data-lang="Tree_of_cookbooks"><div class="highlight"><pre>cookbooks/httpsv/
+├── CHANGELOG.md
+├── README.md
+├── attributes
+├── metadata.rb
+├── providers
+├── recipes
+│   └── default.rb
+└── resources
+    └── auth_basic.rb
+</pre></div></div>
+
+<h2>
+<span id="lwrpauth_basic-を作成する" class="fragment"></span><a href="#lwrpauth_basic-%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>LWRP/auth_basic を作成する</h2>
+
+<p>ファイルを作成したことにより、リソースの定義は出来ました。<br>
+手始めにこのリソースは…</p>
+
+<ul>
+<li>
+<code>action :create</code>を持ち、action省略時のデフォルトは<code>:create</code>
+</li>
+<li>パラメータ、<code>user</code>をとる、必須</li>
+<li>パラメータ、<code>password</code>をとる</li>
+</ul>
+
+<p>と考えた際の<code>resources/auth_basic.rb</code>を作ります。</p>
+
+<h3>
+<span id="resourcesauth_basicrb" class="fragment"></span><a href="#resourcesauth_basicrb"><i class="fa fa-link"></i></a><code>resources/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/resources/auth_basic.rb-initial</span></div>
+<div class="highlight"><pre><span class="n">actions</span> <span class="ss">:create</span>
+<span class="n">default_action</span> <span class="ss">:create</span>
+
+<span class="n">attribute</span> <span class="ss">:user</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:required</span> <span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="n">attribute</span> <span class="ss">:password</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span>
+</pre></div>
+</div>
+
+<p>大体見たとおりですね、attributeに若干ヴァリデーションが入っているのも分かるでしょう。このようにattributeはある程度のチェックを実装してます。</p>
+
+<p>ちなみに使えるオプションはChefのドキュメントを見て下さい。</p>
+
+<blockquote>
+<p><a href="http://docs.opscode.com/lwrp_custom_resource.html#validation-parameters" rel="nofollow noopener" target="_blank">Chef Docs - Lightweight Resources</a></p>
+</blockquote>
+
+<p>では続いて、<code>action :create</code>に対応するアクションを<code>providers/auth_basic.rb</code>に実装します。</p>
+
+<h3>
+<span id="providersauth_basicrb" class="fragment"></span><a href="#providersauth_basicrb"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-initial</span></div>
+<div class="highlight"><pre><span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>カラですか？カラですね。<br>
+まあ慌てずに一歩ずつ進めていきましょう、actionに対応するブロックさえあれば、LWRPは動作します。</p>
+
+<p>まず最小限の記述で動作を確認して、手応えを掴んでみましょう。</p>
+
+<h3>
+<span id="レシピに記述し実行する" class="fragment"></span><a href="#%E3%83%AC%E3%82%B7%E3%83%94%E3%81%AB%E8%A8%98%E8%BF%B0%E3%81%97%E5%AE%9F%E8%A1%8C%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>レシピに記述し、実行する</h3>
+
+<p>リソースには名前が必須です、ここでは名前をユーザDBファイルのパスとしてレシピを書いてみました。</p>
+
+<p>サンプルを各環境で実行できるようにするため、作業中のディレクトリの下に<code>var/www/site1/.htpasswd</code> ファイルを作るっぽい名前にしています。</p>
+
+<h3>
+<span id="recipessample1rb" class="fragment"></span><a href="#recipessample1rb"><i class="fa fa-link"></i></a><code>recipes/sample1.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/recipes/sample1.rb</span></div>
+<div class="highlight"><pre><span class="n">base_dir</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'PWD'</span><span class="p">]</span>
+
+<span class="n">httpsv_auth_basic</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="s1">'var/www/site1/.htpasswd'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">user</span> <span class="s1">'hoge'</span>
+  <span class="n">password</span> <span class="s1">'password'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>初めに思い描いたレシピのとおりです！</p>
+
+<h4>
+<span id="chef-solo-run" class="fragment"></span><a href="#chef-solo-run"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<p>実行できます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample01'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-06T18:05:26+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-06T18:05:26+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-06T18:05:26+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample01]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample01
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+Chef Client finished, 0 resources updated
+</pre></div>
+</div>
+
+<p>正常に終了しました、<code>Converging 1 resources</code> からの <code>0 resources updated</code>!!</p>
+
+<p>もちろんリソースの内訳はレシピの記述通りです。<br>
+- <code>httpsv_auth_basic[(中略)/var/www/site1/.htpasswd]</code></p>
+
+<p>しかし更新したリソースが0個と言われています、実行＝更新では無いのでしょうか？</p>
+
+<h3>
+<span id="updated_by_last_actionでリソースの更新フラグを管理" class="fragment"></span><a href="#updated_by_last_action%E3%81%A7%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E3%81%AE%E6%9B%B4%E6%96%B0%E3%83%95%E3%83%A9%E3%82%B0%E3%82%92%E7%AE%A1%E7%90%86"><i class="fa fa-link"></i></a>updated_by_last_actionでリソースの更新フラグを管理</h3>
+
+<p>実は更新カウントの仕組みは<code>Provider</code>のactionに委ねられています。</p>
+
+<p><code>:create</code>アクションに一行追加して、もう一度実行してみましょう。</p>
+
+<h3>
+<span id="providersauth_basicrb-1" class="fragment"></span><a href="#providersauth_basicrb-1"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-last_action</span></div>
+<div class="highlight"><pre><span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">updated_by_last_action</span><span class="p">(</span><span class="kp">true</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>2行目が追加行です、メソッド名からなんとなく分かりますかね。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample01'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-06T18:20:31+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-06T18:20:31+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-06T18:20:31+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample01]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample01
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+
+Chef Client finished, 1 resources updated
+</pre></div>
+</div>
+
+<p>やった！ <strong><code>1 resources updated</code></strong> として認識されました。<br>
+ProviderがConvergenceを実施したら、そのことを通知してあげる必用があるんですね。</p>
+
+<h2>
+<span id="createアクションの中身を作る" class="fragment"></span><a href="#create%E3%82%A2%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3%E3%81%AE%E4%B8%AD%E8%BA%AB%E3%82%92%E4%BD%9C%E3%82%8B"><i class="fa fa-link"></i></a>createアクションの中身を作る。</h2>
+
+<p>ではそろそろ<code>:create</code>アクションに何かさせてみましょう。<br>
+呼ばれたことをログに出力しつつ、.htpasswdを実際に作っちゃいます。</p>
+
+<h3>
+<span id="providersauth_basicrb-2" class="fragment"></span><a href="#providersauth_basicrb-2"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-create_htpasswd</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'webrick'</span>
+
+<span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">set_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">updated_by_last_action</span><span class="p">(</span><span class="kp">true</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>ユーザDBを読み込み、操作してFlushするライブラリを使って簡単に。<code>WEBrick::HTTPAuth::Htpasswd</code>についてはドキュメントで確認しましょう。<br>
+<a href="http://ruby-doc.org/stdlib-1.9.3/libdoc/webrick/rdoc/WEBrick/HTTPAuth/Htpasswd.html" rel="nofollow noopener" target="_blank">Class: WEBrick::HTTPAuth::Htpasswd (Ruby 1.9.3)</a></p>
+
+<p><code>Htdigest</code>クラスもあるので、Digestの時はそちらを使いましょう。</p>
+
+<h4>
+<span id="chef-solo-run-1" class="fragment"></span><a href="#chef-solo-run-1"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<p>先程のレシピでまたchef-soloを実行してみます。<br>
+※CreateのログをWARNにしているのは練習だからです、通常はINFOなりで。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample01'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-06T18:46:35+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-06T18:46:35+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-06T18:46:35+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample01]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample01
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+<span class="o">[</span>2013-09-06T18:46:35+09:00] WARN: <span class="o">======</span> Create http_auth user hoge
+
+
+Chef Client finished, 1 resources updated
+</pre></div>
+</div>
+
+<p>出来上がったファイルを見てみましょう。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">var/www/site1/.htpasswd</span></div>
+<div class="highlight"><pre>hoge:iLWIQVkBPUswQ
+</pre></div>
+</div>
+
+<p>はい、できていますね。</p>
+
+<h2>
+<span id="why-runをサポートしよう" class="fragment"></span><a href="#why-run%E3%82%92%E3%82%B5%E3%83%9D%E3%83%BC%E3%83%88%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>Why-Runをサポートしよう</h2>
+
+<p>Providerが小さい今のうちに、Why-Runサポートに行きましょう。</p>
+
+<p>Why-Runをサポートするためには、実際に処理を行う部分を<code>converge_by</code>以下のブロックにすればOKです。</p>
+
+<h3>
+<span id="providersauth_basicrb-3" class="fragment"></span><a href="#providersauth_basicrb-3"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-support_why-run</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'webrick'</span>
+
+<span class="k">def</span> <span class="nf">whyrun_supported?</span>
+  <span class="kp">true</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span>
+    <span class="n">htpasswd</span><span class="p">.</span><span class="nf">set_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span>
+    <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>出だしの<code>def whyrun_supported?</code>はそのままなので気にしないとして<code>converge_by</code>によって2つ消えたものがあります、気づきましたか？</p>
+
+<ul>
+<li>Chef::Logの記述</li>
+<li>updated_by_last_action</li>
+</ul>
+
+<p>が無くなっています。ログはWhy-run演出のためちょっと消しただけなのですが、先程紹介したばかりの重要なフラグはどこへ？</p>
+
+<p>実は処理を<code>converge_by</code>のブロックにすると、updated_by_last_actionのフラグを自動で立ててくれるので不要になります。助かりますね。</p>
+
+<h4>
+<span id="chef-solo-run-2" class="fragment"></span><a href="#chef-solo-run-2"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<p>まずWhy-run(<code>-W</code>オプション)から。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample01'</span> <span class="nt">-W</span>
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-06T19:06:49+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-06T19:06:49+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-06T19:06:49+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample01]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample01
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - Would <span class="o">======</span> Create http_auth user hoge
+
+Chef Client finished, 1 resources would have been updated
+</pre></div>
+</div>
+
+<p>表示予定のメッセージに<code>Would</code>がついており、レポートも<code>1 resources would have been updated</code>と表記が変わっています。</p>
+
+<p>次は<code>-W</code>を外してみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample01'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-06T19:10:39+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-06T19:10:39+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-06T19:10:39+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample01]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample01
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - <span class="o">======</span> Create http_auth user hoge
+
+Chef Client finished, 1 resources updated
+</pre></div>
+</div>
+
+<p><code>1 resources updated</code>と、Why-Runサポート前と同じく、ちゃんと実行されていますね。</p>
+
+<p>これでWhy-Runがサポートされました、他のアクション定義の処理部分でも<code>converge_by</code>を使うのをお忘れなく。</p>
+
+<h2>
+<span id="actionの中でいつものリソースを使おう" class="fragment"></span><a href="#action%E3%81%AE%E4%B8%AD%E3%81%A7%E3%81%84%E3%81%A4%E3%82%82%E3%81%AE%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E3%82%92%E4%BD%BF%E3%81%8A%E3%81%86"><i class="fa fa-link"></i></a>actionの中でいつものリソースを使おう</h2>
+
+<p>LWRPおよびLibrariesでは、普通のレシピのようにいつものリソースを使うことも出来ます。処理のされ方が少し違う点に注意すればtemplate等は特に活用できるのではないでしょうか。</p>
+
+<p>例えば作ったファイルのパーミッションを特定の状態に保ちたいとき、次のように<code>file</code>リソースを記述するとちゃんと処理されます。</p>
+
+<h3>
+<span id="providersauth_basicrb-4" class="fragment"></span><a href="#providersauth_basicrb-4"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-use_normal_resource</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'webrick'</span>
+
+<span class="k">def</span> <span class="nf">whyrun_supported?</span>
+  <span class="kp">true</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span>
+    <span class="n">htpasswd</span><span class="p">.</span><span class="nf">set_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span>
+    <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+
+    <span class="n">file</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">name</span> <span class="k">do</span>
+      <span class="n">owner</span> <span class="s1">'guest'</span>
+      <span class="n">mode</span>  <span class="mo">0644</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>WEBrick::HTTPAuth::Htpasswd</code>は実行したユーザをオーナに、かつパーミッション<code>600</code>で毎回ファイルを修正します。<br>
+それはそれで困るなあ、という時に上記のようにレシピをいれこむ事が可能です。</p>
+
+<p>※ 理由は後述しますが、このLWRPではfileリソースの使用は向いていません。</p>
+
+<h4>
+<span id="chef-solo-run-3" class="fragment"></span><a href="#chef-solo-run-3"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rvmsudo <span class="nv">PWD</span><span class="o">=</span><span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span> chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample01'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-06T19:49:13+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-06T19:49:13+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-06T19:49:13+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample01]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample01
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - <span class="o">======</span> Create http_auth user hoge
+
+Recipe: &lt;Dynamically Defined Resource&gt;
+  <span class="k">*</span> file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - change mode from <span class="s1">'0600'</span> to <span class="s1">'0644'</span>
+    - change owner from <span class="s1">'root'</span> to <span class="s1">'guest'</span>
+
+Chef Client finished, 2 resources updated
+</pre></div>
+</div>
+
+<p>間違いなくレシピDSLが実行されていることが分かります。</p>
+
+<p>※ rootでファイルを作ってもらうため、少々強引ですが<code>rvmsudo</code>から実行しています。</p>
+
+<h2>
+<span id="リソースの重複を避けよう" class="fragment"></span><a href="#%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E3%81%AE%E9%87%8D%E8%A4%87%E3%82%92%E9%81%BF%E3%81%91%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>リソースの重複を避けよう</h2>
+
+<p>今の状態のLWRPで一度にでユーザを複数作成してみましょう。</p>
+
+<h3>
+<span id="recipessample2rb" class="fragment"></span><a href="#recipessample2rb"><i class="fa fa-link"></i></a><code>recipes/sample2.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/recipes/sample2.rb</span></div>
+<div class="highlight"><pre><span class="n">base_dir</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'PWD'</span><span class="p">]</span>
+
+<span class="n">httpsv_auth_basic</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="s1">'var/www/site1/.htpasswd'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">user</span> <span class="s1">'hoge1'</span>
+  <span class="n">password</span> <span class="s1">'password1'</span>
+<span class="k">end</span>
+
+<span class="n">httpsv_auth_basic</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="s1">'var/www/site1/.htpasswd'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">user</span> <span class="s1">'hoge2'</span>
+  <span class="n">password</span> <span class="s1">'password2'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>providerはちょっとfileリソースを追加する前の状態に戻しています。</p>
+
+<h3>
+<span id="providersauth_basicrb-5" class="fragment"></span><a href="#providersauth_basicrb-5"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-support_why-run</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'webrick'</span>
+
+<span class="k">def</span> <span class="nf">whyrun_supported?</span>
+  <span class="kp">true</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span>
+    <span class="n">htpasswd</span><span class="p">.</span><span class="nf">set_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span>
+    <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="chef-solo-run-4" class="fragment"></span><a href="#chef-solo-run-4"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample02'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-06T20:14:45+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-06T20:14:45+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-06T20:14:45+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample02]]
+Compiling Cookbooks...
+<span class="o">[</span>2013-09-06T20:14:45+09:00] WARN: Cloning resource attributes <span class="k">for </span>httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] from prior resource <span class="o">(</span>CHEF-3694<span class="o">)</span>
+<span class="o">[</span>2013-09-06T20:14:45+09:00] WARN: Previous httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample02.rb:3:in <span class="sb">`</span>from_file<span class="s1">'
+[2013-09-06T20:14:45+09:00] WARN: Current  httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample02.rb:8:in `from_file'</span>
+Converging 2 resources
+Recipe: httpsv::sample02
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - <span class="o">======</span> Create http_auth user hoge1
+
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - <span class="o">======</span> Create http_auth user hoge2
+
+Chef Client finished, 2 resources updated
+</pre></div>
+</div>
+
+<p>リソース定義、<code>httpsv_auth_basic[/(略)/var/www/site1/.htpasswd]</code> が重複している旨がWARNINGで出てしまいました。</p>
+
+<h3>
+<span id="リソース名重複で何が困るの" class="fragment"></span><a href="#%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E5%90%8D%E9%87%8D%E8%A4%87%E3%81%A7%E4%BD%95%E3%81%8C%E5%9B%B0%E3%82%8B%E3%81%AE"><i class="fa fa-link"></i></a>リソース名重複で何が困るの？</h3>
+
+<p>少し脱線しますが、Chefの実行単位で同一のリソース名を使うと警告が出ます。<br>
+一応そのまま実行できるため特に悪いことは起こりませんが、将来的にChefの挙動が変更される可能性もあります。</p>
+
+<p>他、現状でも下記のような弊害があることにはあります。</p>
+
+<ul>
+<li>定義済みリソース情報の再利用で困る</li>
+<li>Chefの実行レポートで、ぱっと見の区別がつかない</li>
+</ul>
+
+<p>サンプルレシピで簡単に説明してみます。</p>
+
+<h3>
+<span id="recipessample04rb" class="fragment"></span><a href="#recipessample04rb"><i class="fa fa-link"></i></a><code>recipes/sample04.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/recipes/sample04.rb</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+<span class="n">base_dir</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'PWD'</span><span class="p">]</span>
+<span class="n">file_path</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="s1">'var/www/site1/.htpasswd'</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">mode_to_log</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+  <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"========= new resource mode is "</span> <span class="o">+</span> <span class="n">resources</span><span class="p">(</span><span class="s2">"file[</span><span class="si">#{</span><span class="n">file_path</span><span class="si">}</span><span class="s2">]"</span><span class="p">).</span><span class="nf">mode</span>
+<span class="k">end</span>
+
+<span class="c1">## &gt;&gt; レシピ部分</span>
+<span class="n">file</span> <span class="n">file_path</span> <span class="k">do</span> <span class="p">;</span> <span class="n">mode</span> <span class="s1">'0660'</span> <span class="p">;</span> <span class="k">end</span> <span class="p">;</span> <span class="n">mode_to_log</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+<span class="n">file</span> <span class="n">file_path</span> <span class="k">do</span> <span class="p">;</span> <span class="n">mode</span> <span class="s1">'0666'</span> <span class="p">;</span> <span class="k">end</span> <span class="p">;</span> <span class="n">mode_to_log</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+<span class="n">file</span> <span class="n">file_path</span> <span class="k">do</span> <span class="p">;</span> <span class="n">mode</span> <span class="s1">'0644'</span> <span class="p">;</span> <span class="k">end</span> <span class="p">;</span> <span class="n">mode_to_log</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+<span class="n">file</span> <span class="n">file_path</span> <span class="k">do</span> <span class="p">;</span> <span class="n">mode</span> <span class="s1">'0640'</span> <span class="p">;</span> <span class="k">end</span> <span class="p">;</span> <span class="n">mode_to_log</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+<span class="c1">## &lt;&lt; レシピ部分</span>
+
+<span class="nb">require</span> <span class="s1">'chef/handler'</span>
+
+<span class="k">class</span> <span class="nc">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">LogReport</span> <span class="o">&lt;</span> <span class="o">::</span><span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span>
+  <span class="k">def</span> <span class="nf">report</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s1">'======= Update Resources are following...'</span>
+    <span class="n">data</span><span class="p">[</span><span class="ss">:updated_resources</span><span class="p">].</span><span class="nf">each</span><span class="p">.</span><span class="nf">with_index</span> <span class="k">do</span> <span class="o">|</span><span class="n">r</span><span class="p">,</span><span class="n">idx</span><span class="o">|</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">':'</span><span class="p">)</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:report_handlers</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">LogReport</span><span class="p">.</span><span class="nf">new</span>
+</pre></div>
+</div>
+
+<p>まず<code>resources("file[#{file_path}]")</code>の情報を再利用した場合、レシピ中のタイミング次第で内容が変わってしまうことをログに出力しています。<br>
+次にChefのレポートハンドラを追加して、今回のChef実行で更新したリソースのリストをログに出力してみます。</p>
+
+<h4>
+<span id="chef-solo-run-5" class="fragment"></span><a href="#chef-solo-run-5"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample04'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-07T18:33:29+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-07T18:33:29+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-07T18:33:29+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample04]]
+Compiling Cookbooks...
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: <span class="o">=========</span> new resource mode is 0660
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: Cloning resource attributes <span class="k">for </span>file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] from prior resource <span class="o">(</span>CHEF-3694<span class="o">)</span>
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: Previous file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample04.rb:12:in <span class="sb">`</span>from_file<span class="s1">'
+[2013-09-07T18:33:30+09:00] WARN: Current  file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample04.rb:13:in `from_file'</span>
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: <span class="o">=========</span> new resource mode is 0666
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: Cloning resource attributes <span class="k">for </span>file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] from prior resource <span class="o">(</span>CHEF-3694<span class="o">)</span>
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: Previous file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample04.rb:13:in <span class="sb">`</span>from_file<span class="s1">'
+[2013-09-07T18:33:30+09:00] WARN: Current  file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample04.rb:14:in `from_file'</span>
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: <span class="o">=========</span> new resource mode is 0644
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: Cloning resource attributes <span class="k">for </span>file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] from prior resource <span class="o">(</span>CHEF-3694<span class="o">)</span>
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: Previous file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample04.rb:14:in <span class="sb">`</span>from_file<span class="s1">'
+[2013-09-07T18:33:30+09:00] WARN: Current  file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]: /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/cookbooks/httpsv/recipes/sample04.rb:15:in `from_file'</span>
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: <span class="o">=========</span> new resource mode is 0640
+Converging 4 resources
+Recipe: httpsv::sample04
+  <span class="k">*</span> file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - change mode from <span class="s1">'0640'</span> to <span class="s1">'0660'</span>
+
+  <span class="k">*</span> file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - change mode from <span class="s1">'0660'</span> to <span class="s1">'0666'</span>
+
+  <span class="k">*</span> file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - change mode from <span class="s1">'0666'</span> to <span class="s1">'0644'</span>
+
+  <span class="k">*</span> file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] action create
+    - change mode from <span class="s1">'0644'</span> to <span class="s1">'0640'</span>
+
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: <span class="o">=======</span> Update Resources are following...
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: 0:file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: 1:file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: 2:file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]
+<span class="o">[</span>2013-09-07T18:33:30+09:00] WARN: 3:file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd]
+Chef Client finished, 4 resources updated
+</pre></div>
+</div>
+
+<p><code>(CHEF-3694)</code>のWARNが出ているのはさっきのとおりですね。<br>
+そして特定のファイルに設定されるべきmodeが、Chefの実行中に次々と変化している様子が見て取れます。これは好ましくない。<br>
+最後にレポートハンドラが今回の実行で更新したリソースを並べていますが、全て一緒に見えます。これでは折角のレポートが見づらいものになってしまいます。</p>
+
+<p>このようにChefの実行単位内でリソースの名前はなるべく一意にしておいたほうが良いのです。<br>
+そろそろ本題に戻りましょう。</p>
+
+<h3>
+<span id="リソース名の重複を解決する" class="fragment"></span><a href="#%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E5%90%8D%E3%81%AE%E9%87%8D%E8%A4%87%E3%82%92%E8%A7%A3%E6%B1%BA%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>リソース名の重複を解決する</h3>
+
+<p>name属性をそのままファイルのパスに使ってしまうと、リソース名が重複してしまうことが分かりました。<br>
+LWRPの特性上設定自体は出来ましたが、一度のChef実行では同一名リソース定義に対しての複数回更新は推奨できません。</p>
+
+<p>以下の方針で対応してみましょう。</p>
+
+<ul>
+<li>新しい属性<code>:path</code>を作り、ユーザDBをそちらで指定する</li>
+<li>nameは一意にするためユーザ名(+レルム)を加える</li>
+</ul>
+
+<p>まずリソース定義に<code>:path</code>を追加します。</p>
+
+<h3>
+<span id="resourcesauth_basicrb-1" class="fragment"></span><a href="#resourcesauth_basicrb-1"><i class="fa fa-link"></i></a><code>resources/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/resources/auth_basic.rb-add_path</span></div>
+<div class="highlight"><pre><span class="n">default_action</span> <span class="ss">:create</span>
+
+<span class="n">attribute</span> <span class="ss">:user</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:required</span> <span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="n">attribute</span> <span class="ss">:password</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span>
+<span class="n">attribute</span> <span class="ss">:path</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:required</span> <span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="err">続いて</span><span class="n">provider</span><span class="err">も変更、</span><span class="sb">`:name`</span><span class="err">部分を</span><span class="sb">`:path`</span><span class="err">に変えるだけですね。</span>
+
+<span class="c1">### `providers/auth_basic.rb`</span>
+
+<span class="sb">```ruby:cookbooks/httpsv/providers/auth_basic.rb-add_path
+require 'webrick'
+
+def whyrun_supported?
+  true
+end
+
+action :create do
+  converge_by("====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="sb">") do
+    htpasswd = WEBrick::HTTPAuth::Htpasswd.new(@new_resource.path)
+    htpasswd.set_passwd nil, @new_resource.user, @new_resource.password
+    htpasswd.flush
+  end
+end
+</span></pre></div>
+</div>
+
+<p>次はLWRPの変更に合わせ、レシピも修正しましょう。</p>
+
+<h3>
+<span id="内部dslのチカラ" class="fragment"></span><a href="#%E5%86%85%E9%83%A8dsl%E3%81%AE%E3%83%81%E3%82%AB%E3%83%A9"><i class="fa fa-link"></i></a>内部DSLのチカラ</h3>
+
+<p>さてレシピの修正ですが、修正箇所が少し多くなりそうなので少しインチキしてみます。</p>
+
+<h3>
+<span id="recipessample3rb" class="fragment"></span><a href="#recipessample3rb"><i class="fa fa-link"></i></a><code>recipes/sample3.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/recipes/sample3.rb</span></div>
+<div class="highlight"><pre><span class="n">base_dir</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'PWD'</span><span class="p">]</span>
+
+<span class="n">httpsv_auth_basic</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="s1">'var/www/site1/.htpasswd'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">user</span> <span class="s1">'hoge1'</span>
+  <span class="n">path</span> <span class="nb">self</span><span class="p">.</span><span class="nf">name</span><span class="p">.</span><span class="nf">to_s</span>
+  <span class="nb">name</span> <span class="p">[</span><span class="nb">self</span><span class="p">.</span><span class="nf">path</span><span class="p">,</span> <span class="nb">self</span><span class="p">.</span><span class="nf">user</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">':'</span><span class="p">)</span>
+  <span class="n">password</span> <span class="s1">'password1'</span>
+<span class="k">end</span>
+
+<span class="n">httpsv_auth_basic</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="s1">'var/www/site1/.htpasswd'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">user</span> <span class="s1">'hoge2'</span>
+  <span class="n">path</span> <span class="nb">self</span><span class="p">.</span><span class="nf">name</span><span class="p">.</span><span class="nf">to_s</span>
+  <span class="nb">name</span> <span class="p">[</span><span class="nb">self</span><span class="p">.</span><span class="nf">path</span><span class="p">,</span> <span class="nb">self</span><span class="p">.</span><span class="nf">user</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">':'</span><span class="p">)</span>
+  <span class="n">password</span> <span class="s1">'password2'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>既存部分を一切修正すること無く、2行ずつの追加で済ませてみました。</p>
+
+<p>元々nameに使われている部分を<code>self.name</code>でpathに指定し、その後で<code>name</code>そのものをユーザ名と結合して上書きしてしまいます。<br>
+物は試し、実行してみましょう。</p>
+
+<h4>
+<span id="chef-solo-run-6" class="fragment"></span><a href="#chef-solo-run-6"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample03'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-07T16:05:37+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-07T16:05:37+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-07T16:05:37+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample03]]
+Compiling Cookbooks...
+Converging 2 resources
+Recipe: httpsv::sample03
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd:hoge1] action create
+    - <span class="o">======</span> Create http_auth user hoge1
+
+  <span class="k">*</span> httpsv_auth_basic[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd:hoge2] action create
+    - <span class="o">======</span> Create http_auth user hoge2
+
+Chef Client finished, 2 resources updated
+
+<span class="nv">$ </span><span class="nb">cat </span>var/www/site1/.htpasswd 
+hoge1:LfhaERgNIfVDo
+hoge2:UsNzKe0MKEkaU
+</pre></div>
+</div>
+
+<p>狙い通りにリソースがそれぞれ一意になり、かつ対象のユーザDBも作成できました。<br>
+Chefはレシピでのリソース定義を分かりやすく保ちながら、どこでもRubyの高い拡張性を活かすことができます。<del>これが内部DSLの力だ！(©実践Vim#TIP30)</del></p>
+
+<p>ちなみにここのselfは<code>Chef::Resource::HttpsvAuthBasic</code>というクラスのインスタンスをになっとります。LWRPはファイル名がClassifyされて、他のリソースと同じようにChef::Resourceのサブクラスとして、Cookbookのコンパイル時に追加されるようになっているんですね。</p>
+
+<p>ちょっと悪乗りしてレシピ修正の手を抜いてみましたが、こういうこともできるという参考程度で覚えておくと良いでしょう。</p>
+
+<hr>
+
+<p>そろそろ長くなってきたので記事を分けます、Part2へどうぞ。</p>
+
+<p><a href="http://qiita.com/sawanoboly@github/items/79c7cdf782d64980677d" id="reference-2c24c457e55853d07962">実践LWRP、HTTP認証用ファイル(htpasswd,htdigest)をChefのリソースとして管理する part.2 of 3</a></p>
+
+<hr>
+
+<p>実践LWRP、HTTP認証用ファイル(htpasswd,htdigest)をChefのリソースとして管理する part.1 of 3<br>
+<a href="http://qiita.com/sawanoboly@github/items/89095877826cab27c932" id="reference-ab27e64ad7566f02493d">実践LWRP、HTTP認証用ファイル(htpasswd,htdigest)をChefのリソースとして管理する part.3 of 3</a></p>

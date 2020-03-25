@@ -1,0 +1,1 @@
+{"created_at":"2016-08-18T17:52:06+09:00","id":"9a1e4ad33b3d117e115d","updated_at":"2016-08-18T17:52:06+09:00","title":"Docker for AWS/Azure(D4x)でDatadogのAgentをglobalサービスで起動。スケール変更時にも勝手に全部見える。","tags":["Docker","Datadog","d4x"]}

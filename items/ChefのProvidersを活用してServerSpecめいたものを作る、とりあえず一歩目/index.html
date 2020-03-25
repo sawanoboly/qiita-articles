@@ -1,0 +1,222 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>タイムラインに<code>ServerSpec</code>の話題がそこそこ見えたので、サーバの受け入れテストに使えるかなと触ってみました。</p>
+
+<p>考え方などとても良いと思いましたが、この先色々なプラットフォームへの対応を書いていくのはいささか大変に感じます。<br>
+なのでどうせRSpecを入れるなら、Chefの資産を活用する方向で似たようなものが作れないかと試して見ることにしました。</p>
+
+<blockquote>
+<p>追記<br>
+ServerSpecはサーバ側にRSpec入れるわけじゃないのね。<br>
+<a href="https://github.com/mizzy/rspec-lxc-test-box/blob/master/spec/support/matchers/be_enabled.rb" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/mizzy/rspec-lxc-test-box/blob/master/spec/support/matchers/be_enabled.rb</a></p>
+</blockquote>
+
+<h2>
+<span id="概要" class="fragment"></span><a href="#%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>概要</h2>
+
+<ul>
+<li>Ohaiでプラットフォームを判別する</li>
+<li>プラットフォームからプロバイダを選択する</li>
+<li>テストのためにCurrentResourceをゲットする</li>
+</ul>
+
+<h2>
+<span id="ohaiでplatformを取得する" class="fragment"></span><a href="#ohai%E3%81%A7platform%E3%82%92%E5%8F%96%E5%BE%97%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Ohaiでplatformを取得する</h2>
+
+<p>これはまあ、以前やった <a href="http://qiita.com/items/5ce72101f8dee906ccb4">Chefの心臓、Ohaiのアトリビュートを他のプログラムからも拝借したい</a> ですよね。</p>
+
+<p><code>os, platform</code>プラグインの力を拝借しましょう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irb-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'chef'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span> <span class="o">=</span> <span class="no">Ohai</span><span class="o">::</span><span class="no">System</span><span class="p">.</span><span class="nf">new</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Ohai::System:0x00000001c73318</span>
+ <span class="vi">@data</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@hints</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@plugin_path</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+ <span class="vi">@providers</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@seen_plugins</span><span class="o">=</span><span class="p">{}</span><span class="o">&gt;</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">_require_plugin</span><span class="p">(</span><span class="s1">'os'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">_require_plugin</span><span class="p">(</span><span class="s1">'platform'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">data</span>
+<span class="o">=&gt;</span> <span class="p">{</span><span class="s2">"languages"</span><span class="o">=&gt;</span>
+  <span class="p">{</span><span class="s2">"ruby"</span><span class="o">=&gt;</span>
+    <span class="p">{</span><span class="s2">"platform"</span><span class="o">=&gt;</span><span class="s2">"x86_64-solaris2.11"</span><span class="p">,</span>
+     <span class="s2">"version"</span><span class="o">=&gt;</span><span class="s2">"1.9.3"</span><span class="p">,</span>
+     <span class="s2">"release_date"</span><span class="o">=&gt;</span><span class="s2">"2013-02-22"</span><span class="p">,</span>
+     <span class="s2">"target"</span><span class="o">=&gt;</span><span class="s2">"x86_64-sun-solaris2.11"</span><span class="p">,</span>
+     <span class="s2">"target_cpu"</span><span class="o">=&gt;</span><span class="s2">"x86_64"</span><span class="p">,</span>
+     <span class="s2">"target_vendor"</span><span class="o">=&gt;</span><span class="s2">"sun"</span><span class="p">,</span>
+     <span class="s2">"target_os"</span><span class="o">=&gt;</span><span class="s2">"solaris2.11"</span><span class="p">,</span>
+     <span class="s2">"host"</span><span class="o">=&gt;</span><span class="s2">"x86_64-sun-solaris2.11"</span><span class="p">,</span>
+     <span class="s2">"host_cpu"</span><span class="o">=&gt;</span><span class="s2">"x86_64"</span><span class="p">,</span>
+     <span class="s2">"host_os"</span><span class="o">=&gt;</span><span class="s2">"solaris2.11"</span><span class="p">,</span>
+     <span class="s2">"host_vendor"</span><span class="o">=&gt;</span><span class="s2">"sun"</span><span class="p">,</span>
+     <span class="s2">"bin_dir"</span><span class="o">=&gt;</span><span class="s2">"/opt/local/bin"</span><span class="p">,</span>
+     <span class="s2">"ruby_bin"</span><span class="o">=&gt;</span><span class="s2">"/opt/local/bin/ruby193"</span><span class="p">,</span>
+     <span class="s2">"gems_dir"</span><span class="o">=&gt;</span><span class="s2">"/opt/local/lib/ruby/gems/1.9.3"</span><span class="p">,</span>
+     <span class="s2">"gem_bin"</span><span class="o">=&gt;</span><span class="s2">"/opt/local/bin/gem193"</span><span class="p">}},</span>
+ <span class="s2">"kernel"</span><span class="o">=&gt;</span>
+  <span class="p">{</span><span class="s2">"name"</span><span class="o">=&gt;</span><span class="s2">"SunOS"</span><span class="p">,</span>
+   <span class="s2">"release"</span><span class="o">=&gt;</span><span class="s2">"5.11"</span><span class="p">,</span>
+   <span class="s2">"version"</span><span class="o">=&gt;</span><span class="s2">"joyent_20130226T234312Z"</span><span class="p">,</span>
+   <span class="s2">"machine"</span><span class="o">=&gt;</span><span class="s2">"i86pc"</span><span class="p">,</span>
+   <span class="s2">"modules"</span><span class="o">=&gt;</span><span class="p">{}},</span>
+ <span class="s2">"os"</span><span class="o">=&gt;</span><span class="s2">"solaris2"</span><span class="p">,</span>
+ <span class="s2">"os_version"</span><span class="o">=&gt;</span><span class="s2">"5.11"</span><span class="p">,</span>
+ <span class="s2">"platform_version"</span><span class="o">=&gt;</span><span class="s2">"5.11"</span><span class="p">,</span>
+ <span class="s2">"platform_build"</span><span class="o">=&gt;</span><span class="s2">"joyent_20130226T234312Z"</span><span class="p">,</span>
+ <span class="s2">"platform"</span><span class="o">=&gt;</span><span class="s2">"smartos"</span><span class="p">,</span>
+ <span class="s2">"platform_family"</span><span class="o">=&gt;</span><span class="s2">"smartos"</span><span class="p">}</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irb-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">data</span><span class="p">[</span><span class="ss">:platform</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="s2">"smartos"</span>
+</pre></div>
+</div>
+
+<p>判定OK。</p>
+
+<h2>
+<span id="platformから利用するproviderを選択する課題--解決" class="fragment"></span><a href="#platform%E3%81%8B%E3%82%89%E5%88%A9%E7%94%A8%E3%81%99%E3%82%8Bprovider%E3%82%92%E9%81%B8%E6%8A%9E%E3%81%99%E3%82%8B%E8%AA%B2%E9%A1%8C--%E8%A7%A3%E6%B1%BA"><i class="fa fa-link"></i></a>Platformから利用するProviderを選択する（課題 =&gt; 解決）</h2>
+
+<p>これどうしたら良いのかしら、Chefのソースを追う課題として置いときます。</p>
+
+<blockquote>
+<p>追記：解決しました<br>
+<a href="http://qiita.com/items/e0ed969b49eb16fdd1f3">ohaiのデータを元に、ChefのProvidersを自動選択してcurrent_resourceをゲット</a></p>
+</blockquote>
+
+<h2>
+<span id="providerを使ってcurrentresourceを取ってみる" class="fragment"></span><a href="#provider%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6currentresource%E3%82%92%E5%8F%96%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>Providerを使ってCurrentResourceを取ってみる</h2>
+
+<p>気を取り直して、<code>service[redis]</code>が起動しているかをチェックしてみましょう。<br>
+必要なオブジェクトを適当にinitializeしていきます。</p>
+
+<h3>
+<span id="run_contextを作る" class="fragment"></span><a href="#run_context%E3%82%92%E4%BD%9C%E3%82%8B"><i class="fa fa-link"></i></a><code>run_context</code>を作る</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irc-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">node</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Node</span><span class="p">.</span><span class="nf">new</span>
+<span class="o">=&gt;</span> <span class="n">node</span><span class="p">[]</span>
+
+<span class="o">&gt;</span> <span class="n">events</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">EventDispatch</span><span class="o">::</span><span class="no">Dispatcher</span><span class="p">.</span><span class="nf">new</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Chef::EventDispatch::Dispatcher:0x00000002ab2460 @subscribers=[]&gt;</span>
+
+<span class="o">&gt;</span> <span class="n">run_context</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">RunContext</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="p">{},</span> <span class="n">events</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Chef::RunContext:0x00000001a72398</span>
+ <span class="vi">@cookbook_collection</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@definitions</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@delayed_notification_collection</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@events</span><span class="o">=</span><span class="c1">#&lt;Chef::EventDispatch::Dispatcher:0x00000002ab2460 @subscribers=[]&gt;,</span>
+ <span class="vi">@immediate_notification_collection</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@loaded_attributes</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@loaded_recipes</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@node</span><span class="o">=</span><span class="n">node</span><span class="p">[],</span>
+ <span class="vi">@resource_collection</span><span class="o">=</span>
+  <span class="c1">#&lt;Chef::ResourceCollection:0x00000001a723e8</span>
+   <span class="vi">@insert_after_idx</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+   <span class="vi">@resources</span><span class="o">=</span><span class="p">[],</span>
+   <span class="vi">@resources_by_name</span><span class="o">=</span><span class="p">{}</span><span class="o">&gt;&gt;</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="newとcurrentのresourceを作る" class="fragment"></span><a href="#new%E3%81%A8current%E3%81%AEresource%E3%82%92%E4%BD%9C%E3%82%8B"><i class="fa fa-link"></i></a>newとcurrentの<code>resource</code>を作る</h3>
+
+<p>いわゆる<code>service[redis]</code>リソースを作ります、<code>Chef::Resource::Service</code>のインスタンスですね。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irc-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">new_resource</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">Service</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'redis'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="o">&lt;</span><span class="n">service</span><span class="p">[</span><span class="n">redis</span><span class="p">]</span> <span class="vi">@name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@noop</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@before</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@params</span><span class="p">:</span> <span class="p">{}</span> <span class="vi">@provider</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@allowed_actions</span><span class="p">:</span> <span class="p">[</span><span class="ss">:nothing</span><span class="p">,</span> <span class="ss">:enable</span><span class="p">,</span> <span class="ss">:disable</span><span class="p">,</span> <span class="ss">:start</span><span class="p">,</span> <span class="ss">:stop</span><span class="p">,</span> <span class="ss">:restart</span><span class="p">,</span> <span class="ss">:reload</span><span class="p">]</span> <span class="vi">@action</span><span class="p">:</span> <span class="s2">"nothing"</span> <span class="vi">@updated</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@updated_by_last_action</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@supports</span><span class="p">:</span> <span class="p">{</span><span class="ss">:restart</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:reload</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:status</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">}</span> <span class="vi">@ignore_failure</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@retries</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@retry_delay</span><span class="p">:</span> <span class="mi">2</span> <span class="vi">@source_line</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@elapsed_time</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@resource_name</span><span class="p">:</span> <span class="ss">:service</span> <span class="vi">@service_name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@enabled</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@running</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@parameters</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@pattern</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@start_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@stop_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@status_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@restart_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@reload_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@init_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@priority</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@startup_type</span><span class="p">:</span> <span class="ss">:automatic</span><span class="o">&gt;</span>
+
+<span class="o">&gt;</span> <span class="n">current_resource</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">Service</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'redis'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="o">&lt;</span><span class="n">service</span><span class="p">[</span><span class="n">redis</span><span class="p">]</span> <span class="vi">@name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@noop</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@before</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@params</span><span class="p">:</span> <span class="p">{}</span> <span class="vi">@provider</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@allowed_actions</span><span class="p">:</span> <span class="p">[</span><span class="ss">:nothing</span><span class="p">,</span> <span class="ss">:enable</span><span class="p">,</span> <span class="ss">:disable</span><span class="p">,</span> <span class="ss">:start</span><span class="p">,</span> <span class="ss">:stop</span><span class="p">,</span> <span class="ss">:restart</span><span class="p">,</span> <span class="ss">:reload</span><span class="p">]</span> <span class="vi">@action</span><span class="p">:</span> <span class="s2">"nothing"</span> <span class="vi">@updated</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@updated_by_last_action</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@supports</span><span class="p">:</span> <span class="p">{</span><span class="ss">:restart</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:reload</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:status</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">}</span> <span class="vi">@ignore_failure</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@retries</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@retry_delay</span><span class="p">:</span> <span class="mi">2</span> <span class="vi">@source_line</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@elapsed_time</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@resource_name</span><span class="p">:</span> <span class="ss">:service</span> <span class="vi">@service_name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@enabled</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@running</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@parameters</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@pattern</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@start_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@stop_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@status_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@restart_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@reload_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@init_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@priority</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@startup_type</span><span class="p">:</span> <span class="ss">:automatic</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="providersを指定する" class="fragment"></span><a href="#providers%E3%82%92%E6%8C%87%E5%AE%9A%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Providersを指定する</h3>
+
+<p>リソースを取得するためのプロバイダを作成します、今回は<code>Chef::Provider::Service::Solaris</code>を指定します。<br>
+これを<code>ohai</code>の結果と連動したいところです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irc-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">provider</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Provider</span><span class="o">::</span><span class="no">Service</span><span class="o">::</span><span class="no">Solaris</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">new_resource</span><span class="p">,</span> <span class="n">run_context</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Chef::Provider::Service::Solaris:0x000000018d6020</span>
+ <span class="vi">@action</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@converge_actions</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@current_resource</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@enabled</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@init_command</span><span class="o">=</span><span class="s2">"/usr/sbin/svcadm"</span><span class="p">,</span>
+ <span class="vi">@new_resource</span><span class="o">=</span>
+  <span class="o">&lt;</span><span class="n">service</span><span class="p">[</span><span class="n">redis</span><span class="p">]</span> <span class="vi">@name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@noop</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@before</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@params</span><span class="p">:</span> <span class="p">{}</span> <span class="vi">@provider</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@allowed_actions</span><span class="p">:</span> <span class="p">[</span><span class="ss">:nothing</span><span class="p">,</span> <span class="ss">:enable</span><span class="p">,</span> <span class="ss">:disable</span><span class="p">,</span> <span class="ss">:start</span><span class="p">,</span> <span class="ss">:stop</span><span class="p">,</span> <span class="ss">:restart</span><span class="p">,</span> <span class="ss">:reload</span><span class="p">]</span> <span class="vi">@action</span><span class="p">:</span> <span class="s2">"nothing"</span> <span class="vi">@updated</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@updated_by_last_action</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@supports</span><span class="p">:</span> <span class="p">{</span><span class="ss">:restart</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:reload</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:status</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">}</span> <span class="vi">@ignore_failure</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@retries</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@retry_delay</span><span class="p">:</span> <span class="mi">2</span> <span class="vi">@source_line</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@elapsed_time</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@resource_name</span><span class="p">:</span> <span class="ss">:service</span> <span class="vi">@service_name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@enabled</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@running</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@parameters</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@pattern</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@start_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@stop_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@status_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@restart_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@reload_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@init_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@priority</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@startup_type</span><span class="p">:</span> <span class="ss">:automatic</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="vi">@run_context</span><span class="o">=</span>
+  <span class="c1">#&lt;Chef::RunContext:0x00000001a72398</span>
+   <span class="vi">@cookbook_collection</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@definitions</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@delayed_notification_collection</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@events</span><span class="o">=</span><span class="c1">#&lt;Chef::EventDispatch::Dispatcher:0x00000002ab2460 @subscribers=[]&gt;,</span>
+   <span class="vi">@immediate_notification_collection</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@loaded_attributes</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@loaded_recipes</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@node</span><span class="o">=</span><span class="n">node</span><span class="p">[],</span>
+   <span class="vi">@resource_collection</span><span class="o">=</span>
+    <span class="c1">#&lt;Chef::ResourceCollection:0x00000001a723e8</span>
+     <span class="vi">@insert_after_idx</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+     <span class="vi">@resources</span><span class="o">=</span><span class="p">[],</span>
+     <span class="vi">@resources_by_name</span><span class="o">=</span><span class="p">{}</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+ <span class="vi">@status_command</span><span class="o">=</span><span class="s2">"/bin/svcs -l"</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+
+<p><code>Solaris</code>らしくなってきました。</p>
+
+<h3>
+<span id="currentresourceの状態をチェックする" class="fragment"></span><a href="#currentresource%E3%81%AE%E7%8A%B6%E6%85%8B%E3%82%92%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>CurrentResourceの状態をチェックする</h3>
+
+<p>では締めに、<code>service[redis]</code>の<code>current_resource</code>を採取します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irc-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">provider</span><span class="p">.</span><span class="nf">load_current_resource</span>
+<span class="o">=&gt;</span> <span class="o">&lt;</span><span class="n">service</span><span class="p">[</span><span class="n">redis</span><span class="p">]</span> <span class="vi">@name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@noop</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@before</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@params</span><span class="p">:</span> <span class="p">{}</span> <span class="vi">@provider</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@allowed_actions</span><span class="p">:</span> <span class="p">[</span><span class="ss">:nothing</span><span class="p">,</span> <span class="ss">:enable</span><span class="p">,</span> <span class="ss">:disable</span><span class="p">,</span> <span class="ss">:start</span><span class="p">,</span> <span class="ss">:stop</span><span class="p">,</span> <span class="ss">:restart</span><span class="p">,</span> <span class="ss">:reload</span><span class="p">]</span> <span class="vi">@action</span><span class="p">:</span> <span class="s2">"nothing"</span> <span class="vi">@updated</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@updated_by_last_action</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@supports</span><span class="p">:</span> <span class="p">{</span><span class="ss">:restart</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:reload</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">,</span> <span class="ss">:status</span><span class="o">=&gt;</span><span class="kp">false</span><span class="p">}</span> <span class="vi">@ignore_failure</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@retries</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@retry_delay</span><span class="p">:</span> <span class="mi">2</span> <span class="vi">@source_line</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@elapsed_time</span><span class="p">:</span> <span class="mi">0</span> <span class="vi">@resource_name</span><span class="p">:</span> <span class="ss">:service</span> <span class="vi">@service_name</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@enabled</span><span class="p">:</span> <span class="kp">true</span> <span class="vi">@running</span><span class="p">:</span> <span class="kp">true</span> <span class="vi">@parameters</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@pattern</span><span class="p">:</span> <span class="s2">"redis"</span> <span class="vi">@start_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@stop_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@status_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@restart_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@reload_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@init_command</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@priority</span><span class="p">:</span> <span class="kp">nil</span> <span class="vi">@startup_type</span><span class="p">:</span> <span class="ss">:automatic</span><span class="o">&gt;</span>
+
+<span class="o">&gt;</span> <span class="n">provider</span><span class="p">.</span><span class="nf">load_current_resource</span><span class="p">.</span><span class="nf">enabled</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+</pre></div>
+</div>
+
+<p>取れました、これならChefとOhaiの資産が活用できそうです。<code>load_current_resource</code>に文句があったらChefにプルリクすれば済むわけで。</p>
+
+<h2>
+<span id="rspec的にチェックしたい場合" class="fragment"></span><a href="#rspec%E7%9A%84%E3%81%AB%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF%E3%81%97%E3%81%9F%E3%81%84%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>RSpec的にチェックしたい場合</h2>
+
+<p>ヘルパーで色々やらせて、こんな感じでSpecに起こせればいい感じにサーバの受け入れテストが書けそうです。</p>
+
+<p><code>expect(service[hogehoge].load_current_resource.enabled).to be_true</code></p>
+
+<p>早いうちに残課題の<code>Providers</code>選択の所を追いたいですね。</p>
+
+<blockquote>
+<p>追記：<code>Providers</code>解決しました<br>
+<a href="http://qiita.com/items/e0ed969b49eb16fdd1f3">ohaiのデータを元に、ChefのProvidersを自動選択してcurrent_resourceをゲット</a></p>
+</blockquote>

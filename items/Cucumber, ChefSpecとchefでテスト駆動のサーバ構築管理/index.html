@@ -1,0 +1,736 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Chef,Puppetに代表される自動構築・構成管理ツールを使うと開発したサーバを検証用などの目的で簡単に再現可能になります。</p>
+
+<p>ただ、漠然としたサーバ構築をしていると何をサービス提供しているのかという定義が曖昧になるため、Cucumber等を使ったテストを軸にテスト駆動でのサーバ構築をしてみましょう。</p>
+
+<p>応用すれば既存のサーバをCucumberによってモデリングし、Chefによって繰り返し再現可能な状態に持っていけます。</p>
+
+<p>このコンテンツで使ったコードはGithubの <a href="https://github.com/higanworks/test_driven_infrastructure_example" rel="nofollow noopener" target="_blank">https://github.com/higanworks/test_driven_infrastructure_example</a> で公開しています、参考にしてみたりフィードバックしてもらえると助かります。</p>
+
+<h2>
+<span id="ツール" class="fragment"></span><a href="#%E3%83%84%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>ツール</h2>
+
+<ul>
+<li>
+<strong>Cucumber</strong>: "ふるまい"を自然言語のように記述し、結果をテストする</li>
+<li>
+<strong>ChefSpec</strong>: ChefのCookbookのテストができるツール、目的のリソース定義がCookbookに記述されているかを確認する</li>
+<li>
+<strong>Foodcritic</strong>: CookbookレシピのSyntaxほか、全体的な書き方のチェックをする、矛盾なども指摘してくれる</li>
+<li>
+<strong>Chef(Solo,Cookbook)</strong>: CookBookを参照し、サーバの役割をコンバージェンスする</li>
+</ul>
+
+<h2>
+<span id="モデル" class="fragment"></span><a href="#%E3%83%A2%E3%83%87%E3%83%AB"><i class="fa fa-link"></i></a>モデル</h2>
+
+<p>練習用にこんなサーバを考えます。</p>
+
+<ul>
+<li>nginxをインストールして、HTTPをホスティングする</li>
+<li>"<a href="http://www.example.com" rel="nofollow noopener" target="_blank">www.example.com</a>" のバーチャルホストを名前ベースで提供する</li>
+</ul>
+
+<p>新規サーバならこれで良し、既存のサーバなら上記のようにモデリングしてみましょう。</p>
+
+<h2>
+<span id="cucumber" class="fragment"></span><a href="#cucumber"><i class="fa fa-link"></i></a>Cucumber</h2>
+
+<p>上記モデルで"ふるまい"を定義するとはどういうことでしょう。<br>
+テストするなら - nginxのパッケージをインストールして、コンフィグを置いてあれこれパーミッションを確認してサービスをスタートして．．． と考えてしまいがちです。</p>
+
+<p>ここはインフラ・サーバエンジニア脳ではなく、エンドユーザの視点で見ることが大事です。中で何が動いているかというのは、"ふるまい"の本質ではありません。</p>
+
+<p>それを踏まえた"ふるまい"の定義はこうなります。</p>
+
+<p>・HTTPでTCP/80番をサービスしている<br>
+・<code>Host: www.example.com</code> ヘッダをつけたHTTPアクセスなら<code>www.example.com</code>のコンテンツを返す</p>
+
+<p>足りない？そんなことはありません。</p>
+
+<h3>
+<span id="cucumber-feature" class="fragment"></span><a href="#cucumber-feature"><i class="fa fa-link"></i></a>Cucumber-feature</h3>
+
+<p>先ほどの２つをCucumberでテストできるようにしていきます、こんなもんでしょうか。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/http_server.feature</span></div>
+<div class="highlight"><pre><span class="c"># language: ja</span>
+
+<span class="kd">機能</span><span class="p">:</span> httpサーバ
+  webサーバを提供するために
+  HTTPクライアントの立場から
+  HTTPのレスポンスをチェックする
+
+
+  <span class="kn">シナリオ</span><span class="p">:</span> HTTPクライアントリクエスト
+    <span class="err">前提</span><span class="p">:</span> <span class="err">HTTPで</span> <span class="err">localhost</span> <span class="err">にリクエストする</span>
+    <span class="err">ならば</span><span class="p">:</span> <span class="err">レスポンスのステータスが</span> <span class="err">200</span> <span class="err">だ</span>
+
+  <span class="kn">シナリオ</span><span class="p">:</span> 名前ベースでHTTPクライアントリクエスト
+    <span class="err">前提</span><span class="p">:</span> <span class="err">Hostヘッダ</span> <span class="err">に</span> <span class="err">"www.example.com"</span> <span class="err">をつけてHTTPで</span> <span class="err">localhost</span> <span class="err">にリクエストする</span>
+    <span class="err">ならば</span><span class="p">:</span> <span class="err">レスポンスのステータスが</span> <span class="err">200</span> <span class="err">だ</span>
+    <span class="err">かつ</span><span class="p">:</span> <span class="err">コンテンツに</span> <span class="err">www.example.com</span> <span class="err">が含まれている</span>
+</pre></div>
+</div>
+
+<p>サーバがこれらの機能を満たしていれば、構築(再現)は完了となるはずです。自分のサーバをレシピにしたい人はこういう形で書きだしてみましょう。</p>
+
+<h4>
+<span id="cucumber実行" class="fragment"></span><a href="#cucumber%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>Cucumber実行</h4>
+
+<p>Cucumberはもう動きます、実行してみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out(Cucumber)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>cucumber 
+<span class="c"># language: ja</span>
+機能: httpサーバ
+  webサーバを提供するために
+  HTTPクライアントの立場から
+  HTTPのレスポンスをチェックする
+
+  シナリオ: HTTPクライアントリクエスト          <span class="c"># features/http_server.feature:9</span>
+    前提: HTTPで localhost にリクエストする <span class="c"># features/http_server.feature:10</span>
+    ならば: レスポンスのステータスが 200 だ      <span class="c"># features/http_server.feature:11</span>
+
+  シナリオ: 名前ベースでHTTPクライアントリクエスト                                    <span class="c"># features/http_server.feature:13</span>
+    前提: Hostヘッダ に <span class="s2">"www.example.com"</span> をつけてHTTPで localhost にリクエストする <span class="c"># features/http_server.feature:14</span>
+    ならば: レスポンスのステータスが 200 だ                                      <span class="c"># features/http_server.feature:15</span>
+    かつ: コンテンツに www.example.com が含まれている                           <span class="c"># features/http_server.feature:16</span>
+
+2 scenarios <span class="o">(</span>2 undefined<span class="o">)</span>
+5 steps <span class="o">(</span>5 undefined<span class="o">)</span>
+0m0.006s
+
+You can implement step definitions <span class="k">for </span>undefined steps with these snippets:
+
+前提 /^: HTTPで <span class="o">(</span>.<span class="k">*</span>?<span class="o">)</span> にリクエストする<span class="nv">$/</span> <span class="k">do</span> |arg1, arg2, arg3, arg4|
+  pending <span class="c"># express the regexp above with the code you wish you had</span>
+end
+
+ならば /^: レスポンスのステータスが <span class="o">(</span><span class="se">\d</span>+<span class="o">)</span> だ<span class="nv">$/</span> <span class="k">do</span> |arg1|
+  pending <span class="c"># express the regexp above with the code you wish you had</span>
+end
+
+前提 /^: Hostヘッダ に <span class="s2">"(.*?)"</span> をつけてHTTPで <span class="o">(</span>.<span class="k">*</span>?<span class="o">)</span> にリクエストする<span class="nv">$/</span> <span class="k">do</span> |arg1, arg2, arg3, arg4, arg5|
+  pending <span class="c"># express the regexp above with the code you wish you had</span>
+end
+
+ならば /^: コンテンツに www<span class="se">\.</span>example<span class="se">\.</span>com が含まれている<span class="nv">$/</span> <span class="k">do
+  </span>pending <span class="c"># express the regexp above with the code you wish you had</span>
+end
+
+If you want snippets <span class="k">in </span>a different programming language,
+just make sure a file with the appropriate file extension
+exists where cucumber looks <span class="k">for </span>step definitions.
+
+</pre></div>
+</div>
+
+<p>シナリオ2つ、ステップが5つあることを検出しています。<br>
+同時にステップを実行するためのコードを定義するよう求めてきています、次はそれを元にステップを作ります。</p>
+
+<h3>
+<span id="cucumber-steps" class="fragment"></span><a href="#cucumber-steps"><i class="fa fa-link"></i></a>Cucumber-Steps</h3>
+
+<p>Featureに書かれている行をコードとして実行するのはStepです、Step実行結果がTrueならそのテストは成功という仕組みです。</p>
+
+<p>先ほどcucumberを実行した際に出力されたStep定義を参考に、Stepファイルを作ります。</p>
+
+<p>捕捉マッチを使って引数を拾い、コードを実行する仕組みなので多少変更します。</p>
+
+<div class="code-frame" data-lang="ｒuby">
+<div class="code-lang"><span class="bold">features/step_definitions/http_server_step.rb</span></div>
+<div class="highlight"><pre># encoding: UTF-8
+
+
+前提 /^: HTTPで ([\w\.]+) にリクエストする$/ do |host|
+  pending # express the regexp above with the code you wish you had
+end
+
+ならば /^: レスポンスのステータスが (\d+) だ$/ do |status|
+  pending # express the regexp above with the code you wish you had
+end
+
+前提 /^: Hostヘッダ に "([\w\.]+)" をつけてHTTPで ([\w\.]+) にリクエストする$/ do |host_header, host|
+  pending # express the regexp above with the code you wish you had
+end
+
+ならば /^: コンテンツに ([\w\.]+) が含まれている$/ do |expect_string|
+  pending # express the regexp above with the code you wish you had
+end
+
+</pre></div>
+</div>
+
+<p>いまはすべてpendingですが、Cucumberの出力は変わります。</p>
+
+<div class="code-frame" data-lang="Shell">
+<div class="code-lang"><span class="bold">Shell-Out(Cucumber)</span></div>
+<div class="highlight"><pre>2 scenarios <span class="o">(</span>2 pending<span class="o">)</span>
+5 steps <span class="o">(</span>3 skipped, 2 pending<span class="o">)</span>
+</pre></div>
+</div>
+
+<p>前提がPendingのテストは以降Skipされます、Pendingをなくしていきます。</p>
+
+<h4>
+<span id="pending箇所をコードで記述" class="fragment"></span><a href="#pending%E7%AE%87%E6%89%80%E3%82%92%E3%82%B3%E3%83%BC%E3%83%89%E3%81%A7%E8%A8%98%E8%BF%B0"><i class="fa fa-link"></i></a>Pending箇所をコードで記述</h4>
+
+<p>それではStepを埋めていきます、リソースの取得に手軽な<code>open-uri</code>と結果の評価にわりと便利な<code>RSpec</code>の<code>expectations</code>を使いましょう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/step_definitions/http_server_step.rb</span></div>
+<div class="highlight"><pre><span class="c1"># encoding: UTF-8</span>
+
+<span class="nb">require</span> <span class="s1">'open-uri'</span>
+<span class="nb">require</span> <span class="s1">'rspec/expectations'</span>
+
+
+<span class="err">前提</span> <span class="o">/^</span><span class="p">:</span> <span class="no">HTTP</span><span class="err">で</span> <span class="p">([\</span><span class="n">w</span><span class="p">\</span><span class="o">.</span><span class="p">]</span><span class="o">+</span><span class="p">)</span> <span class="err">にリクエストする</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">host</span><span class="o">|</span>
+  <span class="vi">@resource</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"http://</span><span class="si">#{</span><span class="n">host</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span> <span class="o">/^</span><span class="p">:</span> <span class="err">レスポンスのステータスが</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span> <span class="err">だ</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">status</span><span class="o">|</span>
+  <span class="vi">@resource</span><span class="p">.</span><span class="nf">status</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nf">should</span> <span class="o">==</span> <span class="s2">"200"</span>
+<span class="k">end</span>
+
+<span class="err">前提</span> <span class="o">/^</span><span class="p">:</span> <span class="no">Host</span><span class="err">ヘッダ</span> <span class="err">に</span> <span class="s2">"([</span><span class="se">\w\.</span><span class="s2">]+)"</span> <span class="err">をつけて</span><span class="no">HTTP</span><span class="err">で</span> <span class="p">([\</span><span class="n">w</span><span class="p">\</span><span class="o">.</span><span class="p">]</span><span class="o">+</span><span class="p">)</span> <span class="err">にリクエストする</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">host_header</span><span class="p">,</span> <span class="n">host</span><span class="o">|</span>
+  <span class="vi">@resource</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"http://</span><span class="si">#{</span><span class="n">host</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span><span class="s2">"Host"</span> <span class="o">=&gt;</span> <span class="n">host_header</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span> <span class="o">/^</span><span class="p">:</span> <span class="err">コンテンツに</span> <span class="p">([\</span><span class="n">w</span><span class="p">\</span><span class="o">.</span><span class="p">]</span><span class="o">+</span><span class="p">)</span> <span class="err">が含まれている</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">expect_string</span><span class="o">|</span>
+  <span class="vi">@resource</span><span class="p">.</span><span class="nf">read</span><span class="p">.</span><span class="nf">should</span> <span class="n">match</span><span class="p">(</span><span class="n">expect_string</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>Cucumberの出力がまた変わります、PendingをなくしたのでStepが本当に実行されFailとなります。</p>
+
+<div class="code-frame" data-lang="Shell">
+<div class="code-lang"><span class="bold">Shell-Out(Cucumber)</span></div>
+<div class="highlight"><pre>2 scenarios <span class="o">(</span>2 failed<span class="o">)</span>
+5 steps <span class="o">(</span>2 failed, 3 skipped<span class="o">)</span>
+</pre></div>
+</div>
+
+<p>ちなみにスタックトレースが出ますが、例外は <code>Connection refused - connect(2) (Errno::ECONNREFUSED)</code> です。<br>
+HTTPサーバが動いてないので当たり前ですね、これは同時に対象のサーバが<strong>HTTPサーバという"ふるまい"をしているかどうかをCucumberによってテストできるようになった</strong>ということです。</p>
+
+<p>ではその"ふるまい"テストを満たすようにChefのレシピを書いて行きます。</p>
+
+<h2>
+<span id="chefspec" class="fragment"></span><a href="#chefspec"><i class="fa fa-link"></i></a>ChefSpec</h2>
+
+<p>早速レシピを記述する・・・にはまだ早いのです。"ふるまい"確認の次はCookbookレシピの"仕様"を定義し、満たすかどうかをテストするためChefSpecを使います。</p>
+
+<p>Chef-Client(及びSolo)はコンバージェンスツールです、要求する仕様が問題なく定義してあればサーバの役割はそのように収束します。<br>
+ChefSpecはレシピに期待するリソース設定を記述して、Chef-Clientを実行した際にレシピがそのように書けているかをテストすることができます。</p>
+
+<h3>
+<span id="spec-の作成" class="fragment"></span><a href="#spec-%E3%81%AE%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>spec/ の作成</h3>
+
+<p><code>chefspec</code>を導入していると<code>knife cookbook</code>がちょっとだけ拡張されます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>knife cookbook create_specs http_server -o cookbooks/
+</pre></div></div>
+
+<p>既存のCookbookに対して<code>create_specs</code>とすると、レシピの数だけ<code>spec/</code>以下にspecファイルが作られます。<br>
+中身は例によってペンディングです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">spec/default_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'chefspec'</span>
+
+<span class="n">describe</span> <span class="s1">'http_server::default'</span> <span class="k">do</span>
+  <span class="n">let</span> <span class="p">(</span><span class="ss">:chef_run</span><span class="p">)</span> <span class="p">{</span> <span class="no">ChefSpec</span><span class="o">::</span><span class="no">ChefRunner</span><span class="p">.</span><span class="nf">new</span><span class="p">.</span><span class="nf">converge</span> <span class="s1">'http_server::default'</span> <span class="p">}</span>
+  <span class="n">it</span> <span class="s1">'should do something'</span> <span class="k">do</span>
+    <span class="n">pending</span> <span class="s1">'Your recipe examples go here.'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>rspec</code>を実行してみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out(RSpec)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rspec <span class="nt">-fd</span>
+
+http_server::default
+  should <span class="k">do </span>something <span class="o">(</span>PENDING: Your recipe examples go here.<span class="o">)</span>
+
+Pending:
+  http_server::default should <span class="k">do </span>something
+    <span class="c"># Your recipe examples go here.</span>
+    <span class="c"># ./spec/default_spec.rb:5</span>
+
+Finished <span class="k">in </span>0.00109 seconds
+1 example, 0 failures, 1 pending
+</pre></div>
+</div>
+
+<p>このPendingを埋めて行きましょう。</p>
+
+<h3>
+<span id="chefspecの記述" class="fragment"></span><a href="#chefspec%E3%81%AE%E8%A8%98%E8%BF%B0"><i class="fa fa-link"></i></a>chefspecの記述</h3>
+
+<p>まずレシピに期待する事をまとめていきます。</p>
+
+<ul>
+<li>WebサーバにはNginxを使いましょう、パッケージからでOK</li>
+<li>仮想ホスト用のコンフィグをインクルード用に設置</li>
+<li>追加のコンフィグを設置したらnginxをリスタートする</li>
+</ul>
+
+<p>ChefSpecは<a href="https://github.com/acrmp/chefspec" rel="nofollow noopener" target="_blank">Githubのドキュメント</a>を参考に書きます、Chefのリソースプロバイダを動的に取得することができるのでドキュメントに無いリソースと思っても名称さえ合わせればチェック出来ます。</p>
+
+<h4>
+<span id="nginxをインストールする仕様にする" class="fragment"></span><a href="#nginx%E3%82%92%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%99%E3%82%8B%E4%BB%95%E6%A7%98%E3%81%AB%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>nginxをインストールする仕様にする</h4>
+
+<p>ChefRunnerが走った際に、<code>パッケージ[nginx]</code>がインストールされているように記述するには<code>install_package</code>マッチャを使用します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">spec/default_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'chefspec'</span>
+
+<span class="n">describe</span> <span class="s1">'http_server::default'</span> <span class="k">do</span>
+  <span class="n">let</span> <span class="p">(</span><span class="ss">:chef_run</span><span class="p">)</span> <span class="p">{</span> <span class="no">ChefSpec</span><span class="o">::</span><span class="no">ChefRunner</span><span class="p">.</span><span class="nf">new</span><span class="p">.</span><span class="nf">converge</span> <span class="s1">'http_server::default'</span> <span class="p">}</span>
+  <span class="n">it</span> <span class="s1">'should install nginx'</span> <span class="k">do</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">install_package</span> <span class="s1">'nginx'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>chef_run.should install_package 'nginx'</code>があると<code>RSpec</code>実行結果はこうなります。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out(RSpec)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rspec <span class="nt">-fd</span>
+
+http_server::default
+  should <span class="nb">install </span>nginx <span class="o">(</span>FAILED - 1<span class="o">)</span>
+
+Failures:
+
+  1<span class="o">)</span> http_server::default should <span class="nb">install </span>nginx
+     Failure/Error: chef_run.should install_package <span class="s1">'nginx'</span>
+       No package resource named <span class="s1">'nginx'</span> with action :install found.
+     <span class="c"># ./spec/default_spec.rb:6:in `block (2 levels) in &lt;top (required)&gt;'</span>
+
+Finished <span class="k">in </span>0.00575 seconds
+1 example, 1 failure
+
+Failed examples:
+
+rspec ./spec/default_spec.rb:5 <span class="c"># http_server::default should install nginx</span>
+</pre></div>
+</div>
+
+<p>PendingはFailに変わり、内容が <strong><code>No package resource named 'nginx' with action :install found.</code></strong> となりました。</p>
+
+<h3>
+<span id="specに合わせてcookbookレシピを記述する" class="fragment"></span><a href="#spec%E3%81%AB%E5%90%88%E3%82%8F%E3%81%9B%E3%81%A6cookbook%E3%83%AC%E3%82%B7%E3%83%94%E3%82%92%E8%A8%98%E8%BF%B0%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Specに合わせてCookbookレシピを記述する</h3>
+
+<p>そろそろCookbookレシピの作成にかかります、Specは一つ増やして2つに。</p>
+
+<h4>
+<span id="spec" class="fragment"></span><a href="#spec"><i class="fa fa-link"></i></a>Spec</h4>
+
+<p>nginxサービスをスタートさせる仕様を追加したら、ネームベース部分は後回しにして一旦ここまでのレシピを書いてみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">spec/default_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'chefspec'</span>
+
+<span class="n">describe</span> <span class="s1">'http_server::default'</span> <span class="k">do</span>
+  <span class="n">let</span> <span class="p">(</span><span class="ss">:chef_run</span><span class="p">)</span> <span class="p">{</span> <span class="no">ChefSpec</span><span class="o">::</span><span class="no">ChefRunner</span><span class="p">.</span><span class="nf">new</span><span class="p">.</span><span class="nf">converge</span> <span class="s1">'http_server::default'</span> <span class="p">}</span>
+  <span class="n">it</span> <span class="s1">'should install nginx'</span> <span class="k">do</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">start_service</span> <span class="s1">'nginx'</span>
+  <span class="k">end</span>
+
+  <span class="n">it</span> <span class="s1">'should start nginx'</span> <span class="k">do</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">start_service</span> <span class="s1">'nginx'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+</pre></div>
+</div>
+
+<p>仕様が決まってきたので、いよいよCookbookを書き始めることができます。</p>
+
+<h4>
+<span id="recipedefault" class="fragment"></span><a href="#recipedefault"><i class="fa fa-link"></i></a>Recipe::default</h4>
+
+<p>先ほどのSpecを満たすためのレシピはこう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">package</span> <span class="s2">"nginx"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:install</span>
+<span class="k">end</span>
+
+<span class="n">service</span> <span class="s2">"nginx"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="p">[</span><span class="ss">:enable</span><span class="p">,</span> <span class="ss">:start</span><span class="p">]</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>単純ですが、Cucumberの要求、ChefSpecの仕様を決めるという段取りを経ているので余裕を持って取り組めます。</p>
+
+<p>このレシピを書いたらSpecの出力も変わります。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out(RSpec)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rspec <span class="nt">-fd</span> <span class="nt">--color</span>
+
+http_server::default
+  should <span class="nb">install </span>nginx
+  should start nginx
+
+Finished <span class="k">in </span>0.00755 seconds
+2 examples, 0 failures
+</pre></div>
+</div>
+
+<p>これでオールグリーンです、同時にCucumber1つ目のFeatureを満たしていることでしょう。</p>
+
+<h2>
+<span id="2つめのfeature" class="fragment"></span><a href="#2%E3%81%A4%E3%82%81%E3%81%AEfeature"><i class="fa fa-link"></i></a>2つめのFeature</h2>
+
+<p>次のFeatureはヴァーチャルホストの設定です、今までの要領でSpecを追加したものがこちら。<code>describe 'create virtualhosts'</code>から以降が追加分ですね。</p>
+
+<p>必要なディレクトリ、ついでに<code>index.html</code>。それとnginxに読み込ませるコンフィグを設置してからNginxをリスタートする仕様にしました。</p>
+
+<h3>
+<span id="spec-1" class="fragment"></span><a href="#spec-1"><i class="fa fa-link"></i></a>Spec</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">spec/default_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'chefspec'</span>
+
+<span class="n">describe</span> <span class="s1">'http_server::default'</span> <span class="k">do</span>
+  <span class="n">let</span> <span class="p">(</span><span class="ss">:chef_run</span><span class="p">)</span> <span class="p">{</span> <span class="no">ChefSpec</span><span class="o">::</span><span class="no">ChefRunner</span><span class="p">.</span><span class="nf">new</span><span class="p">.</span><span class="nf">converge</span> <span class="s1">'http_server::default'</span> <span class="p">}</span>
+  <span class="n">it</span> <span class="s1">'should install nginx'</span> <span class="k">do</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">start_service</span> <span class="s1">'nginx'</span>
+  <span class="k">end</span>
+
+  <span class="n">it</span> <span class="s1">'should start nginx'</span> <span class="k">do</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">start_service</span> <span class="s1">'nginx'</span>
+  <span class="k">end</span>
+
+  <span class="n">it</span> <span class="s1">'should create virtualhost base dir'</span> <span class="k">do</span>
+    <span class="n">dir</span> <span class="o">=</span> <span class="n">chef_run</span><span class="p">.</span><span class="nf">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">]</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">create_directory</span> <span class="n">dir</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">directory</span><span class="p">(</span><span class="n">dir</span><span class="p">).</span><span class="nf">should</span> <span class="n">be_owned_by</span><span class="p">(</span><span class="s1">'www-data'</span><span class="p">,</span> <span class="s1">'www-data'</span><span class="p">)</span>
+    <span class="n">chef_run</span><span class="p">.</span><span class="nf">directory</span><span class="p">(</span><span class="n">dir</span><span class="p">).</span><span class="nf">mode</span><span class="p">.</span><span class="nf">should</span> <span class="o">==</span> <span class="s2">"0750"</span>
+  <span class="k">end</span>
+
+
+  <span class="n">describe</span> <span class="s1">'create virtualhosts'</span> <span class="k">do</span>
+    <span class="n">site</span> <span class="o">=</span> <span class="s1">'www.example.com'</span>
+    <span class="n">it</span> <span class="s2">"create vhost directory"</span> <span class="k">do</span>
+      <span class="n">dir</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">chef_run</span><span class="p">.</span><span class="nf">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">],</span> <span class="n">site</span><span class="p">)</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">create_directory</span> <span class="n">dir</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">directory</span><span class="p">(</span><span class="n">dir</span><span class="p">).</span><span class="nf">should</span> <span class="n">be_owned_by</span><span class="p">(</span><span class="s1">'www-data'</span><span class="p">,</span> <span class="s1">'www-data'</span><span class="p">)</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">directory</span><span class="p">(</span><span class="n">dir</span><span class="p">).</span><span class="nf">mode</span><span class="p">.</span><span class="nf">should</span> <span class="o">==</span> <span class="s2">"0750"</span>
+    <span class="k">end</span>
+
+    <span class="n">it</span> <span class="s2">"create vhost index.html"</span> <span class="k">do</span>
+      <span class="n">file</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">chef_run</span><span class="p">.</span><span class="nf">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">],</span> <span class="n">site</span><span class="p">,</span> <span class="s2">"index.html"</span><span class="p">)</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">create_file_with_content</span> <span class="n">file</span><span class="p">,</span> <span class="n">site</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">file</span><span class="p">(</span><span class="n">file</span><span class="p">).</span><span class="nf">should</span> <span class="n">be_owned_by</span><span class="p">(</span><span class="s1">'www-data'</span><span class="p">,</span> <span class="s1">'www-data'</span><span class="p">)</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">file</span><span class="p">(</span><span class="n">file</span><span class="p">).</span><span class="nf">mode</span><span class="p">.</span><span class="nf">should</span> <span class="o">==</span> <span class="s2">"0640"</span>
+    <span class="k">end</span>
+
+    <span class="n">it</span> <span class="s2">"create vhost nginx config"</span> <span class="k">do</span>
+      <span class="n">file</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">chef_run</span><span class="p">.</span><span class="nf">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_avail_dir'</span><span class="p">],</span> <span class="s2">"</span><span class="si">#{</span><span class="n">site</span><span class="si">}</span><span class="s2">.conf"</span><span class="p">,)</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">template</span><span class="p">(</span><span class="n">file</span><span class="p">).</span><span class="nf">should</span> <span class="n">be_owned_by</span><span class="p">(</span><span class="s2">"root"</span><span class="p">,</span> <span class="s2">"root"</span><span class="p">)</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">template</span><span class="p">(</span><span class="n">file</span><span class="p">).</span><span class="nf">mode</span><span class="p">.</span><span class="nf">should</span> <span class="o">==</span> <span class="s2">"0640"</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">template</span><span class="p">(</span><span class="n">file</span><span class="p">).</span><span class="nf">should</span> <span class="n">notify</span><span class="p">(</span><span class="s2">"service[nginx]"</span><span class="p">,</span> <span class="ss">:restart</span><span class="p">)</span>
+    <span class="k">end</span>
+
+    <span class="n">it</span> <span class="s2">"create vhost nginx config link"</span> <span class="k">do</span>
+      <span class="n">file</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">chef_run</span><span class="p">.</span><span class="nf">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_avail_dir'</span><span class="p">],</span> <span class="s2">"</span><span class="si">#{</span><span class="n">site</span><span class="si">}</span><span class="s2">.conf"</span><span class="p">)</span>
+      <span class="n">link</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">chef_run</span><span class="p">.</span><span class="nf">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_enable_dir'</span><span class="p">],</span> <span class="s2">"</span><span class="si">#{</span><span class="n">site</span><span class="si">}</span><span class="s2">.conf"</span><span class="p">)</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">should</span> <span class="n">create_link</span> <span class="n">link</span>
+      <span class="n">chef_run</span><span class="p">.</span><span class="nf">link</span><span class="p">(</span><span class="n">link</span><span class="p">).</span><span class="nf">to</span><span class="p">.</span><span class="nf">should</span> <span class="o">==</span> <span class="n">file</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="recipe--attributes" class="fragment"></span><a href="#recipe--attributes"><i class="fa fa-link"></i></a>Recipe &amp; Attributes</h3>
+
+<p>Specを元に作成したレシピです、さすがにベタ書きは辛くなってきたので少しAttributesに逃がして定義しました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="c1">#</span>
+<span class="c1"># Cookbook Name:: http_server</span>
+<span class="c1"># Recipe:: default</span>
+<span class="c1">#</span>
+
+<span class="n">package</span> <span class="s2">"nginx"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:install</span>
+<span class="k">end</span>
+
+<span class="n">service</span> <span class="s2">"nginx"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="p">[</span><span class="ss">:enable</span><span class="p">,</span> <span class="ss">:start</span><span class="p">]</span>
+<span class="k">end</span>
+
+
+<span class="c1"># vhosts</span>
+<span class="n">directory</span> <span class="n">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">]</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:create</span>
+  <span class="n">owner</span> <span class="s2">"www-data"</span>
+  <span class="n">group</span> <span class="s2">"www-data"</span>
+  <span class="n">mode</span>  <span class="s2">"0750"</span>
+  <span class="n">recursive</span> <span class="kp">true</span>
+<span class="k">end</span>
+
+<span class="p">[</span><span class="s2">"www.example.com"</span><span class="p">].</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">site</span><span class="o">|</span>
+
+  <span class="n">directory</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">],</span> <span class="n">site</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">action</span> <span class="ss">:create</span>
+    <span class="n">owner</span> <span class="s2">"www-data"</span>
+    <span class="n">group</span> <span class="s2">"www-data"</span>
+    <span class="n">mode</span>  <span class="s2">"0750"</span>
+  <span class="k">end</span>
+
+  <span class="n">file</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">],</span> <span class="n">site</span><span class="p">,</span> <span class="s2">"index.html"</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">action</span> <span class="ss">:create</span>
+    <span class="n">content</span> <span class="n">site</span>
+    <span class="n">owner</span> <span class="s2">"www-data"</span>
+    <span class="n">group</span> <span class="s2">"www-data"</span>
+    <span class="n">mode</span>  <span class="s2">"0640"</span>
+  <span class="k">end</span>
+
+
+  <span class="n">template</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_avail_dir'</span><span class="p">],</span> <span class="s2">"</span><span class="si">#{</span><span class="n">site</span><span class="si">}</span><span class="s2">.conf"</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">source</span> <span class="s2">"vhost.conf.erb"</span>
+    <span class="n">variables</span><span class="p">({</span>
+      <span class="ss">:server_name</span> <span class="o">=&gt;</span> <span class="n">site</span><span class="p">,</span>
+      <span class="ss">:vhost_root</span> <span class="o">=&gt;</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">],</span> <span class="n">site</span><span class="p">)</span>
+    <span class="p">})</span>
+    <span class="n">owner</span> <span class="s2">"root"</span>
+    <span class="n">group</span> <span class="s2">"root"</span>
+    <span class="n">mode</span>  <span class="s2">"0640"</span>
+    <span class="n">notifies</span> <span class="ss">:restart</span><span class="p">,</span> <span class="s2">"service[nginx]"</span>   
+  <span class="k">end</span>
+
+  <span class="n">link</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_enable_dir'</span><span class="p">],</span> <span class="s2">"</span><span class="si">#{</span><span class="n">site</span><span class="si">}</span><span class="s2">.conf"</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">action</span> <span class="ss">:create</span>
+    <span class="n">to</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_avail_dir'</span><span class="p">],</span> <span class="s2">"</span><span class="si">#{</span><span class="n">site</span><span class="si">}</span><span class="s2">.conf"</span><span class="p">)</span> 
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">attributes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">default</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_avail_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"/etc/nginx/sites-available"</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'site_enable_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"/etc/nginx/sites-enabled"</span>
+
+<span class="n">default</span><span class="p">[</span><span class="s1">'nginx'</span><span class="p">][</span><span class="s1">'vhost_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"/var/www/vhosts"</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="chefspec通過そしてfoodcriticへ" class="fragment"></span><a href="#chefspec%E9%80%9A%E9%81%8E%E3%81%9D%E3%81%97%E3%81%A6foodcritic%E3%81%B8"><i class="fa fa-link"></i></a>ChefSpec通過、そしてFoodcriticへ</h2>
+
+<p>7つのサンプルを全て通過しました、ChefSpecに作成した仕様を満たすレシピの完成です。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rspec <span class="nt">-fd</span> <span class="nt">--color</span>
+
+http_server::default
+  should <span class="nb">install </span>nginx
+  should start nginx
+  should create virtualhost base <span class="nb">dir
+  </span>create virtualhosts
+    create vhost directory
+    create vhost index.html
+    create vhost nginx config
+    create vhost nginx config <span class="nb">link
+
+</span>Finished <span class="k">in </span>0.07299 seconds
+7 examples, 0 failures
+</pre></div>
+</div>
+
+<p>さあいよいよChef-Client(Solo)を実行に移しましょうか？<br>
+その前にもう一つツールを叩いてみましょう、<strong>FoodCritic</strong>です。</p>
+
+<h3>
+<span id="foodcritic" class="fragment"></span><a href="#foodcritic"><i class="fa fa-link"></i></a>Foodcritic</h3>
+
+<p>Foodcriticは実際にレシピを適用した際のチェックと読みやすいレシピにするための指摘を行うツールです。<br>
+指摘される内容はドキュメントを参照しながら直していきます。 <a href="http://acrmp.github.com/foodcritic/" rel="nofollow noopener" target="_blank">http://acrmp.github.com/foodcritic/</a></p>
+
+<h4>
+<span id="foodcritic実行" class="fragment"></span><a href="#foodcritic%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>Foodcritic実行</h4>
+
+<p>Cookbookのルートで実行してみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out(Foodcritic)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>foodcritic ./
+FC033: Missing template: ./recipes/default.rb:45
+</pre></div>
+</div>
+
+<p><code>FC033: Missing template</code> をいただきました、テンプレート元のファイルが無いようですね。<br>
+このまま実行していてはエラーで失敗するところでした、これはうっかり。</p>
+
+<p>nginxのコンフィグ元ファイルを適当に作ります、一部Chefによってリプレースするため<code>erb</code>形式にしてあります。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">templates/default/vhost.conf.erb</span></div>
+<div class="highlight"><pre>server {
+  listen 80;
+  server_name &lt;%= @server_name %&gt;;
+  root &lt;%= @vhost_root %&gt;;
+  index index.html;
+
+  location / {
+    try_files $uri $uri/ =404;
+  }
+}
+
+</pre></div>
+</div>
+
+<p>これで<code>Foodcritic</code>のチェックもクリアしました。</p>
+
+<h2>
+<span id="chef-recipeの実行" class="fragment"></span><a href="#chef-recipe%E3%81%AE%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>Chef-Recipeの実行</h2>
+
+<p>お気づきとは思いますが、<strong>ここまでChefは一度も実行されず、サーバに何も変更はありません。</strong>(※ChefSpecのRunner等は除く)</p>
+
+<h3>
+<span id="solo実行ファイルの用意" class="fragment"></span><a href="#solo%E5%AE%9F%E8%A1%8C%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AE%E7%94%A8%E6%84%8F"><i class="fa fa-link"></i></a>Solo実行ファイルの用意</h3>
+
+<p>ではChef-Soloで今回のレシピを適用してみましょう、実行のためのコンフィグとランリストをファイルに書きます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">solo.rb</span></div>
+<div class="highlight"><pre><span class="n">file_cache_path</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'tmp_chef/cache'</span><span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">))</span>
+<span class="n">file_backup_path</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'tmp_chef/backup'</span><span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">))</span>
+<span class="n">cookbook_path</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'cookbooks'</span><span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">))</span>
+
+<span class="n">log_location</span> <span class="s1">'chef.log'</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"run_list"</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s2">"recipe[http_server::default]"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<h3>
+<span id="solo実行" class="fragment"></span><a href="#solo%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>Solo実行</h3>
+
+<p>では満を持してChefを実行し、レシピを適用する。コマンドはコンフィグとランリストを含むJsonを渡すと実行される。 <code>chef-solo -c solo.rb -j dna.json</code>。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out(Chef-Solo)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-j</span> dna.json
+INFO: <span class="k">***</span> Chef 10.18.2 <span class="k">***</span>
+INFO: Setting the run_list to <span class="s2">"recipe[http_server::default]"</span> from JSON
+INFO: Run List is <span class="o">[</span>recipe[http_server::default]]
+INFO: Run List expands to <span class="o">[</span>http_server::default]
+INFO: Starting Chef Run <span class="k">for </span>localhost
+INFO: Running start handlers
+INFO: Start handlers complete.
+INFO: Processing package[nginx] action <span class="nb">install</span> <span class="o">(</span>http_server::default line 10<span class="o">)</span>
+INFO: Processing service[nginx] action <span class="nb">enable</span> <span class="o">(</span>http_server::default line 14<span class="o">)</span>
+INFO: Processing service[nginx] action start <span class="o">(</span>http_server::default line 14<span class="o">)</span>
+INFO: service[nginx] started
+INFO: Processing directory[/var/www/vhosts] action create <span class="o">(</span>http_server::default line 20<span class="o">)</span>
+INFO: directory[/var/www/vhosts] created directory /var/www/vhosts
+INFO: directory[/var/www/vhosts] owner changed to 33
+INFO: directory[/var/www/vhosts] group changed to 33
+INFO: directory[/var/www/vhosts] mode changed to 750
+INFO: Processing directory[/var/www/vhosts/www.example.com] action create <span class="o">(</span>http_server::default line 30<span class="o">)</span>
+INFO: directory[/var/www/vhosts/www.example.com] created directory /var/www/vhosts/www.example.com
+INFO: directory[/var/www/vhosts/www.example.com] owner changed to 33
+INFO: directory[/var/www/vhosts/www.example.com] group changed to 33
+INFO: directory[/var/www/vhosts/www.example.com] mode changed to 750
+INFO: Processing file[/var/www/vhosts/www.example.com/index.html] action create <span class="o">(</span>http_server::default line 37<span class="o">)</span>
+INFO: entered create
+INFO: file[/var/www/vhosts/www.example.com/index.html] owner changed to 33
+INFO: file[/var/www/vhosts/www.example.com/index.html] group changed to 33
+INFO: file[/var/www/vhosts/www.example.com/index.html] mode changed to 640
+INFO: file[/var/www/vhosts/www.example.com/index.html] created file /var/www/vhosts/www.example.com/index.html
+INFO: Processing template[/etc/nginx/sites-available/www.example.com.conf] action create <span class="o">(</span>http_server::default line 46<span class="o">)</span>
+INFO: template[/etc/nginx/sites-available/www.example.com.conf] updated content
+INFO: template[/etc/nginx/sites-available/www.example.com.conf] owner changed to 0
+INFO: template[/etc/nginx/sites-available/www.example.com.conf] group changed to 0
+INFO: template[/etc/nginx/sites-available/www.example.com.conf] mode changed to 640
+INFO: Processing <span class="nb">link</span><span class="o">[</span>/etc/nginx/sites-enabled/www.example.com.conf] action create <span class="o">(</span>http_server::default line 58<span class="o">)</span>
+INFO: <span class="nb">link</span><span class="o">[</span>/etc/nginx/sites-enabled/www.example.com.conf] created
+INFO: template[/etc/nginx/sites-available/www.example.com.conf] sending restart action to service[nginx] <span class="o">(</span>delayed<span class="o">)</span>
+INFO: Processing service[nginx] action restart <span class="o">(</span>http_server::default line 14<span class="o">)</span>
+INFO: service[nginx] restarted
+INFO: Chef Run <span class="nb">complete </span><span class="k">in </span>5.2259668 seconds
+INFO: Running report handlers
+INFO: Report handlers <span class="nb">complete</span>
+</pre></div>
+</div>
+
+<p>特にエラーもなく終わったようだ。<br>
+つまりレシピに書いた通りにコンバージェンスが行われているので、特に確認の必要もない。</p>
+
+<h2>
+<span id="帰ってきたcucumber" class="fragment"></span><a href="#%E5%B8%B0%E3%81%A3%E3%81%A6%E3%81%8D%E3%81%9Fcucumber"><i class="fa fa-link"></i></a>帰ってきたCucumber</h2>
+
+<p>これで冒頭で作成したCucumberをついに正常終了させることが出来る。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out(Cucumber)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>cucumber 
+<span class="c"># language: ja</span>
+機能: httpサーバ
+  webサーバを提供するために
+  HTTPクライアントの立場から
+  HTTPのレスポンスをチェックする
+
+  シナリオ: HTTPクライアントリクエスト          <span class="c"># features/http_server.feature:9</span>
+    前提: HTTPで localhost にリクエストする <span class="c"># features/step_definitions/http_server_step.rb:7</span>
+    ならば: レスポンスのステータスが 200 だ      <span class="c"># features/step_definitions/http_server_step.rb:11</span>
+
+  シナリオ: 名前ベースでHTTPクライアントリクエスト                                    <span class="c"># features/http_server.feature:13</span>
+    前提: Hostヘッダ に <span class="s2">"www.example.com"</span> をつけてHTTPで localhost にリクエストする <span class="c"># features/step_definitions/http_server_step.rb:15</span>
+    ならば: レスポンスのステータスが 200 だ                                      <span class="c"># features/step_definitions/http_server_step.rb:11</span>
+    かつ: コンテンツに www.example.com が含まれている                           <span class="c"># features/step_definitions/http_server_step.rb:19</span>
+
+2 scenarios <span class="o">(</span>2 passed<span class="o">)</span>
+5 steps <span class="o">(</span>5 passed<span class="o">)</span>
+0m0.044s
+</pre></div>
+</div>
+
+<p>これで <strong>Cucumber、オールグリーン</strong> だ！</p>
+
+<h3>
+<span id="終わりに" class="fragment"></span><a href="#%E7%B5%82%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>終わりに</h3>
+
+<p>ここまでくればひととおり、<code>infrastructure as code</code>における <strong>テスト駆動サーバ構築</strong> に触れることが出来た。<br>
+おそらくインフラ・サーバエンジニアの大半は『面倒臭い』『難しい』と感じたと思う。</p>
+
+<p>しかしCucumberからchef-solo実行の流れは、要件定義・仕様書・手順書のコード化と実行者の自動化いうことに気付くだろうか。<br>
+それらを全てコードベースに置くことで管理可能になることのもたらす恩恵は、この手法を身につける努力に対する見返りとして十分なものになるはずです。</p>

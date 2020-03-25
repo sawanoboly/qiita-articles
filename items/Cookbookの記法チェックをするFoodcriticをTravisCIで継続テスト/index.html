@@ -1,0 +1,101 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://technology.customink.com/blog/2012/06/04/mvt-foodcritic-and-travis-ci/" rel="nofollow noopener" target="_blank">MVT: Foodcritic and Travis CI</a> より、</p>
+
+<p>OpsCode ChefのCookBookを書いたら評論家<a href="http://acrmp.github.com/foodcritic/" rel="nofollow noopener" target="_blank">Foodcritic</a>に見せる。<br>
+前述の案内の通りTravisCIでGithubにPushする度に自動でfoodcriticを実行しておいてもらう。</p>
+
+<h2>
+<span id="foodcritic" class="fragment"></span><a href="#foodcritic"><i class="fa fa-link"></i></a>foodcritic</h2>
+
+<p><code>gem install foodcritic</code>かGemfileに書いて<code>bundle</code>。</p>
+
+<p>とりあえず作成中の<a href="https://github.com/higanworks-cookbooks/mongodb-10gen" rel="nofollow noopener" target="_blank">aptからMongoDBをインストールしてあれこれするレシピ</a>に対して実行してみる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ foodcritic cookbooks/mongodb-10gen/
+FC001: Use strings in preference to symbols to access node attributes: cookbooks/mongodb-10gen/recipes/replica-set.rb:48
+FC001: Use strings in preference to symbols to access node attributes: cookbooks/mongodb-10gen/recipes/replica-set.rb:50
+FC001: Use strings in preference to symbols to access node attributes: cookbooks/mongodb-10gen/recipes/single.rb:42
+FC001: Use strings in preference to symbols to access node attributes: cookbooks/mongodb-10gen/recipes/single.rb:44
+FC002: Avoid string interpolation where not required: cookbooks/mongodb-10gen/recipes/replica-set.rb:31
+FC002: Avoid string interpolation where not required: cookbooks/mongodb-10gen/recipes/replica-set.rb:59
+FC002: Avoid string interpolation where not required: cookbooks/mongodb-10gen/recipes/single.rb:25
+FC019: Access node attributes in a consistent manner: cookbooks/mongodb-10gen/recipes/replica-set.rb:48
+FC019: Access node attributes in a consistent manner: cookbooks/mongodb-10gen/recipes/replica-set.rb:50
+FC023: Prefer conditional attributes: cookbooks/mongodb-10gen/recipes/replica-set.rb:58
+</pre></div></div>
+
+<p>ルール1,2,19と23に引っかかった、同様の出力をTravisCIからも得られるようにしよう。</p>
+
+<h2>
+<span id="travisci" class="fragment"></span><a href="#travisci"><i class="fa fa-link"></i></a>TravisCI</h2>
+
+<p>TravisCI用の設定をリポジトリに追加する。</p>
+
+<h3>
+<span id="gitリポジトリに幾つか追加する" class="fragment"></span><a href="#git%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%81%AB%E5%B9%BE%E3%81%A4%E3%81%8B%E8%BF%BD%E5%8A%A0%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>gitリポジトリに幾つか追加する</h3>
+
+<p>一応CookBookと被らないよう、専用のGemfileパスを使うよう案内されている。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">travis.yml</span></div>
+<div class="highlight"><pre><span class="na">language</span><span class="pi">:</span> <span class="s">ruby</span>
+<span class="na">gemfile</span><span class="pi">:</span>
+   <span class="pi">-</span> <span class="s">test/support/Gemfile</span>
+<span class="na">rvm</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="s">1.9.2</span>
+  <span class="pi">-</span> <span class="s">1.9.3</span>
+<span class="na">script</span><span class="pi">:</span> <span class="s">bundle exec rake foodcritic</span>
+</pre></div>
+</div>
+
+<p><code>rake</code> と <code>foodcritic</code> をbundleするように指定。</p>
+
+<div class="code-frame" data-lang="test/support/Gemfile"><div class="highlight"><pre>source "https://rubygems.org"
+
+gem 'rake'
+gem 'foodcritic'
+</pre></div></div>
+
+<div class="code-frame" data-lang="Rakefile"><div class="highlight"><pre>#!/usr/bin/env rake
+
+desc "Runs foodcritic linter"
+task :foodcritic do
+  if Gem::Version.new("1.9.2") &lt;= Gem::Version.new(RUBY_VERSION.dup)
+    sandbox = File.join(File.dirname(__FILE__), %w{tmp foodcritic cookbook})
+    prepare_foodcritic_sandbox(sandbox)
+
+    sh "foodcritic --epic-fail any #{File.dirname(sandbox)}"
+  else
+    puts "WARN: foodcritic run is skipped as Ruby #{RUBY_VERSION} is &lt; 1.9.2."
+  end
+end
+
+task :default =&gt; 'foodcritic'
+
+private
+
+def prepare_foodcritic_sandbox(sandbox)
+  files = %w{*.md *.rb attributes definitions files libraries providers
+recipes resources templates}
+
+  rm_rf sandbox
+  mkdir_p sandbox
+  cp_r Dir.glob("{#{files.join(',')}}"), sandbox
+  puts "\n\n"
+end
+</pre></div></div>
+
+<p><code>rake</code>コマンドのデフォルトで<code>foodcritic</code>を実行するように指定。</p>
+
+<p>下記URLで実行開始。</p>
+
+<p><a href="https://travis-ci.org/#!/higanworks-cookbooks/mongodb-10gen" rel="nofollow noopener" target="_blank">https://travis-ci.org/#!/higanworks-cookbooks/mongodb-10gen</a></p>
+
+<p>ローカルでfoodcriticを叩いた時と同じ出力をTravisCI上で確認できる。</p>
+
+<p>では直していこう。</p>

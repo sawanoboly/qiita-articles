@@ -1,0 +1,27 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>参照元：<a href="http://www.opscode.com/chef/install/" rel="nofollow noopener" target="_blank">http://www.opscode.com/chef/install/</a></p>
+
+<h2>
+<span id="公式のinstallsh" class="fragment"></span><a href="#%E5%85%AC%E5%BC%8F%E3%81%AEinstallsh"><i class="fa fa-link"></i></a>公式のinstall.sh</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -k -L https://www.opscode.com/chef/install.sh | (sudo) bash
+</pre></div></div>
+
+<p>スクリプト内でプラットフォームを判別し、出来る範囲でインストールしてくれる。Rubyも組み込みで入っているのでとりあえずのchef-soloなどにちょうどいい。</p>
+
+<p>もちろん<code>client.rb</code>とpemを用意すればchef-clientが動作する。</p>
+
+<h3>
+<span id="cehf-serverを使っている場合" class="fragment"></span><a href="#cehf-server%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%A6%E3%81%84%E3%82%8B%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>cehf-serverを使っている場合</h3>
+
+<p>ホスティングでも自前でも、ServerがあるならBootstrapで作るほうがいい。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife bootstrap FQDN (options)
+</pre></div></div>
+
+<p>bootstrapのテンプレートを見るとわかるが、プラットフォームによっては前述の<code>install.sh</code>が呼ばれることもある。</p>

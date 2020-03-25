@@ -1,0 +1,192 @@
+<p>kubernetes(以下k8s)は自前のサービスを展開するインフラストラクチャとして便利です。特にクラウドサービスで動いてもらうと色々とやりたい放題。</p>
+
+<p>一方、管理下のコンテナ内にユーザが自由にコンテンツを配置・変更できるようなサービス(※)を展開しようと思うと、ユーザに提供するコンテナからメタデータサービスにアクセスできると大変困ります。</p>
+
+<p>(※)CIとか、ホスティングとかですね。</p>
+
+<p>この心配事はk8sに限った話ではないので、前にも単品のDockerホストで似たようなことをやりました。</p>
+
+<p><a href="https://qiita.com/sawanoboly/items/d626c01d86586f79c83a#d4a%E3%81%AEmoby%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%9E%E3%82%A4%E3%82%BA%E4%BE%8B" id="reference-ae420398d2da747d768b">#d4aのmobyカスタマイズ例 / Docekr for AWS/Azure のベース、Moby Linuxを素の状態で起動してSSHログインする。 - Qiita</a></p>
+
+<p>デフォルトでブロックしてしまおうか？という話もあったようですが、今の所(k8s 1.8.x)メタデータアクセスは許可しています。</p>
+
+<ul>
+<li><a href="https://github.com/kubernetes/kubernetes/issues/8867" rel="nofollow noopener" target="_blank">Filter/restrict access to http://metadata from containers · Issue #8867 · kubernetes/kubernetes</a></li>
+</ul>
+
+<p>議論の中で、『(意訳)特定のプロバイダのメタデータサービスに依存するのはダメよね』ともあります。可搬性を考えるとそうなんですよね。</p>
+
+<h2>
+<span id="k8sメタデータブロックの概要" class="fragment"></span><a href="#k8s%E3%83%A1%E3%82%BF%E3%83%87%E3%83%BC%E3%82%BF%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E3%81%AE%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>k8sメタデータブロックの概要</h2>
+
+<p>しくみは単純です。</p>
+
+<ul>
+<li>
+<code>network=host</code>, <code>privileged=true</code>のDaemonSetを使う</li>
+<li>iptablesのPREROUTINGで169.254.169.254宛てのルールを適用</li>
+<li>(オプション)間に入るHTTPサーバを用意してダミーのレスポンスを返却または普通のメタデータサービスにプロキシする</li>
+</ul>
+
+<p>実際はこのiptablesはホストOSで直接適用してもよいのですが、k8sらしくDaemonSetを使って汎用的にしましょうねーという感じです。</p>
+
+<h2>
+<span id="k8sメタデータブロックの実装" class="fragment"></span><a href="#k8s%E3%83%A1%E3%82%BF%E3%83%87%E3%83%BC%E3%82%BF%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E3%81%AE%E5%AE%9F%E8%A3%85"><i class="fa fa-link"></i></a>k8sメタデータブロックの実装</h2>
+
+<ul>
+<li>汎用的に使えるnginxプロキシ <a href="https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/metadata-proxy" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/metadata-proxy</a>
+</li>
+<li>GCP専用のgo言語サーバ <a href="https://github.com/GoogleCloudPlatform/k8s-metadata-proxy" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/GoogleCloudPlatform/k8s-metadata-proxy</a>
+</li>
+</ul>
+
+<p>汎用nginxのほうで使われるコンテナイメージ<code>gcr.io/google-containers/metadata-proxy</code>から、CMDに適用される内容をみてみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">/start-proxy.sh</span></div>
+<div class="highlight"><pre>
+<span class="c">#!/bin/dash</span>
+
+<span class="c"># Copyright 2017 The Kubernetes Authors.</span>
+<span class="c">#</span>
+<span class="c"># Licensed under the Apache License, Version 2.0 (the "License");</span>
+<span class="c"># you may not use this file except in compliance with the License.</span>
+<span class="c"># You may obtain a copy of the License at</span>
+<span class="c">#</span>
+<span class="c">#     http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c">#</span>
+<span class="c"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c"># distributed under the License is distributed on an "AS IS" BASIS,</span>
+<span class="c"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c"># See the License for the specific language governing permissions and</span>
+<span class="c"># limitations under the License.</span>
+
+_term<span class="o">()</span> <span class="o">{</span>
+  iptables <span class="nt">-D</span> <span class="nt">-t</span> filter <span class="nt">-I</span> KUBE-METADATA-SERVER <span class="nt">-j</span> ACCEPT
+  iptables <span class="nt">-D</span> <span class="nt">-t</span> nat <span class="nt">-I</span> PREROUTING <span class="nt">-p</span> tcp <span class="nt">-d</span> 169.254.169.254 <span class="nt">--dport</span> 80 <span class="nt">-j</span> DNAT <span class="nt">--to-destination</span> 127.0.0.1:988
+  <span class="nb">exit</span>
+<span class="o">}</span>
+
+<span class="c"># Forward traffic to nginx.</span>
+iptables <span class="nt">-t</span> nat <span class="nt">-I</span> PREROUTING <span class="nt">-p</span> tcp <span class="nt">-d</span> 169.254.169.254 <span class="nt">--dport</span> 80 <span class="nt">-j</span> DNAT <span class="nt">--to-destination</span> 127.0.0.1:988
+iptables <span class="nt">-t</span> filter <span class="nt">-I</span> KUBE-METADATA-SERVER <span class="nt">-j</span> ACCEPT
+
+<span class="c"># Clean up the iptables rule if we're exiting gracefully.</span>
+<span class="nb">trap </span>_term TERM
+
+<span class="c"># Run nginx in the foreground.</span>
+nginx <span class="nt">-g</span> <span class="s1">'daemon off;'</span>
+</pre></div>
+</div>
+
+<p>これでnginxにTERMちゃんと渡るんだっけ。。とかPREROUTINGの削除ってこれでいいんだっけ。。などと思いつつ、PREROUTINGでメタデータへのリクエストをダミーのnginxに向けている様子がわかります。</p>
+
+<p>KUBE-METADATA-SERVERは環境次第であったりなかったりです。<br>
+ここらを見ると、GCPを使う場合には環境変数でメタデータブロックだけならできそうなので、プロキシ有効時にはそれを開くためでしょう。</p>
+
+<p><a href="https://github.com/kubernetes/kubernetes/blob/master/cluster/gce/gci/configure-helper.sh#L55" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/kubernetes/kubernetes/blob/master/cluster/gce/gci/configure-helper.sh#L55</a></p>
+
+<p>KUBE-METADATA-SERVERがない環境でもコケはしないので、その場合は気にしないでよさそう。</p>
+
+<p>次は間に挟むnginxのコンフィグ。ブロックしたり条件次第でproxy_passで本来のメタデータサービスにプロキシしたりです。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">nginx./conf</span></div>
+<div class="highlight"><pre># ... 省略
+
+    http {
+      access_log /dev/stdout;
+      server {
+        listen 127.0.0.1:988;
+        # When serving 301s, don't redirect to port 988.
+        port_in_redirect off;
+        # By default, return 403. This protects us from new API versions.
+        location / {
+            return 403 "This metadata API is not allowed by the metadata proxy.";
+        }
+
+
+        # Allow for REST discovery.
+        location = / {
+            if ($args ~* "^(.+&amp;)?recursive=") {
+                    return 403 "?recursive calls are not allowed by the metadata proxy.";
+            }
+            proxy_pass http://169.254.169.254;
+        }
+
+# ... 省略
+</pre></div>
+</div>
+
+<p>ここのルールを色々変更すれば、任意の情報だけコンテナから参照を許可する、なども可能ですね。認可だけは横取りされないようにすれば大丈夫でしょうきっと。</p>
+
+<blockquote>
+<p>追記:<br>
+仕様変更があって、制限したいノードに <code>beta.kubernetes.io/metadata-proxy-ready=true</code> のラベルが必要になりました。</p>
+</blockquote>
+
+<h2>
+<span id="k8sメタデータブロックの様子" class="fragment"></span><a href="#k8s%E3%83%A1%E3%82%BF%E3%83%87%E3%83%BC%E3%82%BF%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E3%81%AE%E6%A7%98%E5%AD%90"><i class="fa fa-link"></i></a>k8sメタデータブロックの様子</h2>
+
+<p>実験はAzure Container Service (AKS)で。</p>
+
+<p>プロキシコンテナ稼働前、Nodeで<code>docker run</code>からメタデータを取得。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker run alpine:latest /bin/sh -c 'apk add curl --no-cache &gt;/dev/null; curl -s -H Metadata:true "http://169.254.169.254/metadata/instance?api-version=2017-04-02&amp;format=text"'
+location
+name
+offer
+osType
+platformFaultDomain
+platformUpdateDomain
+publisher
+sku
+version
+vmId
+vmSize
+</pre></div></div>
+
+<p>プロキシコンテナ稼働後、Nodeで<code>docker run</code>からメタデータ取得をnginxで横取り。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker run alpine:latest /bin/sh -c 'apk add curl --no-cache &gt;/dev/null; curl -s -H Metadata:true "http://169.254.169.254/metadata/instance?api-version=2017-04-02"'
+
+This metadata API is not allowed by the metadata proxy.
+
+</pre></div></div>
+
+<p>なおこの仕組みでは、ネットワークモードが<code>host</code>のコンテナは対象外です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># プロキシコンテナ稼働後でも--net=hostはメタデータが取れる
+$ docker run --net=host alpine:latest /bin/sh -c 'apk add curl --no-cache &gt;/dev/null; curl -s -H Metadata:true "http://169.254.169.254/metadata/instance?api-version=2017-04-02&amp;format=text"'
+compute/
+network/
+</pre></div></div>
+
+<p>当初の目的は達成したので一旦これでよしとします。</p>
+
+<h2>
+<span id="ほか関連情報" class="fragment"></span><a href="#%E3%81%BB%E3%81%8B%E9%96%A2%E9%80%A3%E6%83%85%E5%A0%B1"><i class="fa fa-link"></i></a>ほか、関連情報</h2>
+
+<p>クラウドサービス上のVMをDockerなどコンテナのホストに使うと、コンテナからもVMへの認可情報を使えちゃう懸念は結局よくある話で、そもそもメタデータをブロックしたいのもそれが使えると困るからというのが大半です。(他にはuser-dataが見れるとマズい、など。)</p>
+
+<p>この辺りは次のようなアプローチもあるので、利用できるならこういうのも。</p>
+
+<ul>
+<li>
+<a href="http://docs.aws.amazon.com/ja_jp/AmazonECS/latest/developerguide/task-iam-roles.html" rel="nofollow noopener" target="_blank">タスク用の IAM ロール - Amazon EC2 Container Service</a>
+
+<ul>
+<li>コンテナ専用のメタデータサービスからコンテナの用途にあわせた認可情報を取得</li>
+<li>通常のメタデータはブロック</li>
+</ul>
+</li>
+<li>
+<a href="https://github.com/dump247/ec2metaproxy" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/dump247/ec2metaproxy</a>
+
+<ul>
+<li>コンテナからのメタデータアクセスを横取りして、事前に用意した認可情報に差し替える</li>
+</ul>
+</li>
+</ul>
+
+<p>ただブロックするよりは、うまいこと利用しながら権限をコントロールする方法が用意されているなら、特定のプロバイダ依存にはなるかもしれませんが利用してもよいかなと思います。</p>

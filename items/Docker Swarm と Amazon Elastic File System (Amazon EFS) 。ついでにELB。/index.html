@@ -1,0 +1,410 @@
+<p>Amazon Elastic File System (以下EFS)はざっくりいうとマネージドのNFSだ。<br>
+このEFSとDocker Swarmの新機能(1.12〜)、ingressとELBを組み合わせてみよう。</p>
+
+<p>なんかユルいクラスタがつくれます。</p>
+
+<p>記事を書いてる時点では、Dockerの1.12はrc4が出たとこですね。</p>
+
+<p>事前に必要なもの。</p>
+
+<ul>
+<li>Amazon EFSボリューム
+
+<ul>
+<li>インスタンスからマウント可能なSGの設定</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="docker-machineからec2インスタンスを作成する" class="fragment"></span><a href="#docker-machine%E3%81%8B%E3%82%89ec2%E3%82%A4%E3%83%B3%E3%82%B9%E3%82%BF%E3%83%B3%E3%82%B9%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Docker-MachineからEC2インスタンスを作成する。</h2>
+
+<p>EFSと同じVPCに作ってね。EFSがあるリージョンでよろしく。２個作るか。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(local_machine)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker-machine create <span class="nt">--driver</span> amazonec2 <span class="se">\</span>
+  <span class="nt">--amazonec2-region</span> us-west-2 <span class="se">\</span>
+  <span class="nt">--amazonec2-instance-type</span> t2.small <span class="se">\</span>
+  <span class="nt">--amazonec2-vpc-id</span> vpc-xxxxxxxx <span class="se">\</span>
+  <span class="nt">--amazonec2-subnet-id</span> subnet-xxxxxxxx <span class="se">\</span>
+  aws-efs-sandbox01
+
+....
+
+
+<span class="nv">$ </span>docker-machine create <span class="nt">--driver</span> amazonec2 <span class="se">\</span>
+  <span class="nt">--amazonec2-region</span> us-west-2 <span class="se">\</span>
+  <span class="nt">--amazonec2-instance-type</span> t2.small <span class="se">\</span>
+  <span class="nt">--amazonec2-vpc-id</span> vpc-xxxxxxxx <span class="se">\</span>
+  <span class="nt">--amazonec2-subnet-id</span> subnet-xxxxxxxx <span class="se">\</span>
+  aws-efs-sandbox02
+
+...
+</pre></div>
+</div>
+
+<p>amazonec2ドライバは(この記事時点で)Ubuntuの15.10でインスタンスを作成します。<br>
+15.10のままでも良いし、<code>do-release-upgrade</code>で16.04にしちゃっても動いてましたのでお好みで。</p>
+
+<h3>
+<span id="docker-engineを112rcx以降にする" class="fragment"></span><a href="#docker-engine%E3%82%92112rcx%E4%BB%A5%E9%99%8D%E3%81%AB%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Docker-Engineを1.12.RCx以降にする</h3>
+
+<p>それぞれのインスタンスに<code>docker-machine ssh</code>で侵入します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(local_machine)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker-machine ssh aws-efs-sandbox01
+</pre></div>
+</div>
+
+<p>ログインできたら<code>test.docker.com</code>をぶっこみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_user)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>curl <span class="nt">-fsSL</span> https://test.docker.com/ | sh
+
+
+Warning: the <span class="s2">"docker"</span> <span class="nb">command </span>appears to already exist on this system.
+
+If you already have Docker installed, this script can cause trouble, which is
+why we<span class="s1">'re displaying this warning and provide the opportunity to cancel the
+installation.
+
+
+```shell:(remote_user)
+Client:
+ Version:      1.12.0-rc4
+ API version:  1.24
+ Go version:   go1.6.2
+ Git commit:   e4a0dbc
+ Built:        Wed Jul 13 04:00:11 2016
+ OS/Arch:      linux/amd64
+
+Server:
+ Version:      1.12.0-rc4
+ API version:  1.24
+ Go version:   go1.6.2
+ Git commit:   e4a0dbc
+ Built:        Wed Jul 13 04:00:11 2016
+ OS/Arch:      linux/amd64
+
+If you would like to use Docker as a non-root user, you should now consider
+adding your user to the "docker" group with something like:
+
+  sudo usermod -aG docker ubuntu
+
+Remember that you will have to log out and back in for this to take effect!
+
+</span></pre></div>
+</div>
+
+<p>OKでーす。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo </span>docker <span class="nt">-v</span>
+Docker version 1.12.0-rc4, build e4a0dbc
+</pre></div></div>
+
+<p>この時点で多分一回rebootしとくほうが良いと思います。</p>
+
+<h2>
+<span id="swarmを組みます" class="fragment"></span><a href="#swarm%E3%82%92%E7%B5%84%E3%81%BF%E3%81%BE%E3%81%99"><i class="fa fa-link"></i></a>Swarmを組みます</h2>
+
+<p>1.12からSwarmが組みやすい、組もうぜみんな。</p>
+
+<p>aws-efs-sandbox01からinit。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_user_and_root)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo</span> <span class="nt">-s</span> <span class="c"># rootのほうが補完が利いて楽ちん</span>
+
+<span class="c"># (aws-efs-sandbox01) </span>
+<span class="nv">$ </span>docker swarm init 
+No <span class="nt">--secret</span> provided. Generated random secret:
+    xxxxxxxxxxxxxxxxxxxxxxx
+
+Swarm initialized: current node <span class="o">(</span>xxxxxxxxxxxxxxxxxxxxxxxxxxxx<span class="o">)</span> is now a manager.
+
+To add a worker to this swarm, run the following <span class="nb">command</span>:
+    docker swarm <span class="nb">join</span> <span class="nt">--secret</span> xxxxxxxxxxxxxxxxxxxxxxxxxxx <span class="se">\</span>
+    <span class="nt">--ca-hash</span> sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx <span class="se">\</span>
+   xx.xx.xx.xx:2377
+</pre></div>
+</div>
+
+<p>aws-efs-sandbox02からはjoin。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="c"># (aws-efs-sandbox02)</span>
+<span class="nv">$ </span>docker swarm <span class="nb">join</span> <span class="nt">--secret</span> xxxxxxxxxxxxxxxxxxxxxxxxxxx <span class="se">\</span>
+    <span class="nt">--ca-hash</span> sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx <span class="se">\</span>
+   xx.xx.xx.xx:2377
+
+This node joined a Swarm as a worker.
+</pre></div>
+</div>
+
+<p>Docker nodeを確認しましょう。いるわね。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="c"># (aws-efs-sandbox01)</span>
+<span class="nv">$ </span>docker node <span class="nb">ls
+</span>ID                           HOSTNAME           MEMBERSHIP  STATUS  AVAILABILITY  MANAGER STATUS
+xxxxxxxxxxxxxxxxxxxxxxxxx <span class="k">*</span>  aws-efs-sandbox01  Accepted    Ready   Active        Leader
+xxxxxxxxxxxxxxxxxxxxxxxxx    aws-efs-sandbox02  Accepted    Ready   Active   
+</pre></div>
+</div>
+
+<p><code>aws-efs-sandbox02</code>もついでにマネージャーにします。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="c"># (aws-efs-sandbox01)</span>
+<span class="nv">$ </span>docker node promote  aws-efs-sandbox02
+Node aws-efs-sandbox02 promoted to a manager <span class="k">in </span>the swarm.
+</pre></div>
+</div>
+
+<p>ヒラのWorkerから、<code>MANAGER STATUS</code> =&gt; <code>Reachable</code> になったね。これでどちらからでもSwarmをコントロールできる。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="c"># (aws-efs-sandbox01)</span>
+<span class="nv">$ </span>docker node <span class="nb">ls
+</span>ID                           HOSTNAME           MEMBERSHIP  STATUS  AVAILABILITY  MANAGER STATUS
+xxxxxxxxxxxxxxxxxxxxxxxxx <span class="k">*</span>  aws-efs-sandbox01  Accepted    Ready   Active        Leader
+xxxxxxxxxxxxxxxxxxxxxxxxx    aws-efs-sandbox02  Accepted    Ready   Active        Reachable
+
+
+<span class="c"># (aws-efs-sandbox02)</span>
+<span class="nv">$ </span>docker node <span class="nb">ls
+</span>ID                           HOSTNAME           MEMBERSHIP  STATUS  AVAILABILITY  MANAGER STATUS
+xxxxxxxxxxxxxxxxxxxxxxxxx    aws-efs-sandbox01  Accepted    Ready   Active        Leader
+xxxxxxxxxxxxxxxxxxxxxxxxx <span class="k">*</span>  aws-efs-sandbox02  Accepted    Ready   Active        Reachable
+</pre></div>
+</div>
+
+<h3>
+<span id="ついでにelbを" class="fragment"></span><a href="#%E3%81%A4%E3%81%84%E3%81%A7%E3%81%ABelb%E3%82%92"><i class="fa fa-link"></i></a>ついでにELBを</h3>
+
+<p>ELBを作って、起動したインスタンスをぶら下げます。</p>
+
+<ul>
+<li>とりあえずTCPの2376をヘルスチェックついでにふっちゃえばよいかと思います。</li>
+<li>SGのinboundはDockerコンテナが使う範囲を許可(例えば10000-11000とか)</li>
+<li>Docker-MachinesなインスタンスはELBからのアクセスを許可。</li>
+</ul>
+
+<h2>
+<span id="efsをホストでnfsマウントしてdockerコンテナにmountする" class="fragment"></span><a href="#efs%E3%82%92%E3%83%9B%E3%82%B9%E3%83%88%E3%81%A7nfs%E3%83%9E%E3%82%A6%E3%83%B3%E3%83%88%E3%81%97%E3%81%A6docker%E3%82%B3%E3%83%B3%E3%83%86%E3%83%8A%E3%81%ABmount%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>EFSをホストでNFSマウントして、Dockerコンテナにmountする</h2>
+
+<p>さて、EFSについて。NFSなのでまずはホストからマウントして、Dockerコンテナの起動時にそのパスをマウントしてみます。<br>
+両方のインスタンスで、同じパスにマウントします。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_user)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo </span>apt-get <span class="nt">-y</span> <span class="nb">install </span>nfs-common 
+<span class="nv">$ </span><span class="nb">sudo mkdir</span> <span class="nt">-p</span> /mnt/testefs
+
+
+<span class="nv">$ </span><span class="nb">sudo </span>mount <span class="nt">-t</span> nfs4 <span class="nt">-o</span> <span class="nv">nfsvers</span><span class="o">=</span>4.1,relatime,hard <span class="si">$(</span>curl <span class="nt">-s</span> http://169.254.169.254/latest/meta-data/placement/availability-zone<span class="si">)</span>.fs-xxxxxxxx.efs.us-west-2.amazonaws.com:/ /mnt/testefs
+</pre></div>
+</div>
+
+<p>ここでマウントできない場合は多分SGです。</p>
+
+<p><code>aws-efs-sandbox01</code>で書いて、<code>aws-efs-sandbox02</code>で読んでみる。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="c"># (aws-efs-sandbox01)</span>
+<span class="nv">$ </span><span class="nb">echo</span> <span class="s2">"hello"</span> <span class="o">&gt;</span> /mnt/testefs/index.html
+
+
+<span class="c"># (aws-efs-sandbox02)</span>
+<span class="nv">$ </span><span class="nb">cat</span> /mnt/testefs/index.html 
+hello
+</pre></div>
+</div>
+
+<p>よろしいね。</p>
+
+<h3>
+<span id="docker-run-with-nfsfrom-host" class="fragment"></span><a href="#docker-run-with-nfsfrom-host"><i class="fa fa-link"></i></a>docker run with nfs(from host)</h3>
+
+<p>ホストにマウントしているので、<code>docker run</code>はまあ普通にこのようになる。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-it</span> <span class="nt">--rm</span> <span class="nt">-v</span> /mnt/testefs:/usr/share/nginx/html nginx  <span class="nb">cat</span> /usr/share/nginx/html/index.html
+hello
+</pre></div>
+</div>
+
+<p>まあこりゃ普通だね。どのインスタンスでも同じコンテンツになるのはよいけども。</p>
+
+<h3>
+<span id="docker-service-with-nfsfrom-host" class="fragment"></span><a href="#docker-service-with-nfsfrom-host"><i class="fa fa-link"></i></a>docker service with nfs(from host)</h3>
+
+<p>さて、Swarmのingressにぶら下げるべく<code>service create</code>で起動。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="c"># (aws-efs-sandbox01)</span>
+<span class="nv">$ </span>docker service create <span class="nt">--name</span> nginx <span class="se">\</span>
+    <span class="nt">-p</span> 10080:80 <span class="se">\</span>
+    <span class="nt">--mount</span> <span class="nv">target</span><span class="o">=</span>/usr/share/nginx/html,source<span class="o">=</span>/mnt/testefs,type<span class="o">=</span><span class="nb">bind</span>,readonly<span class="o">=</span><span class="nb">true</span> <span class="se">\</span>
+    nginx
+
+<span class="o">&gt;</span> 44fzmwtypbw501rxwo8he54nx
+
+<span class="nv">$ </span>docker service tasks nginx
+
+ID                         NAME     SERVICE  IMAGE  LAST STATE              DESIRED STATE  NODE
+44fzmwtypbw501rxwo8he54nx  nginx.1  nginx    nginx  Running 14 minutes ago  Running        aws-efs-sandbox02
+</pre></div>
+</div>
+
+<p><code>aws-efs-sandbox01</code>でcreateしたけど、<code>aws-efs-sandbox02</code>でDockerコンテナが起動した。</p>
+
+<p>で、両方のインスタンスで<code>TCP/10080</code>がListenされました。これがあれだね、ingress。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_user)</span></div>
+<div class="highlight"><pre><span class="c"># (aws-efs-sandbox01)</span>
+<span class="nv">$ </span><span class="nb">sudo </span>netstat <span class="nt">-tnl</span>
+Active Internet connections <span class="o">(</span>only servers<span class="o">)</span>
+Proto Recv-Q Send-Q Local Address           Foreign Address         State      
+...
+
+tcp6       0      0 :::10080                :::<span class="k">*</span>                    LISTEN     
+...
+
+
+<span class="nv">$ </span>curl 127.0.0.1:10080
+hello
+
+
+<span class="c"># (aws-efs-sandbox02)</span>
+<span class="nv">$ </span><span class="nb">sudo </span>netstat <span class="nt">-tnl</span>
+Active Internet connections <span class="o">(</span>only servers<span class="o">)</span>
+Proto Recv-Q Send-Q Local Address           Foreign Address         State      
+...
+
+tcp6       0      0 :::10080                :::<span class="k">*</span>                    LISTEN     
+...
+
+
+<span class="nv">$ </span>curl 127.0.0.1:10080
+hello
+
+</pre></div>
+</div>
+
+<p>どちらでも<code>curl 127.0.0.1:10080</code>が同じコンテンツを返してる。</p>
+
+<h2>
+<span id="elbにリスナを追加してアクセスを振ってみる" class="fragment"></span><a href="#elb%E3%81%AB%E3%83%AA%E3%82%B9%E3%83%8A%E3%82%92%E8%BF%BD%E5%8A%A0%E3%81%97%E3%81%A6%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B9%E3%82%92%E6%8C%AF%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>ELBにリスナを追加して、アクセスを振ってみる</h2>
+
+<p>今回Nginxだし、HTTPでリスナ追加してみようか。10080=&gt;10080でいいや。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffe16a892-da0f-4582-207a-a5c713a7fb11.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7c23d2e41755317c4e4ee6f7fe03aff8" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffe16a892-da0f-4582-207a-a5c713a7fb11.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7c23d2e41755317c4e4ee6f7fe03aff8" alt="EC2_Management_Console.jpg" title="EC2_Management_Console.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/fe16a892-da0f-4582-207a-a5c713a7fb11.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffe16a892-da0f-4582-207a-a5c713a7fb11.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=63601c1fd685cfb63d599d5d37cef66f 1x" loading="lazy"></a></p>
+
+<p>ブラウザでみます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F15a18041-4308-e72e-34ee-5f3eeeda7864.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=27c78389010037f366d7261c05b753f4" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F15a18041-4308-e72e-34ee-5f3eeeda7864.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=27c78389010037f366d7261c05b753f4" alt="swarm-test-1588239295_us-west-2_elb_amazonaws_com_10080_と_EC2_Management_Console.jpg" title="swarm-test-1588239295_us-west-2_elb_amazonaws_com_10080_と_EC2_Management_Console.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/15a18041-4308-e72e-34ee-5f3eeeda7864.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F15a18041-4308-e72e-34ee-5f3eeeda7864.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=d4f617d99ce0adfd694be1b3f6e5d2e8 1x" loading="lazy"></a></p>
+
+<p>どっちを経由したかわかりませんけど、みえますね。NATのテーブルでは<code>docker_gwbridge</code>ってのを通っていました。</p>
+
+<p>スケールもOKです。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker service scale <span class="nv">nginx</span><span class="o">=</span>2
+nginx scaled to 2
+</pre></div>
+</div>
+
+<p>スケールをインスタンス数以上(3とか)にしても、ラウンドロビンでアクセスを振り分けてるのを確認できました。</p>
+
+<h2>
+<span id="おまけdocker-volume-netshareでdockerコンテナに直接efsをnfsマウントさせる" class="fragment"></span><a href="#%E3%81%8A%E3%81%BE%E3%81%91docker-volume-netshare%E3%81%A7docker%E3%82%B3%E3%83%B3%E3%83%86%E3%83%8A%E3%81%AB%E7%9B%B4%E6%8E%A5efs%E3%82%92nfs%E3%83%9E%E3%82%A6%E3%83%B3%E3%83%88%E3%81%95%E3%81%9B%E3%82%8B"><i class="fa fa-link"></i></a>(おまけ)docker-volume-netshareで、Dockerコンテナに直接EFSをNFSマウントさせる</h2>
+
+<p>DockerのVolumeドライバnetshareはNFSに対応してます。 <a href="https://github.com/ContainX/docker-volume-netshare" rel="nofollow noopener" target="_blank">ContainX/docker-volume-netshare</a></p>
+
+<p>インストールはこんな感じで。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_user)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>wget https://github.com/ContainX/docker-volume-netshare/releases/download/v0.18/docker-volume-netshare_0.18_amd64.deb
+<span class="nv">$ </span><span class="nb">sudo </span>dpkg <span class="nt">-i</span> docker-volume-netshare_0.18_amd64.deb
+</pre></div>
+</div>
+
+<p>両方のノードでNFSモード起動しておきます。とりあえずフォアグラウンドでいいっしょ。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_user)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo </span>docker-volume-netshare nfs
+INFO[0000] <span class="o">==</span> docker-volume-netshare :: Version: 0.18 - Built: 2016-05-27T20:14:07-07:00 <span class="o">==</span> 
+INFO[0000] Starting NFS Version 4 :: options: <span class="s1">''</span> 
+</pre></div>
+</div>
+
+<h3>
+<span id="docker-run-with-nfsvia-nfs-volume-driver" class="fragment"></span><a href="#docker-run-with-nfsvia-nfs-volume-driver"><i class="fa fa-link"></i></a>docker run with nfs(via nfs volume-driver)</h3>
+
+<p>この状態なら<code>--volume-driver=nfs</code>でDockerコンテナがNFSマウントっぽいことになります。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-it</span> <span class="nt">--rm</span> <span class="nt">--volume-driver</span><span class="o">=</span>nfs <span class="se">\</span>
+  <span class="nt">-p</span> 10080:80 <span class="se">\</span>
+  <span class="nt">-v</span> <span class="si">$(</span>curl <span class="nt">-s</span> http://169.254.169.254/latest/meta-data/placement/availability-zone<span class="si">)</span>.fs-xxxxxx.efs.us-west-2.amazonaws.com/:/usr/share/nginx/html <span class="se">\</span>
+  nginx
+</pre></div>
+</div>
+
+<p>とりあえずEFSのコンテンツであることを確認。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_user)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>curl 127.0.0.1:10080
+hello
+</pre></div>
+</div>
+
+<p>Dockerコンテナ内でmount状況をみると、次のようになってます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">(remote_root)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker <span class="nb">exec </span>5df1f86f8c64 mount | <span class="nb">grep </span>nfs
+us-west-2a.fs-xxxxxx.efs.us-west-2.amazonaws.com:/ on /usr/share/nginx/html <span class="nb">type </span>nfs4 <span class="o">(</span>rw,relatime,vers<span class="o">=</span>4.0,rsize<span class="o">=</span>1048576,wsize<span class="o">=</span>1048576,namlen<span class="o">=</span>255,hard,proto<span class="o">=</span>tcp,timeo<span class="o">=</span>600,retrans<span class="o">=</span>2,sec<span class="o">=</span>sys,clientaddr<span class="o">=</span>10.0.0.212,local_lock<span class="o">=</span>none,addr<span class="o">=</span>10.0.0.135<span class="o">)</span>
+</pre></div>
+</div>
+
+<p>実体は<code>docker volume</code>。</p>
+
+<h3>
+<span id="docker-service-with-nfsvia-nfs-volume-driver" class="fragment"></span><a href="#docker-service-with-nfsvia-nfs-volume-driver"><i class="fa fa-link"></i></a>docker service with nfs(via nfs volume-driver)</h3>
+
+<p>で。<br>
+これができる事を期待したんだけど、ダイレクトにマウントするのはまだ無理っぽい？このへんオプションがカオスなのよね。<br>
+ホストのNFSマウントが不要になるから使い勝手がいいんだけどなあ。</p>
+
+<p>Issueで相談中のようなので、なんとかなるだろう。</p>
+
+<p><a href="https://github.com/ContainX/docker-volume-netshare/issues/48" rel="nofollow noopener" target="_blank">netshare volume plugin not working in "swarm mode" v1.12.0-rc3 with docker volume create, docker service create --mount · Issue #48 · ContainX/docker-volume-netshare</a></p>
+
+<p>普通にdokcer runした時のinspectを見ると、なんか色々とオプションの変換が必要そうでややこしい。今回はちょっとスルー。</p>
+
+<h2>
+<span id="このあと" class="fragment"></span><a href="#%E3%81%93%E3%81%AE%E3%81%82%E3%81%A8"><i class="fa fa-link"></i></a>このあと</h2>
+
+<p>一応、仕組み的にはListen出来る限り(IPアドレス * 60,000程度)のSwarm Serviceを公開できるってことになりますね。</p>
+
+<p>ただ、ELBのリスナーは1つあたり同時に100までという制限があったり、ついでにいうと名前ベースによる振り分けも無かったりです。Webアプリを使うならばngx_mrubyとかで動的リバースプロキシを作るとよさそう。</p>
+
+<p>Google Cloud PlatformのGKEならばもっと簡単にLBをつけられるんだけど、Googleだと今なら同じことする場合、GlusterFSのサービスをGCEかk8s上に作ることになるんだよね。</p>

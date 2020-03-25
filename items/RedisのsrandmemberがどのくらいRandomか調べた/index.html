@@ -1,0 +1,39 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Redisのsetというデータタイプは、メンバーからランダムに値を抽出可能ということだ。</p>
+
+<p>適当に4つのメンバを入れます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ redis-cli sadd daizi:sore makenai
+$ redis-cli sadd daizi:sore nagedasanai
+$ redis-cli sadd daizi:sore nigedasanai
+$ redis-cli sadd daizi:sore sinzinuku
+
+$ redis-cli smembers daizi:sore
+1) "sinzinuku"
+2) "nigedasanai"
+3) "nagedasanai"
+4) "makenai"
+
+</pre></div></div>
+
+<p><code>srandmember x 10,000回の試行</code>で結果を表示する。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ redis-server -v
+Redis server version 2.4.15 (00000000:0)
+$ for x in {1..10000}; do redis-cli srandmember daizi:sore; done | sort | uniq -c
+4975 makenai
+1697 nagedasanai
+1681 nigedasanai
+1647 sinzinuku
+</pre></div></div>
+
+<p>結構偏ってんな！？ どゆこと。。</p>
+
+<hr>
+
+<p>追記：特定のケースで偏る模様？</p>

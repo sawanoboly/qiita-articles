@@ -1,0 +1,69 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>SSLコネクション用のサーバ証明書の期限をチェックして、OKなら0,NGなら2で終了するNagiosプラグイン的なスクリプト。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">check_cert_period.rb</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="c1"># -*- coding:utf-8 -*-</span>
+<span class="nb">require</span> <span class="s1">'socket'</span>
+<span class="nb">require</span> <span class="s1">'openssl'</span>
+<span class="nb">require</span> <span class="s1">'timeout'</span>
+<span class="kp">include</span> <span class="no">OpenSSL</span>
+
+<span class="n">timeout</span><span class="o">=</span><span class="mi">15</span>
+
+<span class="n">r_host</span> <span class="o">=</span> <span class="no">ARGV</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">||</span> <span class="s2">"google.com"</span>
+<span class="n">r_date</span> <span class="o">=</span> <span class="no">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">||</span> <span class="mi">30</span>
+<span class="n">r_port</span> <span class="o">=</span> <span class="no">ARGV</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">||</span> <span class="mi">443</span>
+<span class="n">r_date_s</span> <span class="o">=</span> <span class="n">r_date</span><span class="p">.</span><span class="nf">to_i</span> <span class="o">*</span> <span class="mi">60</span> <span class="o">*</span> <span class="mi">60</span> <span class="o">*</span> <span class="mi">24</span>
+
+<span class="c1"># set SSL config</span>
+<span class="n">ssl_conf</span> <span class="o">=</span> <span class="no">SSL</span><span class="o">::</span><span class="no">SSLContext</span><span class="p">.</span><span class="nf">new</span><span class="p">()</span>
+<span class="c1"># ssl_conf.verify_mode=SSL::VERIFY_PEER</span>
+
+<span class="c1"># create ssl connection.</span>
+<span class="k">begin</span>
+  <span class="n">timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">)</span> <span class="p">{</span>
+    <span class="vi">@soc</span> <span class="o">=</span> <span class="no">TCPSocket</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">r_host</span><span class="p">.</span><span class="nf">to_s</span><span class="p">,</span> <span class="n">r_port</span><span class="p">.</span><span class="nf">to_i</span><span class="p">)</span>
+    <span class="vi">@ssl</span> <span class="o">=</span> <span class="no">SSL</span><span class="o">::</span><span class="no">SSLSocket</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@soc</span><span class="p">,</span> <span class="n">ssl_conf</span><span class="p">)</span>
+    <span class="vi">@ssl</span><span class="p">.</span><span class="nf">connect</span>
+  <span class="p">}</span>
+
+<span class="k">rescue</span> <span class="no">Timeout</span><span class="o">::</span><span class="no">Error</span> <span class="o">=&gt;</span> <span class="n">e</span>
+  <span class="nb">puts</span> <span class="s2">"CRITICAL - </span><span class="si">#{</span><span class="n">e</span><span class="p">.</span><span class="nf">class</span><span class="si">}</span><span class="s2"> couldn't connext to </span><span class="si">#{</span><span class="n">r_host</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2">:</span><span class="si">#{</span><span class="n">r_port</span><span class="p">.</span><span class="nf">to_i</span><span class="si">}</span><span class="s2">"</span>
+  <span class="nb">exit</span> <span class="mi">2</span>
+<span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+  <span class="nb">puts</span> <span class="s2">"CRITICAL - </span><span class="si">#{</span><span class="n">e</span><span class="p">.</span><span class="nf">class</span><span class="si">}</span><span class="s2"> </span><span class="si">#{</span><span class="n">e</span><span class="p">.</span><span class="nf">message</span><span class="si">}</span><span class="s2">"</span>
+  <span class="nb">exit</span> <span class="mi">2</span>
+<span class="k">end</span>
+
+<span class="c1"># check period.</span>
+<span class="k">if</span> <span class="p">(</span><span class="vi">@ssl</span><span class="p">.</span><span class="nf">peer_cert</span><span class="p">.</span><span class="nf">not_after</span> <span class="o">-</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">r_date_s</span>
+  <span class="nb">puts</span> <span class="s2">"CRITICAL - Certificate expired on </span><span class="si">#{</span><span class="vi">@ssl</span><span class="p">.</span><span class="nf">peer_cert</span><span class="p">.</span><span class="nf">not_after</span><span class="si">}</span><span class="s2">"</span>
+  <span class="nb">exit</span> <span class="mi">2</span>
+<span class="k">else</span>
+  <span class="nb">puts</span> <span class="s2">"OK - Certificate will expire on </span><span class="si">#{</span><span class="vi">@ssl</span><span class="p">.</span><span class="nf">peer_cert</span><span class="p">.</span><span class="nf">not_after</span><span class="si">}</span><span class="s2">"</span>
+<span class="k">end</span>
+
+<span class="vi">@ssl</span><span class="p">.</span><span class="nf">close</span>
+<span class="vi">@soc</span><span class="p">.</span><span class="nf">close</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="実行結果" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E7%B5%90%E6%9E%9C"><i class="fa fa-link"></i></a>実行結果</h2>
+
+<p>第2引数に期限、3つ目にポートをオプションで。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./check_cert_period.rb google.com 30 
+OK - Certificate will expire on 2013-06-07 19:43:27 UTC
+$ ./check_cert_period.rb google.com 360
+CRITICAL - Certificate expired on 2013-06-07 19:43:27 UTC
+$ echo $?
+2
+</pre></div></div>

@@ -1,0 +1,335 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>ohaiコマンドで出力されるJsonは、Ohaiプラグイン達による<code>automatic attributes</code>です。</p>
+
+<p>これはこれで良いですが、ChefではCookbookのなかでどんどんAttributesを追加していくように作られているため、<code>ChefServer</code>がない環境では最終的に<code>node</code>が持つ<code>attributes</code>はかなり拡張されていますが意外と知ることができません。</p>
+
+<p><code>node</code>はMashオブジェクト(Hash拡張)なので、折角だからダンプして確認してみます。</p>
+
+<h2>
+<span id="レシピ" class="fragment"></span><a href="#%E3%83%AC%E3%82%B7%E3%83%94"><i class="fa fa-link"></i></a>レシピ</h2>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">node_dump/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'json'</span>
+
+<span class="n">file</span> <span class="s2">"/tmp/dna.json"</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">pretty_generate</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>これをrun_listの最後にでも入れておけば、最終的にnodeがもつ<code>attributes</code>が確認できてdebug等に使えます。</p>
+
+<h2>
+<span id="ついでにaws-opsworksで追加されるattributesを確認する" class="fragment"></span><a href="#%E3%81%A4%E3%81%84%E3%81%A7%E3%81%ABaws-opsworks%E3%81%A7%E8%BF%BD%E5%8A%A0%E3%81%95%E3%82%8C%E3%82%8Battributes%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ついでにAWS OpsWorksで追加されるAttributesを確認する</h2>
+
+<p>クラスメソッドさんが<strong>AWS OpsWorks</strong>について書かれています。<br>
+<a href="http://dev.classmethod.jp/cloud/aws/opsworks-deploy-variable/" rel="nofollow noopener" target="_blank">AWS OpsWorksで持っている値をCustom Chef Recipeの中で使いたい！ ｜ Developers.IO:</a></p>
+
+<blockquote>
+<p>本当はApplicationの値だけでなくて、LayerとかStackで決めた値も取れるかなと期待していたのですが、今回見つける事ができませんでした。<br>
+もしかしたら他のところにあるかもしれないので、見つけ次第追記します。 </p>
+</blockquote>
+
+<p>カスタムレシピとして<code>configure</code>の<code>custom recipe</code>リストに先ほどのレシピを追加しました。</p>
+
+<p>node[:opsworks]以下にstackの情報がありますね。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">/tmp/dna.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+    </span><span class="nl">"json_class"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Chef::Node"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"chef_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"node"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"override"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"etc"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"passwd"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+              </span><span class="p">}</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"deploy"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"automatic"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="nl">"--snip--"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"run_list"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+      </span><span class="s2">"recipe[opsworks_custom_cookbooks::load]"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"recipe[opsworks_custom_cookbooks::execute]"</span><span class="w">
+    </span><span class="p">],</span><span class="w">
+    </span><span class="nl">"normal"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"tags"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+
+        </span><span class="p">],</span><span class="w">
+        </span><span class="nl">"opsworks_bundler"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0.10"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"manage_package"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"opsworks_test_suite_loader"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"minitest_chef_handler"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0.6.7"</span><span class="w">
+              </span><span class="p">}</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"opsworks_rubygems"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.8.24"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"etc"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"passwd"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+              </span><span class="p">}</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"packages"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"dist_only"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"opsworks_custom_cookbooks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"scm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"git://github.com/higanworks/opsworks-cookbooks.git"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"git"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"revision"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"user"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ssh_key"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+              </span><span class="p">},</span><span class="w">
+            </span><span class="nl">"enabled"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"recipes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+              </span><span class="s2">"opsworks_ganglia::configure-client"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"ssh_users"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"agent_version"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"opsworks_stack_state_sync"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"node_dump::default"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"test_suite"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"opsworks_cleanup"</span><span class="w">
+            </span><span class="p">]</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"nginx"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"binary"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/usr/sbin/nginx"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"log_dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/var/log/nginx"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"user"</span><span class="p">:</span><span class="w"> </span><span class="s2">"www-data"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/etc/nginx"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"runit"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"service_dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/etc/service"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"chpst_bin"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/usr/bin/chpst"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"sv_dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/etc/sv"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"sv_bin"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/usr/bin/sv"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"deploy"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"wp"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"deploy_to"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/srv/www/wp"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"mounted_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"document_root"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"symlinks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"database"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"database"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wp"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"username"</span><span class="p">:</span><span class="w"> </span><span class="s2">"root"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"reconnect"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"host"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wiuhfzhstl"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"scm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"git://github.com/WordPress/WordPress.git"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"revision"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.5.1"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"user"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"scm_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"git"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"ssh_key"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"restart_command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"echo 'restarting app'"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"migrate"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"sleep_before_restart"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ssl_certificate_key"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"group"</span><span class="p">:</span><span class="w"> </span><span class="s2">"www-data"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"user"</span><span class="p">:</span><span class="w"> </span><span class="s2">"www-data"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"domains"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+                  </span><span class="s2">"wp"</span><span class="w">
+                </span><span class="p">],</span><span class="w">
+                </span><span class="nl">"ssl_support"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ssl_certificate"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"application"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wp"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"application_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"php"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"memcached"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"host"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"port"</span><span class="p">:</span><span class="w"> </span><span class="mi">11211</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"rails_env"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ssl_certificate_ca"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"symlink_before_migrate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"config/opsworks.php"</span><span class="p">:</span><span class="w"> </span><span class="s2">"opsworks.php"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"auto_bundle_on_deploy"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
+              </span><span class="p">},</span><span class="w">
+            </span><span class="nl">"c5"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"deploy_to"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/srv/www/c5"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"mounted_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"document_root"</span><span class="p">:</span><span class="w"> </span><span class="s2">"web"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"symlinks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"database"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"database"</span><span class="p">:</span><span class="w"> </span><span class="s2">"c5"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"username"</span><span class="p">:</span><span class="w"> </span><span class="s2">"root"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"reconnect"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"host"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wiuhfzhstl"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"scm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"git://github.com/concrete5/concrete5.git"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"revision"</span><span class="p">:</span><span class="w"> </span><span class="s2">"5.6.1.2"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"user"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"scm_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"git"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"ssh_key"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"restart_command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"echo 'restarting app'"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"migrate"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"sleep_before_restart"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ssl_certificate_key"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"group"</span><span class="p">:</span><span class="w"> </span><span class="s2">"www-data"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"user"</span><span class="p">:</span><span class="w"> </span><span class="s2">"www-data"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"domains"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+                  </span><span class="s2">"c5"</span><span class="w">
+                </span><span class="p">],</span><span class="w">
+                </span><span class="nl">"ssl_support"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ssl_certificate"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"application"</span><span class="p">:</span><span class="w"> </span><span class="s2">"c5"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"application_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"php"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"memcached"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"host"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"port"</span><span class="p">:</span><span class="w"> </span><span class="mi">11211</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"rails_env"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ssl_certificate_ca"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"symlink_before_migrate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"config/opsworks.php"</span><span class="p">:</span><span class="w"> </span><span class="s2">"opsworks.php"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"auto_bundle_on_deploy"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
+              </span><span class="p">}</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"opsworks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"activity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"configure"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"instance"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"instance_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"m1.small"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"availability_zone"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ap-northeast-1a"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"private_dns_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ip-10-152-59-198.ap-northeast-1.compute.internal"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"backends"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"aws_instance_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"i-d84cf4da"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"region"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ap-northeast-1"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"public_dns_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ec2-176-34-13-248.ap-northeast-1.compute.amazonaws.com"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"layers"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+                  </span><span class="s2">"dump"</span><span class="w">
+                </span><span class="p">],</span><span class="w">
+                </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"e6a12795-52d1-4acc-a047-a8ceef5624a6"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"hostname"</span><span class="p">:</span><span class="w"> </span><span class="s2">"dump2"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"ip"</span><span class="p">:</span><span class="w"> </span><span class="s2">"176.34.13.248"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"private_ip"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10.152.59.198"</span><span class="p">,</span><span class="w">
+                </span><span class="nl">"architecture"</span><span class="p">:</span><span class="w"> </span><span class="s2">"x86_64"</span><span class="w">
+              </span><span class="p">},</span><span class="w">
+            </span><span class="nl">"stack"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"all in one"</span><span class="w">
+              </span><span class="p">},</span><span class="w">
+            </span><span class="nl">"valid_client_activities"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+              </span><span class="s2">"reboot"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"stop"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"setup"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"configure"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"update_dependencies"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"install_dependencies"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"update_custom_cookbooks"</span><span class="p">,</span><span class="w">
+              </span><span class="s2">"execute_recipes"</span><span class="w">
+            </span><span class="p">],</span><span class="w">
+            </span><span class="nl">"ruby_stack"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ruby_enterprise"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"ruby_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.8.7"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"deployment"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"rails_stack"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+              </span><span class="p">},</span><span class="w">
+            </span><span class="nl">"agent_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"119"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"applications"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+              </span><span class="p">{</span><span class="w">
+                  </span><span class="nl">"slug_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"c5"</span><span class="p">,</span><span class="w">
+                  </span><span class="nl">"application_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"php"</span><span class="p">,</span><span class="w">
+                  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"c5"</span><span class="w">
+                </span><span class="p">},</span><span class="w">
+              </span><span class="p">{</span><span class="w">
+                  </span><span class="nl">"slug_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wp"</span><span class="p">,</span><span class="w">
+                  </span><span class="nl">"application_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"php"</span><span class="p">,</span><span class="w">
+                  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wp"</span><span class="w">
+                </span><span class="p">}</span><span class="w">
+            </span><span class="p">],</span><span class="w">
+            </span><span class="nl">"layers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                </span><span class="nl">"wp"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"instances"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                      </span><span class="p">},</span><span class="w">
+                    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"WP"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"f32f8e1b-30d1-44a6-8d99-b90dad09958c"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"db-master"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"instances"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                      </span><span class="p">},</span><span class="w">
+                    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"MySQL Master"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"e554fc61-25f0-4cde-ab21-0fb890f586b6"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"php-app"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"instances"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                      </span><span class="p">},</span><span class="w">
+                    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PHP Application Server"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"d4ebe207-567f-4547-8e2d-403cd80cb81d"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"dump"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"instances"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                        </span><span class="nl">"dump2"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                            </span><span class="nl">"instance_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"m1.small"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"availability_zone"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ap-northeast-1a"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"private_dns_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ip-10-152-59-198.ap-northeast-1.compute.internal"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"elastic_ip"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"online"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2013-05-22T14:35:58+00:00"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"backends"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"aws_instance_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"i-d84cf4da"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"region"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ap-northeast-1"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"public_dns_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ec2-176-34-13-248.ap-northeast-1.compute.amazonaws.com"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"booted_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2013-05-22T14:37:12+00:00"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"ip"</span><span class="p">:</span><span class="w"> </span><span class="s2">"176.34.13.248"</span><span class="p">,</span><span class="w">
+                            </span><span class="nl">"private_ip"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10.152.59.198"</span><span class="w">
+                          </span><span class="p">}</span><span class="w">
+                      </span><span class="p">},</span><span class="w">
+                    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"dump"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"aab925b1-b2b5-4874-8624-465b538a64b3"</span><span class="w">
+                  </span><span class="p">},</span><span class="w">
+                </span><span class="nl">"web"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                    </span><span class="nl">"instances"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+                      </span><span class="p">},</span><span class="w">
+                    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Web Server"</span><span class="p">,</span><span class="w">
+                    </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fd723151-8212-4e81-b033-4374a718596d"</span><span class="w">
+                  </span><span class="p">}</span><span class="w">
+              </span><span class="p">},</span><span class="w">
+            </span><span class="nl">"sent_at"</span><span class="p">:</span><span class="w"> </span><span class="mi">1369234053</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"mysql"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"grants_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/etc/mysql/grants.sql"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"socket"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/var/run/mysqld/mysqld.sock"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"server_root_password"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wiuhfzhstl"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"conf_dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/etc/mysql"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"pid_file"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/var/run/mysqld/mysqld.pid"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"confd_dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/etc/mysql/conf.d"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"platform?"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+          </span><span class="s2">"centos"</span><span class="p">,</span><span class="w">
+          </span><span class="s2">"redhat"</span><span class="p">,</span><span class="w">
+          </span><span class="s2">"fedora"</span><span class="p">,</span><span class="w">
+          </span><span class="s2">"amazon"</span><span class="w">
+        </span><span class="p">],</span><span class="w">
+        </span><span class="nl">"ssh_users"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"dump2.localdomain"</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<h2>
+<span id="後記" class="fragment"></span><a href="#%E5%BE%8C%E8%A8%98"><i class="fa fa-link"></i></a>後記</h2>
+
+<p>私もOpsWorksのStack情報を使おうとして、<code>opsworks-agent-cli</code>のJSON出力を無理やり<code>attributes</code>に起こすOhaiプラグインを書いて<strong>Feedbackから速攻送信</strong>したら『イイネ、でも<code>node[:opsworks]</code>に最初からあるんだ』と帰ってきたのを思い出しました。</p>

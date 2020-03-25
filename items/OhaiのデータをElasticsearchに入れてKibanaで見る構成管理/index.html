@@ -1,0 +1,333 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Elasticsearch+Kibanaといえば、ログなどの時系列データ(logstash形式)を可視化する利用法が広く知られています。</p>
+
+<p>今回は構成管理の用途にElasticsearchを使うため、<a href="https://github.com/opscode/ohai" rel="nofollow noopener" target="_blank">ohai</a>のデータを入れて、Kibanaで検索できるようにしてみます。</p>
+
+<h2>
+<span id="何故やるの" class="fragment"></span><a href="#%E4%BD%95%E6%95%85%E3%82%84%E3%82%8B%E3%81%AE"><i class="fa fa-link"></i></a>何故やるの</h2>
+
+<p>OhaiはChefがNode情報を収集する時に使用するライブラリですが、個別に利用する事ができます。<br>
+通常はChef-Serverに集約しますが、それ以外の環境でOhaiのデータ(Json)を使い捨てするのは勿体無いかもしれない。</p>
+
+<p>Jsonをそのまま投げて良いElasticsearchに突っ込んでみたらどうなるか。</p>
+
+<h2>
+<span id="ohaiからelasticsearchに投げる時の方針" class="fragment"></span><a href="#ohai%E3%81%8B%E3%82%89elasticsearch%E3%81%AB%E6%8A%95%E3%81%92%E3%82%8B%E6%99%82%E3%81%AE%E6%96%B9%E9%87%9D"><i class="fa fa-link"></i></a>OhaiからElasticsearchに投げる時の方針</h2>
+
+<p>手っ取り早さを優先で、次の方針でElasticsearchにドキュメントを登録します。</p>
+
+<ul>
+<li>Indexは<code>ohai</code>
+</li>
+<li>Typeは<code>node</code>
+</li>
+<li>IDはホスト名(もしくは一意に判別)</li>
+<li>ドキュメントは上書き更新</li>
+</ul>
+
+<p>要は各ホストで<code>curl</code>を使い、こんな感じでOhaiデータをPUTします。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre>ohai | curl <span class="nt">-XPUT</span> http://localhost:9200/ohai/node/<span class="sb">`</span><span class="nb">hostname</span> <span class="nt">-f</span><span class="sb">`</span> <span class="nt">-d</span> @-<span class="s1">'
+#=&gt; ohai | curl -XPUT http://localhost:9200/ohai/node/santiago.example.com -d @-'</span>
+</pre></div></div>
+
+<p>これだけでNodeのアトリビュートがサーチ可能になるって楽ちんですね。</p>
+
+<h2>
+<span id="サンプル環境" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E7%92%B0%E5%A2%83"><i class="fa fa-link"></i></a>サンプル環境</h2>
+
+<p>Githubにサンプルを用意しました。</p>
+
+<p><a href="https://github.com/higanworks/ohai_and_elasticsearch_example" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/ohai_and_elasticsearch_example</a></p>
+
+<p>必要環境はこちらです</p>
+
+<ul>
+<li>java</li>
+<li>ruby, bundler</li>
+<li>python</li>
+</ul>
+
+<p>Rakeタスクで次のことをやります。</p>
+
+<ol>
+<li>elasticsearch 1.1.1のダウンロードとサブディレクトリへの展開</li>
+<li>kibana 3.1のダウンロードとサブディレクトリへの展開</li>
+<li>elasticsearchスタート(port: 9200)</li>
+<li>サンプルOhaiデータをelasticsearchにポスト</li>
+<li>kibana用Python SimpleHTTPServerスタート(port: 8000)</li>
+</ol>
+
+<h3>
+<span id="セットアップ" class="fragment"></span><a href="#%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>セットアップ</h3>
+
+<p>Ohaiのモック作成に、<a href="https://github.com/customink/fauxhai" title="customink/fauxhai" rel="nofollow noopener" target="_blank">customink/fauxhai</a>を使います。<br>
+ダミーのOhaiデータを作ってくれます。これも単体で使用可能っちゃ可能。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle
+Using excon 0.33.0
+Using net-ssh 2.9.1
+Using ipaddress 0.8.0
+Using mime-types 1.25.1
+Using mixlib-cli 1.5.0
+Using mixlib-config 2.1.0
+Using mixlib-log 1.6.0
+Using rake 10.1.0
+Using mixlib-shellout 1.4.0
+Using coderay 1.1.0
+Using systemu 2.5.2
+Using yajl-ruby 1.2.0
+Using method_source 0.8.2
+Using slop 3.5.0
+Using yard 0.8.7.4
+Using webster 0.5.0
+Using bundler 1.6.2
+Using ohai 7.0.4
+Using pry 0.9.12.6
+Using pry-doc 0.6.0
+Using fauxhai 2.1.2
+Your bundle is complete!
+Use `bundle show [gemname]` to see where a bundled gem is installed.
+</pre></div></div>
+
+<p>後は<code>rake up</code>。 </p>
+
+<p>※<code>9200</code>ポートが既に使用中の場合、そちらを一旦止めるか、RakefileのPut部分の修正が必要です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ rake up
+Prepare elasticsearch and kibana..
+--2014-05-18 17:01:33--  https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-1.1.1.tar.gz
+
+2014-05-18 17:01:54 (1.01 MB/s) - `elasticsearch-1.1.1.tar.gz' saved [19872305/19872305]
+
+x elasticsearch-1.1.1/lib/lucene-codecs-4.7.2.jar
+-- snip 
+x elasticsearch-1.1.1/config/elasticsearch.yml
+--2014-05-18 17:01:54--  https://download.elasticsearch.org/kibana/kibana/kibana-3.1.0.tar.gz
+
+2014-05-18 17:01:58 (302 KB/s) - `kibana-3.1.0.tar.gz' saved [1073033/1073033]
+
+x kibana-3.1.0/app/app.js
+-- snip --
+x kibana-3.1.0/README.md
+
+Start elasticsearch !!
+Waiting es available....
+put 30 ohai mocks to elasticsearch
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/gaditan.example.com -d @-' =&gt; omnios
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/spiderly.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/martlet.example.com -d @-' =&gt; omnios
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/pyemia.example.com -d @-' =&gt; fedora
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/discantus.example.com -d @-' =&gt; fedora
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/yogasana.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/araneae.example.com -d @-' =&gt; amazon
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/tongueman.example.com -d @-' =&gt; 
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/sluice.example.com -d @-' =&gt; freebsd
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/cupping.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/bayou.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/suterbery.example.com -d @-' =&gt; redhat
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/muirfowl.example.com -d @-' =&gt; fedora
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/unreached.example.com -d @-' =&gt; ubuntu
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/bombastic.example.com -d @-' =&gt; 
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/sproutful.example.com -d @-' =&gt; windows
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/drubbly.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/proaction.example.com -d @-' =&gt; debian
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/langite.example.com -d @-' =&gt; amazon
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/arrowless.example.com -d @-' =&gt; ubuntu
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/cloisonne.example.com -d @-' =&gt; 
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/thiasoi.example.com -d @-' =&gt; ubuntu
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/lingy.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/ductor.example.com -d @-' =&gt; ubuntu
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/sandproof.example.com -d @-' =&gt; oracle
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/tasteless.example.com -d @-' =&gt; windows
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/uglifier.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/tsumebite.example.com -d @-' =&gt; suse
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/scienced.example.com -d @-' =&gt; redhat
+Example: 'ohai | curl -XPUT http://localhost:9200/ohai/node/workship.example.com -d @-' =&gt; gentoo
+Serving HTTP on 0.0.0.0 port 8000 ...
+</pre></div></div>
+
+<p>サンプルデータを登録して、PythonのWebサーバがあがりました。</p>
+
+<h3>
+<span id="サンプルデータの閲覧" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%83%87%E3%83%BC%E3%82%BF%E3%81%AE%E9%96%B2%E8%A6%A7"><i class="fa fa-link"></i></a>サンプルデータの閲覧</h3>
+
+<p><code>http://localhost:8000</code>を開くとKibanaが上がっています。<br>
+既存データがあるので、Sample Dashboardをそのまま利用することができますね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Faa829a29-3322-b611-cd69-417412fb7dd8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=96ee1ae526a6175476498623f3cea679" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Faa829a29-3322-b611-cd69-417412fb7dd8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=96ee1ae526a6175476498623f3cea679" alt="kibana_01.png" title="kibana_01.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/aa829a29-3322-b611-cd69-417412fb7dd8.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Faa829a29-3322-b611-cd69-417412fb7dd8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=54617aafc523679f6bb457ad06a3cbda 1x" loading="lazy"></a></p>
+
+<p>レコード一覧が出てきたら、<code>_id</code>フィールドのみ表示してみます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fca96aa0b-9292-6f83-34e7-e4285091c4b7.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=926ef0b14630aa94d1092a9f92780168" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fca96aa0b-9292-6f83-34e7-e4285091c4b7.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=926ef0b14630aa94d1092a9f92780168" alt="kibana_02.png" title="kibana_02.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/ca96aa0b-9292-6f83-34e7-e4285091c4b7.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fca96aa0b-9292-6f83-34e7-e4285091c4b7.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=66931c36cc863f51db41ea33a95c205c 1x" loading="lazy"></a></p>
+
+<p>サンプル登録されたホストがそのまま一覧で確認できますね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd81925da-70f0-4f36-18f3-e3e66b900cb3.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c3b2251eb297196ff43ca41ebab86dbf" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd81925da-70f0-4f36-18f3-e3e66b900cb3.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c3b2251eb297196ff43ca41ebab86dbf" alt="kibana_03.png" title="kibana_03.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d81925da-70f0-4f36-18f3-e3e66b900cb3.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd81925da-70f0-4f36-18f3-e3e66b900cb3.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=5f1fc88c6fa8f3d2f95659d08d726e1b 1x" loading="lazy"></a></p>
+
+<p>次は知りたいフィールドをチェクして、カラムを追加してみましょう。<br>
+今回はプラットフォームとそのバージョン、ついでにOhai実行に使ったRubyのバージョン(全てfauxhaiによるダミーデータ)を表示してみます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb52001c8-ffa5-9dfb-55ab-5b6d12421df6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b32e7f1bc85e50e4b0187c664b0530be" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb52001c8-ffa5-9dfb-55ab-5b6d12421df6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b32e7f1bc85e50e4b0187c664b0530be" alt="kibana_04.png" title="kibana_04.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/b52001c8-ffa5-9dfb-55ab-5b6d12421df6.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb52001c8-ffa5-9dfb-55ab-5b6d12421df6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=91421a133b87faf50484da586f200d88 1x" loading="lazy"></a></p>
+
+<p>定期的に<code>Ohai + curl</code>を仕込むだけで、Nodeの現在の構成情報が取れるようになりますね。</p>
+
+<p>クエリをちょいといじればこのようなグラフも。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fabfd61da-b0c0-a544-00a5-2ab8b9d492cc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9edeec8e64b21dcc525b7b689f4e8ba9" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fabfd61da-b0c0-a544-00a5-2ab8b9d492cc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9edeec8e64b21dcc525b7b689f4e8ba9" alt="kibana_05.png" title="kibana_05.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/abfd61da-b0c0-a544-00a5-2ab8b9d492cc.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fabfd61da-b0c0-a544-00a5-2ab8b9d492cc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=9a9bf291be7a35c011b314bf692fd776 1x" loading="lazy"></a></p>
+
+<h3>
+<span id="追記elasticsearchクエリの出力" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98elasticsearch%E3%82%AF%E3%82%A8%E3%83%AA%E3%81%AE%E5%87%BA%E5%8A%9B"><i class="fa fa-link"></i></a>追記:Elasticsearchクエリの出力</h3>
+
+<p>グラフを作ったら<code>inspect</code>ボタンでクエリ用Jsonを出力できます。<br>
+これはNodeのプラットフォームを集計するクエリです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>curl -XGET 'http://localhost:9200/_all/_search?pretty' -d '{
+  "facets": {
+    "terms": {
+      "terms": {
+        "field": "platform",
+        "size": 100,
+        "order": "count",
+        "exclude": []
+      },
+      "facet_filter": {
+        "fquery": {
+          "query": {
+            "filtered": {
+              "query": {
+                "bool": {
+                  "should": [
+                    {
+                      "query_string": {
+                        "query": "*"
+                      }
+                    }
+                  ]
+                }
+              },
+              "filter": {
+                "bool": {
+                  "must": [
+                    {
+                      "match_all": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "size": 0
+}'
+</pre></div></div>
+
+<p>サンプルNodeを少々多めに突っ込んでからcurlでクエリしてみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">curl</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>curl <span class="nt">-XGET</span> <span class="s1">'http://localhost:9200/_all/_search?pretty'</span> <span class="nt">-d</span> <span class="s1">'{
+&gt;   "facets": {
+
+-- snip --
+
+&gt; }'</span>
+
+<span class="o">{</span>
+  <span class="s2">"took"</span> : 3,
+  <span class="s2">"timed_out"</span> : <span class="nb">false</span>,
+  <span class="s2">"_shards"</span> : <span class="o">{</span>
+    <span class="s2">"total"</span> : 5,
+    <span class="s2">"successful"</span> : 5,
+    <span class="s2">"failed"</span> : 0
+  <span class="o">}</span>,
+  <span class="s2">"hits"</span> : <span class="o">{</span>
+    <span class="s2">"total"</span> : 111,
+    <span class="s2">"max_score"</span> : 0.0,
+    <span class="s2">"hits"</span> : <span class="o">[</span> <span class="o">]</span>
+  <span class="o">}</span>,
+  <span class="s2">"facets"</span> : <span class="o">{</span>
+    <span class="s2">"terms"</span> : <span class="o">{</span>
+      <span class="s2">"_type"</span> : <span class="s2">"terms"</span>,
+      <span class="s2">"missing"</span> : 7,
+      <span class="s2">"total"</span> : 104,
+      <span class="s2">"other"</span> : 0,
+      <span class="s2">"terms"</span> : <span class="o">[</span> <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"suse"</span>,
+        <span class="s2">"count"</span> : 17
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"fedora"</span>,
+        <span class="s2">"count"</span> : 11
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"amazon"</span>,
+        <span class="s2">"count"</span> : 11
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"smartos"</span>,
+        <span class="s2">"count"</span> : 9
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"debian"</span>,
+        <span class="s2">"count"</span> : 8
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"omnios"</span>,
+        <span class="s2">"count"</span> : 7
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"centos"</span>,
+        <span class="s2">"count"</span> : 7
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"windows"</span>,
+        <span class="s2">"count"</span> : 6
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"openbsd"</span>,
+        <span class="s2">"count"</span> : 6
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"ubuntu"</span>,
+        <span class="s2">"count"</span> : 5
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"oracle"</span>,
+        <span class="s2">"count"</span> : 5
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"freebsd"</span>,
+        <span class="s2">"count"</span> : 5
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"gentoo"</span>,
+        <span class="s2">"count"</span> : 4
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"mac_os_x"</span>,
+        <span class="s2">"count"</span> : 2
+      <span class="o">}</span>, <span class="o">{</span>
+        <span class="s2">"term"</span> : <span class="s2">"redhat"</span>,
+        <span class="s2">"count"</span> : 1
+      <span class="o">}</span> <span class="o">]</span>
+    <span class="o">}</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+
+<p>使いやすいといえば使いやすい。</p>
+
+<h3>
+<span id="サンプル停止" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E5%81%9C%E6%AD%A2"><i class="fa fa-link"></i></a>サンプル停止</h3>
+
+<p>WebサーバはCtrl+Cで止めて、ElasticSearchを停止しておきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ rake down
+Stop elasticsearch...
+</pre></div></div>
+
+<p>これでOK。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>Ohaiの詳しい解説は拙著<a href="http://ascii.asciimw.jp/books/books/detail/978-4-04-891985-2.shtml" title="Chef活用ガイド" rel="nofollow noopener" target="_blank">Chef活用ガイド</a>でもやっているので、収集したいデータを追加したいと思ったら参考になると思います。</p>
+
+<p>次は時系列っぽいデータ、Chef-HandlerからReportをElasticsearchに突っ込む予定。</p>

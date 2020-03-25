@@ -1,0 +1,94 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://aws.amazon.com/jp/opsworks/" rel="nofollow noopener" target="_blank">AWS OpsWorks</a>を使ってオートスケールを組み立てようと思い、用意されているスケール対応インスタンスタイプを調べてみました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2d9fe749-cd2b-2a90-eadc-1d58e758073f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b37755e643a67935eef26d6595fbaa07" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2d9fe749-cd2b-2a90-eadc-1d58e758073f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b37755e643a67935eef26d6595fbaa07" alt="inst01.jpg" title="inst01.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/2d9fe749-cd2b-2a90-eadc-1d58e758073f.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2d9fe749-cd2b-2a90-eadc-1d58e758073f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=b6ab36e0f0a64fc03cb7e501aa024d2b 1x" loading="lazy"></a></p>
+
+<p>ちなみにOpsWorksはCloudWatchのメトリクスと連携しているのでどのインスタンスでも<code>AutoHeal</code>オプションを使うことができます。Statusが何かおかしかったらインスタンスを作りなおしてくれるナイス機能です。</p>
+
+<h2>
+<span id="247" class="fragment"></span><a href="#247"><i class="fa fa-link"></i></a>24/7</h2>
+
+<p>普通のレギュラーなインスタンスで、常時上がりっぱなしのインスタンスです。<br>
+通常はこのタイプを一つ用意して、<code>TimeBase</code>， <code>LoadBase</code>を増やしていく感じでしょう。</p>
+
+<p>ただ、レイヤ内に<code>24/7</code>が１つもない状態で他のタイプがある場合は最低1台になるようにどれかが上がってくるようです。実は不要かもしれませんね。</p>
+
+<h2>
+<span id="time-based-instance" class="fragment"></span><a href="#time-based-instance"><i class="fa fa-link"></i></a>Time based instance</h2>
+
+<p>１時間単位で起動・停止の状態をスケジュールできるインスタンスです。<strong>時間はUTC</strong>で指定するので、お間違えの無いよう。</p>
+
+<p>設定のUIはこんなかんじです、薄いのは曜日別設定アリ、濃い緑は<code>Everyday</code>のスケジュールです。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdb489f61-cca5-79c9-ac76-1778c892457c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9b7b31bf6a32c4260603a1f5f1bf5c76" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdb489f61-cca5-79c9-ac76-1778c892457c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9b7b31bf6a32c4260603a1f5f1bf5c76" alt="time_base01.jpg" title="time_base01.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/db489f61-cca5-79c9-ac76-1778c892457c.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdb489f61-cca5-79c9-ac76-1778c892457c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=4e177c011e200819b99fc1e46d3f8cc0 1x" loading="lazy"></a></p>
+
+<p>設定後、UP指定の時間帯になったらStop状態だったインスタンスが勝手に上がって来ました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1350845e-1cc3-ab0b-26f7-fb0dc5f0b44a.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e1ac8b6db5bb3ba1c198bbee9cacf1a9" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1350845e-1cc3-ab0b-26f7-fb0dc5f0b44a.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e1ac8b6db5bb3ba1c198bbee9cacf1a9" alt="time_base02.jpg" title="time_base02.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1350845e-1cc3-ab0b-26f7-fb0dc5f0b44a.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1350845e-1cc3-ab0b-26f7-fb0dc5f0b44a.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=e3f173284c82a153a3a00a8c8ce34240 1x" loading="lazy"></a></p>
+
+<p>デプロイまで完了したらELBに勝手に参加します、便利やなあ。</p>
+
+<h2>
+<span id="loadbased" class="fragment"></span><a href="#loadbased"><i class="fa fa-link"></i></a>LoadBased</h2>
+
+<p>CloudWatchとのメトリクス連携真骨頂ですね。<br>
+レイヤ内のインスタンスの<strong>平均負荷状況</strong>に閾値を設定し、指定時間内にその状態だったらインスタンスを起動します。</p>
+
+<p>ルールはこんな感じです。</p>
+
+<ul>
+<li>５分高負荷状態が続いたらインスタンス起動</li>
+<li>10分低負荷になったらインスタンス停止</li>
+<li>一度に任意の台数を追加・停止可能</li>
+</ul>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffdb0af8a-df9b-fb28-1e05-5974abe4070b.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=174ec41f289d52319036c680931b3e6c" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffdb0af8a-df9b-fb28-1e05-5974abe4070b.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=174ec41f289d52319036c680931b3e6c" alt="LBI01.jpg" title="LBI01.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/fdb0af8a-df9b-fb28-1e05-5974abe4070b.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffdb0af8a-df9b-fb28-1e05-5974abe4070b.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=5f38b32f2fb144a6917cd03d6976fbc6 1x" loading="lazy"></a></p>
+
+<h3>
+<span id="負荷をかけてみる" class="fragment"></span><a href="#%E8%B2%A0%E8%8D%B7%E3%82%92%E3%81%8B%E3%81%91%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>負荷をかけてみる</h3>
+
+<p>LoadBasedインスタンスを追加した後閾値を40%まで下げて、レイヤ内の1台でCPUベンチをまわしてみました。</p>
+
+<p>丁度yumに<code>sysbench</code>があったのでぶっ放します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">sysbench_loop</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="k">while</span> /bin/true <span class="p">;</span> <span class="k">do </span>sysbench <span class="nt">--num-threads</span><span class="o">=</span>4 <span class="nt">--test</span><span class="o">=</span>cpu run <span class="p">;</span> <span class="k">done</span>
+</pre></div>
+</div>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F37f60b9c-597c-1497-e331-dd3bc72a3c7f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=90749260ff10591c205ef1c28da703e5" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F37f60b9c-597c-1497-e331-dd3bc72a3c7f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=90749260ff10591c205ef1c28da703e5" alt="sysbench_agent.jpg" title="sysbench_agent.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/37f60b9c-597c-1497-e331-dd3bc72a3c7f.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F37f60b9c-597c-1497-e331-dd3bc72a3c7f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=24e7cc8b0670fde121ff05235997f186 1x" loading="lazy"></a></p>
+
+<p>インスタンス2つのうち、1つが100％ベッタリになっているのでレイヤの平均負荷も良い具合に50％です。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6901acd1-e859-438b-34e3-0d340b0ca488.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e84182cd81747faf318852d5e0bda8a1" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6901acd1-e859-438b-34e3-0d340b0ca488.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e84182cd81747faf318852d5e0bda8a1" alt="monitoring01.jpg" title="monitoring01.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/6901acd1-e859-438b-34e3-0d340b0ca488.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6901acd1-e859-438b-34e3-0d340b0ca488.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=6033a084e639de9ba99e3fd66bef890d 1x" loading="lazy"></a></p>
+
+<p>では5分ほど待ってみます。</p>
+
+<h2>
+<span id="勝手にインスタンスが起動" class="fragment"></span><a href="#%E5%8B%9D%E6%89%8B%E3%81%AB%E3%82%A4%E3%83%B3%E3%82%B9%E3%82%BF%E3%83%B3%E3%82%B9%E3%81%8C%E8%B5%B7%E5%8B%95"><i class="fa fa-link"></i></a>勝手にインスタンスが起動</h2>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9919cbea-558e-18f5-ed59-e337b4c085bc.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fb0a6141dea3027e7239e9d5b303b31b" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9919cbea-558e-18f5-ed59-e337b4c085bc.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fb0a6141dea3027e7239e9d5b303b31b" alt="load03.jpg" title="load03.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/9919cbea-558e-18f5-ed59-e337b4c085bc.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9919cbea-558e-18f5-ed59-e337b4c085bc.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=901f7b8eb0325eb9b03ec1a3e2187da0 1x" loading="lazy"></a></p>
+
+<p>おお、レイヤの負荷に控えのインスタンスが駆けつける※様子が見られました！</p>
+
+<p>※インスタンスストアでやると手軽ですが流石に遅いです、EBSにして一回くらい起動しておくとパッケージインストールなどを省けるぶんそこそこ早いかと思います。</p>
+
+<h3>
+<span id="平均負荷が軽減" class="fragment"></span><a href="#%E5%B9%B3%E5%9D%87%E8%B2%A0%E8%8D%B7%E3%81%8C%E8%BB%BD%E6%B8%9B"><i class="fa fa-link"></i></a>平均負荷が軽減</h3>
+
+<p>3台目のインスタンスが起動したので、レイヤの平均負荷は狙い通り33％となりました、もちろんELBに参加してくれています。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ee7db4a-7931-bbb5-28f4-c851ca33ff08.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=691684403d1b400f7a703c9a30177bae" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ee7db4a-7931-bbb5-28f4-c851ca33ff08.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=691684403d1b400f7a703c9a30177bae" alt="load04.jpg" title="load04.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/4ee7db4a-7931-bbb5-28f4-c851ca33ff08.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ee7db4a-7931-bbb5-28f4-c851ca33ff08.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0df6373619da3ce2dfc3b0e00db9948c 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="終わりに" class="fragment"></span><a href="#%E7%B5%82%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>終わりに</h2>
+
+<p>こういったオートスケールに対応するには、アプリケーション側の対応はもちろん、アプリケーションが動作するプラットフォームを、サーバに一切触らず構築する仕組みへの理解が大事になってきます。</p>
+
+<p>今回試したのはStaticなWebサイトの配信だったので全く考える余地は無かったのですが、起動・デプロイ・後片付け・停止のサイクルをしっかり管理できるようなレシピを作るスキルを磨いていかないといけないですね。</p>

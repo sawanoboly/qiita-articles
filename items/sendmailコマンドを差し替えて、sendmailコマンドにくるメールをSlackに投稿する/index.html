@@ -1,0 +1,168 @@
+<p>よく見る<code>/path/to/sendmail -i -t</code>が機能するためには、SMTPをどこかで受ける必要があります。そのためだけにローカルでMTAを起動したり、何かしらのフォワーダを動かしたりもします。</p>
+
+<p>今回は<code>sendmail</code>への入力に対して、どうせテキストなんだしSMTPにのせる前に横取りして好きなメッセンジャーに流してしまいます。</p>
+
+<p>サンプルコードのリポジトリはこちら。 <a href="https://github.com/sawanoboly/replace_sendmail_to_slackwebhook_example" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/sawanoboly/replace_sendmail_to_slackwebhook_example</a></p>
+
+<h2>
+<span id="sendmailコマンドでメールを送信している例-crond" class="fragment"></span><a href="#sendmail%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E3%81%A7%E3%83%A1%E3%83%BC%E3%83%AB%E3%82%92%E9%80%81%E4%BF%A1%E3%81%97%E3%81%A6%E3%81%84%E3%82%8B%E4%BE%8B-crond"><i class="fa fa-link"></i></a>sendmailコマンドでメールを送信している例： crond</h2>
+
+<p>crondはMAILTOオプションをセットしておくと、stdout/stderrに何かしら出力があった場合にメールを送信します。<br>
+crontabに次のように書いたとします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>MAILTO="sawanoboly"
+* * * * * /bin/not_found
+</pre></div></div>
+
+<p>このコマンドはエラーで終わります。その後、crondの内部ではsendmailコマンドに次のような標準入力をわたします。(※debugレベルをかなり詳細に設定すればその他引数も確認できるでしょう。)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>To: "sawanoboly"
+Subject: cron: /bin/not_found
+
+/bin/sh: /bin/not_found: not found
+</pre></div></div>
+
+<p>ヘッダ＋空白行＋本文 の形式ですね。</p>
+
+<h2>
+<span id="slackに流すコードgo" class="fragment"></span><a href="#slack%E3%81%AB%E6%B5%81%E3%81%99%E3%82%B3%E3%83%BC%E3%83%89go"><i class="fa fa-link"></i></a>slackに流すコード(Go)</h2>
+
+<p><code>net/mail</code>でパースできる形式なのでそのまま使い、slackへ。引数はまあ、、無視でいいや。</p>
+
+<ul>
+<li>参考:
+
+<ul>
+<li><a href="https://golang.org/pkg/net/mail/" rel="nofollow noopener" target="_blank">mail - The Go Programming Language</a></li>
+<li><a href="https://github.com/ashwanthkumar/slack-go-webhook" rel="nofollow noopener" target="_blank">ashwanthkumar/slack-go-webhook: Go Library to send messages to Slack via Webhooks</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="code-frame" data-lang="golang">
+<div class="code-lang"><span class="bold">main.go</span></div>
+<div class="highlight"><pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"fmt"</span>
+    <span class="s">"io/ioutil"</span>
+    <span class="s">"log"</span>
+    <span class="s">"net/mail"</span>
+    <span class="s">"os"</span>
+    <span class="s">"strings"</span>
+
+    <span class="s">"github.com/ashwanthkumar/slack-go-webhook"</span>
+<span class="p">)</span>
+
+<span class="k">var</span> <span class="n">webhookURL</span> <span class="o">=</span> <span class="s">"https://hooks.slack.com/services/foo/bar/baz"</span>
+
+<span class="k">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">sendmainInput</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">ioutil</span><span class="o">.</span><span class="n">ReadAll</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">Stdin</span><span class="p">)</span>
+    <span class="c">// net/mailのサンプルをほぼそのまま</span>
+    <span class="n">m</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">mail</span><span class="o">.</span><span class="n">ReadMessage</span><span class="p">(</span><span class="n">strings</span><span class="o">.</span><span class="n">NewReader</span><span class="p">(</span><span class="kt">string</span><span class="p">(</span><span class="n">sendmainInput</span><span class="p">)))</span>
+
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="n">header</span> <span class="o">:=</span> <span class="n">m</span><span class="o">.</span><span class="n">Header</span>
+    <span class="n">body</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">ioutil</span><span class="o">.</span><span class="n">ReadAll</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">Body</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c">// slack-go-webhookのサンプルをほぼそのまま</span>
+    <span class="n">attachment1</span> <span class="o">:=</span> <span class="n">slack</span><span class="o">.</span><span class="n">Attachment</span><span class="p">{}</span>
+    <span class="n">attachment1</span><span class="o">.</span><span class="n">AddField</span><span class="p">(</span><span class="n">slack</span><span class="o">.</span><span class="n">Field</span><span class="p">{</span><span class="n">Title</span><span class="o">:</span> <span class="n">header</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s">"Subject"</span><span class="p">),</span> <span class="n">Value</span><span class="o">:</span> <span class="kt">string</span><span class="p">(</span><span class="n">body</span><span class="p">)})</span>
+
+    <span class="n">username</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">os</span><span class="o">.</span><span class="n">Hostname</span><span class="p">()</span>
+    <span class="n">payload</span> <span class="o">:=</span> <span class="n">slack</span><span class="o">.</span><span class="n">Payload</span><span class="p">{</span>
+        <span class="n">Username</span><span class="o">:</span>    <span class="n">username</span><span class="p">,</span>
+        <span class="n">Text</span><span class="o">:</span>        <span class="kt">string</span><span class="p">(</span><span class="n">body</span><span class="p">),</span>
+        <span class="n">Attachments</span><span class="o">:</span> <span class="p">[]</span><span class="n">slack</span><span class="o">.</span><span class="n">Attachment</span><span class="p">{</span><span class="n">attachment1</span><span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="n">errs</span> <span class="o">:=</span> <span class="n">slack</span><span class="o">.</span><span class="n">Send</span><span class="p">(</span><span class="n">webhookURL</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="m">0</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"error: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">errs</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>ビルドするときに<code>main.webhookURL</code>を渡せばOKです。こんな感じですね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>GOOS=linux go build -ldflags="-X main.webhookURL=${YOUR_WEBHOOK_URL}" -o override_bin/sendmail main.go
+</pre></div></div>
+
+<h2>
+<span id="docker--crondのデモ" class="fragment"></span><a href="#docker--crond%E3%81%AE%E3%83%87%E3%83%A2"><i class="fa fa-link"></i></a>docker + crondのデモ</h2>
+
+<p>先ほどの<code>override_bin/sendmail</code>と、次の内容で<code>crontab/root</code>ファイルを用意して、Dockerfileを記述します。</p>
+
+<div class="code-frame" data-lang="crontab">
+<div class="code-lang"><span class="bold">crontabs/root</span></div>
+<div class="highlight"><pre>MAILTO="dummy-mailto"
+* * * * * /bin/not_found
+</pre></div>
+</div>
+
+<p>Dockerfileはこのようにbusyboxベースで。</p>
+
+<div class="code-frame" data-lang="dockerfile">
+<div class="code-lang"><span class="bold">Dockerfile</span></div>
+<div class="highlight"><pre><span class="k">FROM</span><span class="s"> alpine:latest AS cafile</span>
+<span class="k">RUN </span>apk add <span class="nt">--no-cache</span> ca-certificates
+
+
+<span class="k">FROM</span><span class="s"> busybox:latest</span>
+<span class="c">## これをもってこないとCAの関係で各所へのHTTPSのコネクションが張りづらい。</span>
+<span class="k">COPY</span><span class="s"> --from=cafile /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt</span>
+
+<span class="k">ADD</span><span class="s"> crontabs /var/spool/cron/crontabs</span>
+<span class="k">ADD</span><span class="s"> override_bin/sendmail /bin/sendmail</span>
+
+<span class="k">ENTRYPOINT</span><span class="s"> ["/bin/crond", "-f", "-d", "4", "-L", "/dev/stderr"]</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="実行" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>実行</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker run -it --rm fakesendmail:latest
+crond: crond (busybox 1.26.2) started, log level 4
+
+...(中略)
+
+crond: wakeup dt=28
+crond: file root:
+crond:  line /bin/not_found
+crond:  job: 0 /bin/not_found
+crond: child running /bin/sh
+crond: USER root pid   6 cmd /bin/not_found
+crond: wakeup dt=10
+crond: child running sendmail # sendmailコマンドをキック
+
+...
+</pre></div></div>
+
+<p>OK, slackに来ましたわ。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ff96e9f-2580-3ca8-a7a4-1877b87346cf.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bd46bc2b1dd883add4af79eedaa5da04" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ff96e9f-2580-3ca8-a7a4-1877b87346cf.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bd46bc2b1dd883add4af79eedaa5da04" alt="sendmail.jpg" title="sendmail.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/4ff96e9f-2580-3ca8-a7a4-1877b87346cf.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ff96e9f-2580-3ca8-a7a4-1877b87346cf.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=44eec0f23883c68af4efae7b982e87a7 1x" loading="lazy"></a></p>
+
+<p>余談ですが、このデモ通りにcrond(busybox版)を単発で実行するだけのdockerコンテナはstopで素直に止まらないので、実際は<a href="https://blog.tutum.co/2015/05/20/s6-made-easy-with-the-s6-overlay/" rel="nofollow noopener" target="_blank">s6-overlay</a>等をカマすとちょっと扱いやすくなります。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>まともにSMTPにのせることも再送やルーティングなどそれなりの利点はあるので、これでも十分ってところでだけ使いましょう。</p>
+
+<p><code>sendmail</code>が受け取っている引数と入力を単純に吐き出して確認する場合、こんなスクリプトに差し替えてから色々動かしてみるとよいです。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">/path/to/sendmail</span></div>
+<div class="highlight"><pre><span class="c">#!/bin/bash</span>
+
+<span class="nb">echo</span> <span class="nv">$@</span> <span class="o">&gt;&gt;</span> /tmp/sendmail_args
+<span class="nb">cat</span> - <span class="o">&gt;&gt;</span> /tmp/sendmail_stdin
+</pre></div>
+</div>

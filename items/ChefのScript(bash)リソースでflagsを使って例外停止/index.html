@@ -1,0 +1,52 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>chefのscriptリソースにbashを選ぶと、そのままではスクリプトの途中でエラーが出ても停止しない。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipe.rb</span></div>
+<div class="highlight"><pre><span class="n">script</span> <span class="s2">"echo_test"</span> <span class="k">do</span>
+  <span class="n">interpreter</span> <span class="s2">"bash"</span>
+  <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">"EOH"</span><span class="sh">
+      ehco
+      echo
+</span><span class="no">  EOH</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>Scriptリソースは単に<code>code</code>の中身をファイルに書いてbashで実行している、exitコードは最後に実行したコマンドに依存するため、上記レシピではtypoの<code>ehco</code>があっても続きが実行されてしまう。</p>
+
+<h2>
+<span id="flagsを使う" class="fragment"></span><a href="#flags%E3%82%92%E4%BD%BF%E3%81%86"><i class="fa fa-link"></i></a>flagsを使う</h2>
+
+<p><code>flags "-e"</code>を指定すると、bashに -e <code>("set -e" と同じ)</code>オプションをつけてくれるので止まる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipe_with_exception.rb</span></div>
+<div class="highlight"><pre><span class="n">script</span> <span class="s2">"echo_test"</span> <span class="k">do</span>
+  <span class="n">interpreter</span> <span class="s2">"bash"</span>
+  <span class="n">flags</span> <span class="s2">"-e"</span>
+  <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">"EOH"</span><span class="sh">
+      ehco
+      echo
+</span><span class="no">  EOH</span>
+<span class="k">end</span>
+
+</pre></div>
+</div>
+
+<h2>
+<span id="実行例" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E4%BE%8B"><i class="fa fa-link"></i></a>実行例</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>---- Begin output of "bash" -e "/tmp/chef-script20120815-11796-1cn4njv" ----
+STDOUT: 
+STDERR: /tmp/chef-script20120815-11796-1cn4njv: line 1: ehco: command not found
+---- End output of "bash" -e "/tmp/chef-script20120815-11796-1cn4njv" ----
+Ran "bash" -e "/tmp/chef-script20120815-11796-1cn4njv" returned 127
+</pre></div></div>
+
+<p><code>ehco: command not found</code> で無事に止まった。</p>

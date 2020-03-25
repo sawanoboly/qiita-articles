@@ -1,0 +1,113 @@
+<p>自分がOSSとして公開しているChefのプラグイン、<a href="https://github.com/higanworks/" rel="nofollow noopener" target="_blank">knife-zero</a>っていうのには76のスターが付いている。<br>
+取り立てて多いというほどの数でもないのだろうが、Stargazersのほとんどがまるで縁もゆかりもないのだ。しかも最近国外が多い気もしている。</p>
+
+<p>この、お互いどこの馬の骨ともわからん状態というのがわりと面白く感じたので、せっかくだからとロケーションを確認したくなった。</p>
+
+<h2>
+<span id="pythonで書いてみる" class="fragment"></span><a href="#python%E3%81%A7%E6%9B%B8%E3%81%84%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>Pythonで書いてみる</h2>
+
+<p>使ったモジュールは<code>github3.py</code>, Pythonは2.7.10。</p>
+
+<div class="code-frame" data-lang="python">
+<div class="code-lang"><span class="bold">sg.py</span></div>
+<div class="highlight"><pre><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">github3</span> <span class="kn">import</span> <span class="n">login</span>
+
+<span class="c1">## トークン使わないとAPI上限にすぐ引っかかる。
+</span><span class="n">gh</span> <span class="o">=</span> <span class="n">login</span><span class="p">(</span><span class="n">token</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s">'GH_TOKEN'</span><span class="p">])</span>
+<span class="n">repo</span> <span class="o">=</span> <span class="n">gh</span><span class="o">.</span><span class="n">repository</span><span class="p">(</span><span class="s">'higanworks'</span><span class="p">,</span> <span class="s">'knife-zero'</span><span class="p">)</span>
+
+<span class="c1">## iter_stargazers()がUserをイテレータの形で返してくれる。
+</span><span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">repo</span><span class="o">.</span><span class="n">iter_stargazers</span><span class="p">():</span>
+    <span class="k">print</span> <span class="n">x</span><span class="p">,</span> <span class="n">gh</span><span class="o">.</span><span class="n">user</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">location</span>
+
+</pre></div>
+</div>
+
+<h2>
+<span id="実行してロケーションを抽出してみた" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%83%AD%E3%82%B1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%92%E6%8A%BD%E5%87%BA%E3%81%97%E3%81%A6%E3%81%BF%E3%81%9F"><i class="fa fa-link"></i></a>実行してロケーションを抽出してみた</h2>
+
+<p>結局表記バラバラでつらいｗ</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ python ./sg.py 
+tkuchiki None
+libero18 Japan
+DQNEO Japan
+mohitsethi None
+marcy-terui Sapporo City, Hokkaido, Japan
+kimikimi714 None
+tkak Tokyo
+MasahiroSakoda Kanagawa Pref. Japan
+takus Japan
+kwilczynski Tokyo, Japan
+nabeken Tokyo, Japan
+deeeki Japan
+bageljp Tokyo, Japan
+shigeya Tokyo, Japan
+blp1526 Tokyo
+cl-lab-k Japan
+knakayama Japan
+wslash Japan
+linyows FuckOka, Japan
+SlyDen Lviv, Ukraine
+eigo-s None
+threetreeslight Tokyo
+y13i Tokyo, Japan
+bangbangshoot None
+fprg None
+sanemat Tokyo, Japan
+fumikony None
+dataferret Halifax, Canada
+ikuwow Japan
+rmoriz Munich, Germany
+arosenhagen Darmstadt
+sakazuki Tokyo, Japan
+9gel None
+teragino None
+ispern Kagoshima
+torounit Matsumoto, Nagano, Japan
+Gascar-ShunT Tokyo
+imura81gt None
+cblunt Devon, UK
+yukimamire None
+gregf Maine
+Azulinho Bristol
+paulmoon None
+inokappa None
+ChrisLundquist Seattle, Wa
+takeharu Tokyo
+antage Russia
+Chirul0 None
+mitto Yokohama
+runningman84 None
+ssdns None
+kyle-johnson Seattle, WA
+ryandjurovich Melbourne, Australia
+rollbrettler Berlin
+adampats None
+hirak Tokyo
+patcon Waffles
+k-nii0211 Tokyo
+sawanoboly Kobe, Japan
+ghempton Seattle, WA
+mrjcleaver Toronto, ON, Canada
+yukihariguchi None
+hsbt Tokyo, Japan
+azet *
+k-yamada japan
+daften Gent
+pwelch Silver Spring, MD
+dalpo Italy
+h4ck3rm1k3 Hopewell, NJ
+gretel Hamburg, Germany
+expvictordamian None
+guiferrpereira Porto
+andrefreitas Porto and Madeira, Portugal
+ruimashita None
+caleb Rochester, NY
+4148 Berkeley, CA
+</pre></div></div>
+
+<p>確定で日本じゃない(Japan,Tokyo,Noneを除く)のは1/3ってとこでしたね。アフリカと南極以外は一通りでてくる。</p>
+
+<p>そんななか、一番驚いたのは <strong>FuckOka</strong>, Japan からお越しの方。</p>

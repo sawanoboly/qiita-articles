@@ -1,0 +1,119 @@
+<p>ドメインそのものを表す Zone Apex (Naked DomainとかRoot Domainとかも) は<a href="https://tools.ietf.org/html/rfc1912#section-2.4" rel="nofollow noopener" target="_blank">色々あって</a>基本的にはAレコードでの運用です。</p>
+
+<p>最近はNameServerとWebサイト(公開URL)を預けるプロバイダが同一ならば対応しやすくはなっていますが、次のようなケースでは悩みどころです。</p>
+
+<ul>
+<li>ゾーンは自分の管理下</li>
+<li>Webサイトはホスト名を払い出すタイプ(CNAME推奨)のどこかのサービスを利用</li>
+</ul>
+
+<p>この組み合わせでZone apexを利用できるNameServerプロバイダを並べてみます。 ほか、ここでもできるよーという情報があれば追記するのでコメントしてもらえると嬉しいです。</p>
+
+<h2>
+<span id="国内" class="fragment"></span><a href="#%E5%9B%BD%E5%86%85"><i class="fa fa-link"></i></a>国内</h2>
+
+<p>新鋭のサービス中心、って感じですね。</p>
+
+<h3>
+<span id="dozensダズンズ" class="fragment"></span><a href="#dozens%E3%83%80%E3%82%BA%E3%83%B3%E3%82%BA"><i class="fa fa-link"></i></a><a href="http://dozens.jp/" rel="nofollow noopener" target="_blank">Dozens（ダズンズ）</a>
+</h3>
+
+<ul>
+<li>
+<a href="http://help.dozens.jp/post/help/help_03/" rel="nofollow noopener" target="_blank">DNSレコード設定の手順 - Dozens ヘルプセンター</a>
+
+<ul>
+<li>
+<code>ALIASレコード</code> を参照</li>
+</ul>
+</li>
+</ul>
+
+<h3>
+<span id="gehirn-dns" class="fragment"></span><a href="#gehirn-dns"><i class="fa fa-link"></i></a><a href="https://www.gehirn.jp/gis/dns.html" rel="nofollow noopener" target="_blank">Gehirn DNS</a>
+</h3>
+
+<ul>
+<li><a href="https://support.gehirn.jp/manual/gis/dns/add-aliasrecord/" rel="nofollow noopener" target="_blank">ALIAS（エイリアス）レコードの追加 | ゲヒルンサポートセンター</a></li>
+</ul>
+
+<h2>
+<span id="海外" class="fragment"></span><a href="#%E6%B5%B7%E5%A4%96"><i class="fa fa-link"></i></a>海外</h2>
+
+<p>特に区別する必要もない気はしますがなんとなく。</p>
+
+<h3>
+<span id="dnsimple" class="fragment"></span><a href="#dnsimple"><i class="fa fa-link"></i></a><a href="https://dnsimple.com/" rel="nofollow noopener" target="_blank">DNSimple</a>
+</h3>
+
+<ul>
+<li><a href="https://support.dnsimple.com/articles/alias-record/" rel="nofollow noopener" target="_blank">ALIAS Records - DNSimple Help</a></li>
+<li>設定例： <a href="https://support.dnsimple.com/articles/domain-apex-heroku/" rel="nofollow noopener" target="_blank">Pointing the Domain Apex to Heroku - DNSimple Help</a>
+
+<ul>
+<li>heroku向けの案内ですが、どこでも一緒です。</li>
+</ul>
+</li>
+</ul>
+
+<p>ここ、個人的にしばらく使っていましたね。</p>
+
+<h3>
+<span id="dns-made-easy" class="fragment"></span><a href="#dns-made-easy"><i class="fa fa-link"></i></a><a href="https://dnsmadeeasy.com/" rel="nofollow noopener" target="_blank">DNS Made Easy</a>
+</h3>
+
+<p>ここのは<code>ANAME</code>ですね。</p>
+
+<ul>
+<li><a href="https://dnsmadeeasy.com/services/anamerecords/" rel="nofollow noopener" target="_blank">ANAME Records | DNS Made Easy</a></li>
+</ul>
+
+<h3>
+<span id="easydns" class="fragment"></span><a href="#easydns"><i class="fa fa-link"></i></a><a href="https://www.easydns.com/" rel="nofollow noopener" target="_blank">easyDNS</a>
+</h3>
+
+<p>こちらも<code>ANAME</code>ですね。</p>
+
+<ul>
+<li><a href="https://fusion.easydns.com/index.php?/Knowledgebase/Article/View/190/7/aname-records/" rel="nofollow noopener" target="_blank">ANAME Records - easyDNS</a></li>
+</ul>
+
+<h2>
+<span id="その他やや特殊制限つき" class="fragment"></span><a href="#%E3%81%9D%E3%81%AE%E4%BB%96%E3%82%84%E3%82%84%E7%89%B9%E6%AE%8A%E5%88%B6%E9%99%90%E3%81%A4%E3%81%8D"><i class="fa fa-link"></i></a>その他、やや特殊・制限つき</h2>
+
+<h3>
+<span id="cloudflare" class="fragment"></span><a href="#cloudflare"><i class="fa fa-link"></i></a><a href="https://www.cloudflare.com/" rel="nofollow noopener" target="_blank">Cloudflare</a>
+</h3>
+
+<p>CNAMEを設定しても、基本的にAに展開してあつかう、という機能でApexに他のホスト名を割り当てられます。(alias of 〜 などと表記される)</p>
+
+<ul>
+<li><a href="https://support.cloudflare.com/hc/en-us/articles/200169056-CNAME-Flattening-RFC-compliant-support-for-CNAME-at-the-root" rel="nofollow noopener" target="_blank">CNAME Flattening: RFC-compliant support for CNAME at the root – Cloudflare Support</a></li>
+</ul>
+
+<p>もともとCDNの補佐的位置で、ApexにCNAMEをつかうと他のレコードとの兼ね合いで挙動が怪しい、などとどこかで見たのでこの位置。一応自分も使ってます。</p>
+
+<h3>
+<span id="route53とcloudfrontでそれぞれawsアカウントが違うケース" class="fragment"></span><a href="#route53%E3%81%A8cloudfront%E3%81%A7%E3%81%9D%E3%82%8C%E3%81%9E%E3%82%8Caws%E3%82%A2%E3%82%AB%E3%82%A6%E3%83%B3%E3%83%88%E3%81%8C%E9%81%95%E3%81%86%E3%82%B1%E3%83%BC%E3%82%B9"><i class="fa fa-link"></i></a>Route53とCloudFrontでそれぞれAWSアカウントが違うケース</h3>
+
+<p>サービスを申し込んだらCloudFrontで配信してくれた、自分のドメインのApexを割り当てたい。というケース。<br>
+アカウントが同一ならプルダウンで選べるけども、別だとさすがに一覧に出て来ません。一応AWSのリソースならApexにALIASを直接指定すれば使えます。</p>
+
+<ul>
+<li>
+<a href="http://docs.aws.amazon.com/ja_jp/Route53/latest/DeveloperGuide/resource-record-sets-values-alias.html##rrsets-values-alias-alias-target" rel="nofollow noopener" target="_blank">エイリアス先 - Amazon Route 53</a>
+
+<ul>
+<li>
+<code>Amazon Route 53 ホストゾーンとディストリビューションを作成する際に異なるアカウントを使用している場合</code>  を参照</li>
+</ul>
+</li>
+</ul>
+
+<p>ELBなんかも同様。</p>
+
+<h3>
+<span id="pointdns-with-heoku" class="fragment"></span><a href="#pointdns-with-heoku"><i class="fa fa-link"></i></a><a href="https://pointhq.com/" rel="nofollow noopener" target="_blank">PointDNS</a> (with heoku?)</h3>
+
+<p><a href="https://devcenter.heroku.com/articles/pointdns" rel="nofollow noopener" target="_blank">herokuのアドオン経由でALIASを設定</a> できるようなんだけど、PointDNS側に何のドキュメントもない。<br>
+APIでもALIASというタイプのレコードを作れるように見えないのでheroku限定かも。</p>

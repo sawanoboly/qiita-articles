@@ -1,0 +1,223 @@
+<p>Rubyの多言語対応で探すと(私の守備範囲では)だいたい<a href="https://github.com/svenfuchs/i18n" rel="nofollow noopener" target="_blank">i18n</a>。そしてほとんどWebアプリ≒Railsの話。<br>
+たまにはただのRubyプログラムやCLIでもロケール(locale/LANG)に対応した出力をしてみるのもいいかなと動かしてみた。</p>
+
+<h2>
+<span id="i18n全体のながれ" class="fragment"></span><a href="#i18n%E5%85%A8%E4%BD%93%E3%81%AE%E3%81%AA%E3%81%8C%E3%82%8C"><i class="fa fa-link"></i></a>i18n全体のながれ</h2>
+
+<ul>
+<li>言語対応表保存のバックエンドを選択</li>
+<li>バックエンドに言語の対応表をロード(都度取得も可？)</li>
+<li>ロケールとキーからそれぞれの中身を返す</li>
+</ul>
+
+<p>準備さえしておけば、ふだんputsやLoggerに渡しているStringをi18nから返せば良さそうである。</p>
+
+<h2>
+<span id="言語ファイルでやってみる" class="fragment"></span><a href="#%E8%A8%80%E8%AA%9E%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%A7%E3%82%84%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>言語ファイルでやってみる</h2>
+
+<p>試しに２つの言語ファイル、<code>en.yml</code>, <code>ja.yml</code>を作成。</p>
+
+<p>これ英語。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">locales/en.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">en</span><span class="pi">:</span>
+  <span class="na">of</span><span class="pi">:</span> <span class="s">of the people</span>
+  <span class="na">by</span><span class="pi">:</span> <span class="s">by the people</span>
+  <span class="na">for</span><span class="pi">:</span> <span class="s">for the people</span>
+</pre></div>
+</div>
+
+<p>こっち日本語。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">locales/ja.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">ja</span><span class="pi">:</span>
+  <span class="na">of</span><span class="pi">:</span> <span class="s">人民の</span>
+  <span class="na">by</span><span class="pi">:</span> <span class="s">人民による</span>
+  <span class="na">for</span><span class="pi">:</span> <span class="s">人民のための</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="シンプルなバックエンドを選択し起動時にロードする" class="fragment"></span><a href="#%E3%82%B7%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AA%E3%83%90%E3%83%83%E3%82%AF%E3%82%A8%E3%83%B3%E3%83%89%E3%82%92%E9%81%B8%E6%8A%9E%E3%81%97%E8%B5%B7%E5%8B%95%E6%99%82%E3%81%AB%E3%83%AD%E3%83%BC%E3%83%89%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>シンプルなバックエンドを選択し、起動時にロードする</h2>
+
+<p>とりあえず単品で動けばいいので、一番単純そうなバックエンド<code>I18n::Backend::Simple</code>を選択。<br>
+変換の処理も色々呼び方があるので、適当に変えながら出力してみよう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">app.rb</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="c1"># coding: utf-8</span>
+<span class="nb">require</span> <span class="s1">'i18n'</span>
+<span class="nb">require</span> <span class="s1">'yaml'</span>
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">enforce_available_locales</span> <span class="o">=</span> <span class="kp">true</span> <span class="c1">## 対応ずみ言語かを実行時にチェックして止める</span>
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span> <span class="o">=</span> <span class="no">I18n</span><span class="o">::</span><span class="no">Backend</span><span class="o">::</span><span class="no">Simple</span><span class="p">.</span><span class="nf">new</span>
+
+<span class="c1">## Yamlのパスをアレイで渡すとロードする</span>
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">load_translations</span><span class="p">(</span><span class="no">Dir</span><span class="p">.</span><span class="nf">glob</span><span class="p">(</span><span class="s1">'locales/*.yml'</span><span class="p">))</span>
+
+<span class="c1">## backend.translateにロケールとキーを渡すパターン</span>
+<span class="sx">%w[en ja]</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">translate</span> <span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">,</span> <span class="ss">:of</span>
+<span class="k">end</span>
+
+<span class="c1">## I18n.tにオプションでロケールを渡すパターン</span>
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">available_locales</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">t</span> <span class="ss">:by</span><span class="p">,</span> <span class="p">{</span><span class="ss">locale: </span><span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">}</span>
+<span class="k">end</span>
+
+<span class="c1">## I18n.tのオプションを省略するパターン</span>
+<span class="sx">%w[en ja]</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="no">I18n</span><span class="p">.</span><span class="nf">locale</span> <span class="o">=</span> <span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">t</span> <span class="ss">:for</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="実行してみる" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>実行してみる</h3>
+
+<p>できた。<code>I18n.t</code> 単品で呼ぶ形式が楽だ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle exec ruby app.rb 
+of the people
+人民の
+by the people
+人民による
+for the people
+人民のための
+</pre></div></div>
+
+<h2>
+<span id="毎回全部作ってらんないfallback" class="fragment"></span><a href="#%E6%AF%8E%E5%9B%9E%E5%85%A8%E9%83%A8%E4%BD%9C%E3%81%A3%E3%81%A6%E3%82%89%E3%82%93%E3%81%AA%E3%81%84fallback"><i class="fa fa-link"></i></a>毎回全部作ってらんない、Fallback</h2>
+
+<p>実際採用するとして、新しいメッセージを毎度全部書いていくのは面倒だ。<br>
+例えば次のように、歯抜けがある場合を試してみた。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">locales/ja.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">ja</span><span class="pi">:</span>
+  <span class="na">of</span><span class="pi">:</span> <span class="s">人民の</span>
+  <span class="na">by</span><span class="pi">:</span> <span class="s">人民による</span>
+  <span class="c1"># for: 人民のための</span>
+</pre></div>
+</div>
+
+<p>この状態だとlocale=jaのとき<code>:for</code>の出力は<code>translation missing: ja.for</code>となった。<br>
+そういうのはデフォルト言語側を出す方がまだましだ。</p>
+
+<h3>
+<span id="fallbackを仕込む" class="fragment"></span><a href="#fallback%E3%82%92%E4%BB%95%E8%BE%BC%E3%82%80"><i class="fa fa-link"></i></a>fallbackを仕込む</h3>
+
+<p>ソースとWikiを見てたらFallbackという機構があった。Backendに組み込んでみる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">app2.rb</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="c1"># coding: utf-8</span>
+<span class="nb">require</span> <span class="s1">'i18n'</span>
+<span class="nb">require</span> <span class="s1">'yaml'</span>
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">enforce_available_locales</span> <span class="o">=</span> <span class="kp">true</span>
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span> <span class="o">=</span> <span class="no">I18n</span><span class="o">::</span><span class="no">Backend</span><span class="o">::</span><span class="no">Simple</span><span class="p">.</span><span class="nf">new</span>
+
+<span class="c1">## デフォルト言語にフォールバック https://github.com/svenfuchs/i18n/wiki/Fallbacks</span>
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">class</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:include</span><span class="p">,</span> <span class="no">I18n</span><span class="o">::</span><span class="no">Backend</span><span class="o">::</span><span class="no">Fallbacks</span><span class="p">)</span>
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">load_translations</span><span class="p">(</span><span class="no">Dir</span><span class="p">.</span><span class="nf">glob</span><span class="p">(</span><span class="s1">'locales/*.yml'</span><span class="p">))</span>
+
+<span class="sx">%w[en ja]</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">translate</span> <span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">,</span> <span class="ss">:of</span>
+<span class="k">end</span>
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">available_locales</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">t</span> <span class="ss">:by</span><span class="p">,</span> <span class="p">{</span><span class="ss">locale: </span><span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">}</span>
+<span class="k">end</span>
+
+
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">default_locale</span> <span class="o">=</span> <span class="ss">:en</span> <span class="c1"># デフォルトでも:en</span>
+
+<span class="sx">%w[en ja]</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="no">I18n</span><span class="p">.</span><span class="nf">locale</span> <span class="o">=</span> <span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">translate</span> <span class="ss">:for</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>これで実行結果は</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle exec ruby app.rb 
+of the people
+人民の
+by the people
+人民による
+for the people
+for the people
+</pre></div></div>
+
+<p>抜けはチェックツールで比較して、対応したくなったらすればよいというゆるポリシーのつもりなので、この挙動でいいや。</p>
+
+<h2>
+<span id="未対応ロケールはデフォルトを使う" class="fragment"></span><a href="#%E6%9C%AA%E5%AF%BE%E5%BF%9C%E3%83%AD%E3%82%B1%E3%83%BC%E3%83%AB%E3%81%AF%E3%83%87%E3%83%95%E3%82%A9%E3%83%AB%E3%83%88%E3%82%92%E4%BD%BF%E3%81%86"><i class="fa fa-link"></i></a>未対応ロケールはデフォルトを使う</h2>
+
+<p><code>I18n.enforce_available_locales</code>をtrueでやっていると、言語セットを用意しているロケール以外ではプログラムを止める。<br>
+例えば<code>:de</code>だと <code>:de is not a valid locale (I18n::InvalidLocale)</code> と言われて止まっちゃう。</p>
+
+<p>そういう手合もまあ、とりあえず<code>enforce_available_locales</code>をfalseにして、デフォルト出しときゃいいでしょ。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">app2.rb</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="c1"># coding: utf-8</span>
+<span class="nb">require</span> <span class="s1">'i18n'</span>
+<span class="nb">require</span> <span class="s1">'yaml'</span>
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">enforce_available_locales</span> <span class="o">=</span> <span class="kp">false</span> <span class="c1"># 未対応言語でも止めない</span>
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span> <span class="o">=</span> <span class="no">I18n</span><span class="o">::</span><span class="no">Backend</span><span class="o">::</span><span class="no">Simple</span><span class="p">.</span><span class="nf">new</span>
+
+<span class="c1">## デフォルト言語にフォールバック https://github.com/svenfuchs/i18n/wiki/Fallbacks</span>
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">class</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:include</span><span class="p">,</span> <span class="no">I18n</span><span class="o">::</span><span class="no">Backend</span><span class="o">::</span><span class="no">Fallbacks</span><span class="p">)</span>
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">load_translations</span><span class="p">(</span><span class="no">Dir</span><span class="p">.</span><span class="nf">glob</span><span class="p">(</span><span class="s1">'locales/*.yml'</span><span class="p">))</span>
+
+<span class="sx">%w[en ja]</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">translate</span> <span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">,</span> <span class="ss">:of</span>
+<span class="k">end</span>
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">backend</span><span class="p">.</span><span class="nf">available_locales</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">t</span> <span class="ss">:by</span><span class="p">,</span> <span class="p">{</span><span class="ss">locale: </span><span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">}</span>
+<span class="k">end</span>
+
+
+<span class="no">I18n</span><span class="p">.</span><span class="nf">default_locale</span> <span class="o">=</span> <span class="ss">:en</span> <span class="c1"># デフォルトでも:en</span>
+
+<span class="sx">%w[en ja de]</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">lang</span><span class="o">|</span>
+  <span class="no">I18n</span><span class="p">.</span><span class="nf">locale</span> <span class="o">=</span> <span class="n">lang</span><span class="p">.</span><span class="nf">to_sym</span>
+  <span class="nb">puts</span> <span class="no">I18n</span><span class="p">.</span><span class="nf">translate</span> <span class="ss">:for</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>最後をlocale=deでも出してみたが、デフォルトにfallbackしてくれた。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle exec ruby app.rb 
+of the people
+人民の
+by the people
+人民による
+for the people
+for the people
+for the people
+</pre></div></div>
+
+<h2>
+<span id="ロケールをどう判断したらいいか" class="fragment"></span><a href="#%E3%83%AD%E3%82%B1%E3%83%BC%E3%83%AB%E3%82%92%E3%81%A9%E3%81%86%E5%88%A4%E6%96%AD%E3%81%97%E3%81%9F%E3%82%89%E3%81%84%E3%81%84%E3%81%8B"><i class="fa fa-link"></i></a>ロケールをどう判断したらいいか</h2>
+
+<p>実はこれを考えていなかった。ENV['LANG']でええんかいな？ Windowsもかな？<br>
+if else elseの予感がする。</p>

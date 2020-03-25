@@ -1,0 +1,479 @@
+<p>DNSのプロバイダがオプションで提供するようなフェイルオーバーはお値段がそこそこする。<br>
+今回とりあえずなんらかのClockWorkで自前で回せるようにする理由があった。</p>
+
+<p>各種CLIとShellでやれば小一時間でできるような話だが、勉強がてら単品バイナリを目指してGo言語でやってみた。</p>
+
+<p>目標は環境変数に必要なパラメータをセットして、<code>healthbased-dnsrr dnsmple</code>, <code>healthbased-dnsrr route53</code>な感じでよろしくやる。</p>
+
+<h2>
+<span id="ゆるい挙動" class="fragment"></span><a href="#%E3%82%86%E3%82%8B%E3%81%84%E6%8C%99%E5%8B%95"><i class="fa fa-link"></i></a>ゆるい挙動</h2>
+
+<ul>
+<li>ホストリストをHTTPでそれぞれチェック</li>
+<li>200を返すホストだけAレコードの候補にして、
+
+<ul>
+<li>レコードがなければ登録</li>
+<li>差分があれば修正</li>
+</ul>
+</li>
+<li>200を返すホストがなければ
+
+<ul>
+<li>レコードを削除しておく</li>
+<li>バックアップIPをAレコードにセット(未実装)</li>
+</ul>
+</li>
+</ul>
+
+<p>こんなもんでいいか。</p>
+
+<h2>
+<span id="選べるプロバイダ戦略" class="fragment"></span><a href="#%E9%81%B8%E3%81%B9%E3%82%8B%E3%83%97%E3%83%AD%E3%83%90%E3%82%A4%E3%83%80%E6%88%A6%E7%95%A5"><i class="fa fa-link"></i></a>選べるプロバイダ戦略</h2>
+
+<p>DNSを使わせてもらう所はDNSimpleとRoute 53。最終的にどちらにするか決めてないので両方対応しておくことにした。</p>
+
+<p>ベタ書きでDNSimpleを書いた所で、まるでGoらしくないような気がしたのでインターフェースを使ってみようと書き直し。<br>
+DnsManage型をつくって、<code>healthBased_rr</code>というメソッドをもってれば何でもいいという感じにmainを作成。<br>
+道中が<code>fmt.Printf</code>だらけだったり、色々と汚いのは今日は諦めよう。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">go-healthbased-dnsrr/main.go</span></div>
+<div class="highlight"><pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"fmt"</span>
+    <span class="n">envmap</span> <span class="s">"github.com/higanworks/go-envmap"</span>
+    <span class="s">"os"</span>
+    <span class="s">"strings"</span>
+<span class="p">)</span>
+
+<span class="k">var</span> <span class="n">envs</span> <span class="o">=</span> <span class="n">envmap</span><span class="o">.</span><span class="n">All</span><span class="p">()</span>
+<span class="k">var</span> <span class="n">targetHosts</span> <span class="o">=</span> <span class="n">strings</span><span class="o">.</span><span class="n">Split</span><span class="p">(</span><span class="n">envs</span><span class="p">[</span><span class="s">"DNS_TARGET_HOSTS"</span><span class="p">],</span> <span class="s">","</span><span class="p">)</span>
+<span class="k">var</span> <span class="n">backupHosts</span> <span class="o">=</span> <span class="n">strings</span><span class="o">.</span><span class="n">Split</span><span class="p">(</span><span class="n">envs</span><span class="p">[</span><span class="s">"DNS_BACKUP_HOSTS"</span><span class="p">],</span> <span class="s">","</span><span class="p">)</span>
+
+<span class="k">type</span> <span class="n">DnsManage</span> <span class="k">interface</span> <span class="p">{</span>
+    <span class="n">healthBased_rr</span><span class="p">()</span> <span class="kt">int</span>
+    <span class="c">//  enableBackup() error</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">Exit</span><span class="p">(</span><span class="n">realMain</span><span class="p">())</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="n">realMain</span><span class="p">()</span> <span class="kt">int</span> <span class="p">{</span>
+    <span class="k">var</span> <span class="n">manager</span> <span class="n">DnsManage</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">Args</span><span class="p">)</span> <span class="o">&lt;</span> <span class="m">2</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Usage: healthbased-dnsrr [dnsimple|route53]</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="m">1</span>
+    <span class="p">}</span>
+
+    <span class="k">switch</span> <span class="n">os</span><span class="o">.</span><span class="n">Args</span><span class="p">[</span><span class="m">1</span><span class="p">]</span> <span class="p">{</span>
+    <span class="k">default</span><span class="o">:</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Usage: healthbased-dnsrr [dnsimple|route53]</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="m">1</span>
+    <span class="k">case</span> <span class="s">"dnsimple"</span><span class="o">:</span>
+        <span class="n">manager</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">DnsimpleManage</span><span class="p">{</span>
+            <span class="n">TargetHosts</span><span class="o">:</span>      <span class="n">targetHosts</span><span class="p">,</span>
+            <span class="n">BackupHosts</span><span class="o">:</span>      <span class="n">backupHosts</span><span class="p">,</span>
+            <span class="n">TargetRR</span><span class="o">:</span>         <span class="n">envs</span><span class="p">[</span><span class="s">"DNS_TARGET_RR"</span><span class="p">],</span>
+            <span class="n">targetDomainName</span><span class="o">:</span> <span class="n">envs</span><span class="p">[</span><span class="s">"DNS_TARGET_DOMAIN"</span><span class="p">],</span>
+            <span class="n">apiToken</span><span class="o">:</span>         <span class="n">envs</span><span class="p">[</span><span class="s">"DNSIMPLE_TOKEN"</span><span class="p">],</span>
+            <span class="n">email</span><span class="o">:</span>            <span class="n">envs</span><span class="p">[</span><span class="s">"DNSIMPLE_USER"</span><span class="p">],</span>
+        <span class="p">}</span>
+    <span class="k">case</span> <span class="s">"route53"</span><span class="o">:</span>
+        <span class="n">manager</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">Route53Manage</span><span class="p">{</span>
+            <span class="n">TargetHosts</span><span class="o">:</span>      <span class="n">targetHosts</span><span class="p">,</span>
+            <span class="n">BackupHosts</span><span class="o">:</span>      <span class="n">backupHosts</span><span class="p">,</span>
+            <span class="n">TargetRR</span><span class="o">:</span>         <span class="n">envs</span><span class="p">[</span><span class="s">"DNS_TARGET_RR"</span><span class="p">],</span>
+            <span class="n">targetDomainName</span><span class="o">:</span> <span class="n">envs</span><span class="p">[</span><span class="s">"DNS_TARGET_DOMAIN"</span><span class="p">],</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">life</span> <span class="o">:=</span> <span class="n">manager</span><span class="o">.</span><span class="n">healthBased_rr</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">life</span> <span class="o">==</span> <span class="m">0</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"All Dead</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+        <span class="c">//  manager.enableBackup()</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="m">0</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>引数からmanagerを選択し、あとは同じメソッドで同じことをやればいいはず。。<br>
+Goの本ではゴルーチンやチャネルがかっこよさそうに見えた、しかし今日の理解度では無理なのでスルー。</p>
+
+<p>開発中の環境変数はdirenvで入れておくようにした。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">.envrc</span></div>
+<div class="highlight"><pre>.envrc 
+layout go
+<span class="nb">export </span><span class="nv">DNSIMPLE_TOKEN</span><span class="o">=</span><span class="s1">'*********************'</span>
+<span class="nb">export </span><span class="nv">DNSIMPLE_USER</span><span class="o">=</span><span class="s1">'*********************@higanworks.com'</span>
+
+<span class="nb">export </span><span class="nv">DNS_TARGET_DOMAIN</span><span class="o">=</span><span class="s1">'example.net'</span>
+<span class="nb">export </span><span class="nv">DNS_TARGET_RR</span><span class="o">=</span><span class="s1">'wwwww'</span>
+<span class="nb">export </span><span class="nv">DNS_TARGET_HOSTS</span><span class="o">=</span><span class="s1">'210.152.xxx.xx1,210.152.xxx.xx2'</span>
+<span class="nb">export </span><span class="nv">DNS_BACKUP_HOSTS</span><span class="o">=</span><span class="s1">'210.152.xxx.xx3'</span>
+
+<span class="nb">export </span><span class="nv">AWS_ACCESS_KEY</span><span class="o">=</span><span class="s1">'*********************'</span>
+<span class="nb">export </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span><span class="s1">'*********************'</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="dnsimple用の処理" class="fragment"></span><a href="#dnsimple%E7%94%A8%E3%81%AE%E5%87%A6%E7%90%86"><i class="fa fa-link"></i></a>DNSimple用の処理</h3>
+
+<p>DNSimpleはAレコードを愚直に付け外しするだけなので、ドメインIDを取得したらホストの死活結果を個別に反映させればよかった。</p>
+
+<p>DnsimpleManage型が進むごとにじゃんじゃん太っていった。後でテストを書けば減らせそうだ。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">go-healthbased-dnsrr/dnsmple.go</span></div>
+<div class="highlight"><pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"fmt"</span>
+    <span class="n">dnsimple</span> <span class="s">"github.com/rubyist/go-dnsimple"</span>
+    <span class="s">"os"</span>
+<span class="p">)</span>
+
+<span class="k">type</span> <span class="n">DnsimpleManage</span> <span class="k">struct</span> <span class="p">{</span>
+    <span class="n">client</span>            <span class="o">*</span><span class="n">dnsimple</span><span class="o">.</span><span class="n">DNSimpleClient</span>
+    <span class="n">TargetHosts</span>       <span class="p">[]</span><span class="kt">string</span>
+    <span class="n">BackupHosts</span>       <span class="p">[]</span><span class="kt">string</span>
+    <span class="n">TargetRR</span>          <span class="kt">string</span>
+    <span class="n">targetDomainName</span>  <span class="kt">string</span>
+    <span class="n">targetDomainId</span>    <span class="kt">int</span>
+    <span class="n">countAlivedTarget</span> <span class="kt">int</span>
+    <span class="n">apiToken</span>          <span class="kt">string</span>
+    <span class="n">email</span>             <span class="kt">string</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">DnsimpleManage</span><span class="p">)</span> <span class="n">RecordExists</span><span class="p">(</span><span class="n">records</span> <span class="p">[]</span><span class="n">dnsimple</span><span class="o">.</span><span class="n">Record</span><span class="p">,</span> <span class="n">host</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">val</span> <span class="o">:=</span> <span class="k">range</span> <span class="n">records</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="n">val</span><span class="o">.</span><span class="n">Name</span> <span class="o">!=</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span> <span class="p">{</span>
+            <span class="k">continue</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="n">val</span><span class="o">.</span><span class="n">Content</span> <span class="o">==</span> <span class="n">host</span> <span class="p">{</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Record: %s -&gt; %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">Content</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">val</span><span class="o">.</span><span class="n">Id</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="m">0</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">DnsimpleManage</span><span class="p">)</span> <span class="n">getDomainId</span><span class="p">()</span> <span class="kt">int</span> <span class="p">{</span>
+    <span class="n">domains</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Domains</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">domain</span> <span class="o">:=</span> <span class="k">range</span> <span class="n">domains</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="n">domain</span><span class="o">.</span><span class="n">Name</span> <span class="o">==</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="p">{</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Domain: %s %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">domain</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span> <span class="n">domain</span><span class="o">.</span><span class="n">Id</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">domain</span><span class="o">.</span><span class="n">Id</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="m">0</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">DnsimpleManage</span><span class="p">)</span> <span class="n">healthBased_rr</span><span class="p">()</span> <span class="kt">int</span> <span class="p">{</span>
+    <span class="n">dm</span><span class="o">.</span><span class="n">countAlivedTarget</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">TargetHosts</span><span class="p">)</span>
+    <span class="n">dm</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">dnsimple</span><span class="o">.</span><span class="n">NewClient</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">apiToken</span><span class="p">,</span> <span class="n">dm</span><span class="o">.</span><span class="n">email</span><span class="p">)</span>
+
+    <span class="c">// Get a list of your domains</span>
+    <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span> <span class="o">=</span> <span class="n">dm</span><span class="o">.</span><span class="n">getDomainId</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span> <span class="o">==</span> <span class="m">0</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Exit: Target Domain Not found.</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">Exit</span><span class="p">(</span><span class="m">1</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c">//   Get a list of records for a domain</span>
+    <span class="n">records</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">Records</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">val</span> <span class="o">:=</span> <span class="k">range</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetHosts</span> <span class="p">{</span>
+        <span class="n">r_id</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">RecordExists</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span>
+        <span class="n">status</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">tryHttp</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+            <span class="k">if</span> <span class="n">r_id</span> <span class="o">!=</span> <span class="m">0</span> <span class="p">{</span>
+                <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Dead But Exists!: I'll delete [ %d ]. </span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">r_id</span><span class="p">)</span>
+                <span class="n">delRec</span> <span class="o">:=</span> <span class="n">dnsimple</span><span class="o">.</span><span class="n">Record</span><span class="p">{</span><span class="n">Id</span><span class="o">:</span> <span class="n">r_id</span><span class="p">,</span> <span class="n">DomainId</span><span class="o">:</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span><span class="p">}</span>
+                <span class="n">err</span> <span class="o">:=</span> <span class="n">delRec</span><span class="o">.</span><span class="n">Delete</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+                    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Delete returned error: %v</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+                <span class="p">}</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Result: Dead</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="n">dm</span><span class="o">.</span><span class="n">countAlivedTarget</span><span class="o">--</span>
+            <span class="k">continue</span>
+        <span class="p">}</span>
+
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Result: %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">status</span><span class="p">)</span>
+        <span class="c">// Create a new Record</span>
+        <span class="c">//      go func() {</span>
+        <span class="k">if</span> <span class="n">r_id</span> <span class="o">==</span> <span class="m">0</span> <span class="p">{</span>
+            <span class="n">newRec</span> <span class="o">:=</span> <span class="n">dnsimple</span><span class="o">.</span><span class="n">Record</span><span class="p">{</span><span class="n">Name</span><span class="o">:</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span><span class="p">,</span> <span class="n">Content</span><span class="o">:</span> <span class="n">val</span><span class="p">,</span> <span class="n">RecordType</span><span class="o">:</span> <span class="s">"A"</span><span class="p">,</span> <span class="n">TTL</span><span class="o">:</span> <span class="m">600</span><span class="p">}</span>
+            <span class="n">rec</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">CreateRecord</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span><span class="p">,</span> <span class="n">newRec</span><span class="p">)</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"RecordID: %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">rec</span><span class="o">.</span><span class="n">Id</span><span class="p">)</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Record Already Exists</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="c">//      }()</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">dm</span><span class="o">.</span><span class="n">countAlivedTarget</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">DnsimpleManage</span><span class="p">)</span> <span class="n">enableBackup</span><span class="p">()</span> <span class="kt">int</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="m">0</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>DNSimple対応を動かすとこんな感じ。末尾1のホストに到達性が無いので外した時のログ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./build/darwin/amd64/healthbased-dnsrr dnsimple
+Domain: example.net 119xxx
+Record: wwwww -&gt; 210.152.xxx.xx1
+Dead But Exists!: I'll delete [ 39xxxxx ]. 
+Record: wwwww -&gt; 210.152.xxx.xx2
+Result: 200
+Record Already Exists
+</pre></div></div>
+
+<h3>
+<span id="route-53用の処理" class="fragment"></span><a href="#route-53%E7%94%A8%E3%81%AE%E5%87%A6%E7%90%86"><i class="fa fa-link"></i></a>Route 53用の処理</h3>
+
+<p>Route 53は1つのレコードセットに複数のコンテンツを含むので微妙にややこしい。<br>
+死活の結果に加えて、現状をとっておいて差分があれば上書きする必要があり、APIコールもバッチ風でけっこうな非同期。UPSERTが無かったらきっとつらい思いをしていた。</p>
+
+<p>今回は共通でドメイン名を使いたかったので、HostedZoneIDの特定にListHostedZonesByNameを使った。<br>
+HostedZoneは一度に最大100件取得できるが、対象のアカウントではドメイン200を超えているので全部取ってくるのが面倒だった。</p>
+
+<p>なおRoute 53では同名のドメインを作れるので、実はこのままでは誤爆の可能性はある。すなおにIDを控えたほうがいいんだろう。<br>
+ついでに、このままでは<code>healthBased_rr</code>が長すぎる。 errがかぶってerr2とか出てきているし。後で関数にしておこう。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">go-healthbased-dnsrr/route53.go</span></div>
+<div class="highlight"><pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"fmt"</span>
+    <span class="s">"github.com/higanworks/goamz/route53"</span>
+    <span class="s">"github.com/mitchellh/goamz/aws"</span>
+    <span class="s">"reflect"</span>
+    <span class="s">"sort"</span>
+    <span class="s">"strings"</span>
+<span class="p">)</span>
+
+<span class="k">type</span> <span class="n">Route53Manage</span> <span class="k">struct</span> <span class="p">{</span>
+    <span class="n">client</span>            <span class="o">*</span><span class="n">route53</span><span class="o">.</span><span class="n">Route53</span>
+    <span class="n">TargetHosts</span>       <span class="p">[]</span><span class="kt">string</span>
+    <span class="n">currentRRHosts</span>    <span class="p">[]</span><span class="kt">string</span>
+    <span class="n">updateRRHosts</span>     <span class="p">[]</span><span class="kt">string</span>
+    <span class="n">BackupHosts</span>       <span class="p">[]</span><span class="kt">string</span>
+    <span class="n">TargetRR</span>          <span class="kt">string</span>
+    <span class="n">targetDomainName</span>  <span class="kt">string</span>
+    <span class="n">targetDomainId</span>    <span class="kt">string</span>
+    <span class="n">countAlivedTarget</span> <span class="kt">int</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">Route53Manage</span><span class="p">)</span> <span class="n">extractDomainId</span><span class="p">(</span><span class="n">res_id</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span>
+    <span class="n">id</span> <span class="o">:=</span> <span class="n">strings</span><span class="o">.</span><span class="n">Split</span><span class="p">(</span><span class="n">res_id</span><span class="p">,</span> <span class="s">"/"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">id</span><span class="p">[</span><span class="m">2</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">Route53Manage</span><span class="p">)</span> <span class="n">RecordExists</span><span class="p">(</span><span class="n">records</span> <span class="p">[]</span><span class="n">route53</span><span class="o">.</span><span class="n">ResourceRecordSet</span><span class="p">)</span> <span class="n">route53</span><span class="o">.</span><span class="n">ResourceRecordSet</span> <span class="p">{</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Finding: "</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span> <span class="o">+</span> <span class="s">"."</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="o">+</span> <span class="s">".</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">val</span> <span class="o">:=</span> <span class="k">range</span> <span class="n">records</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="n">val</span><span class="o">.</span><span class="n">Name</span> <span class="o">==</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span><span class="o">+</span><span class="s">"."</span><span class="o">+</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span><span class="o">+</span><span class="s">"."</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="n">val</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="n">val</span><span class="o">.</span><span class="n">Name</span> <span class="o">==</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span><span class="o">+</span><span class="s">"."</span><span class="o">+</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="n">val</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">route53</span><span class="o">.</span><span class="n">ResourceRecordSet</span><span class="p">{}</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">Route53Manage</span><span class="p">)</span> <span class="n">getDomainId</span><span class="p">()</span> <span class="kt">string</span> <span class="p">{</span>
+    <span class="n">res</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">ListHostedZonesByName</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="m">1</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">zone</span> <span class="o">:=</span> <span class="k">range</span> <span class="n">res</span><span class="o">.</span><span class="n">HostedZones</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="n">zone</span><span class="o">.</span><span class="n">Name</span> <span class="o">==</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span><span class="o">+</span><span class="s">"."</span> <span class="p">{</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Found: %s: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">zone</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span> <span class="n">zone</span><span class="o">.</span><span class="n">Name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">dm</span><span class="o">.</span><span class="n">extractDomainId</span><span class="p">(</span><span class="n">zone</span><span class="o">.</span><span class="n">ID</span><span class="p">)</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="n">zone</span><span class="o">.</span><span class="n">Name</span> <span class="o">==</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="p">{</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Found: %s: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">zone</span><span class="o">.</span><span class="n">ID</span><span class="p">,</span> <span class="n">zone</span><span class="o">.</span><span class="n">Name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">dm</span><span class="o">.</span><span class="n">extractDomainId</span><span class="p">(</span><span class="n">zone</span><span class="o">.</span><span class="n">ID</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="s">"0"</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">dm</span> <span class="o">*</span><span class="n">Route53Manage</span><span class="p">)</span> <span class="n">healthBased_rr</span><span class="p">()</span> <span class="kt">int</span> <span class="p">{</span>
+    <span class="n">dm</span><span class="o">.</span><span class="n">countAlivedTarget</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">TargetHosts</span><span class="p">)</span>
+
+    <span class="n">auth</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">aws</span><span class="o">.</span><span class="n">EnvAuth</span><span class="p">()</span> <span class="c">// AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY</span>
+    <span class="n">dm</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">route53</span><span class="o">.</span><span class="n">New</span><span class="p">(</span><span class="n">auth</span><span class="p">,</span> <span class="n">aws</span><span class="o">.</span><span class="n">USEast</span><span class="p">)</span>
+
+    <span class="c">// Get a list of your domains</span>
+    <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span> <span class="o">=</span> <span class="n">dm</span><span class="o">.</span><span class="n">getDomainId</span><span class="p">()</span>
+
+    <span class="n">res</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">ListResourceRecordSets</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span><span class="p">,</span> <span class="no">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="nb">panic</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="n">rrr</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">RecordExists</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">Records</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">rrr</span><span class="o">.</span><span class="n">Name</span> <span class="o">!=</span> <span class="s">""</span> <span class="p">{</span>
+        <span class="n">dm</span><span class="o">.</span><span class="n">currentRRHosts</span> <span class="o">=</span> <span class="n">rrr</span><span class="o">.</span><span class="n">Records</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Current RR record: %q</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">dm</span><span class="o">.</span><span class="n">currentRRHosts</span><span class="p">)</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Current RR record: Nothing</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">host</span> <span class="o">:=</span> <span class="k">range</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetHosts</span> <span class="p">{</span>
+        <span class="n">status</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">tryHttp</span><span class="p">(</span><span class="n">host</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+            <span class="n">status</span> <span class="o">=</span> <span class="m">0</span>
+        <span class="p">}</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Check HTTP: %s %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">host</span><span class="p">,</span> <span class="n">status</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">status</span> <span class="o">!=</span> <span class="m">200</span> <span class="p">{</span>
+            <span class="n">dm</span><span class="o">.</span><span class="n">countAlivedTarget</span><span class="o">--</span>
+            <span class="k">continue</span>
+        <span class="p">}</span>
+        <span class="n">dm</span><span class="o">.</span><span class="n">updateRRHosts</span> <span class="o">=</span> <span class="nb">append</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">updateRRHosts</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="n">sort</span><span class="o">.</span><span class="n">StringSlice</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">updateRRHosts</span><span class="p">)</span><span class="o">.</span><span class="n">Sort</span><span class="p">()</span>
+    <span class="n">sort</span><span class="o">.</span><span class="n">StringSlice</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">currentRRHosts</span><span class="p">)</span><span class="o">.</span><span class="n">Sort</span><span class="p">()</span>
+    <span class="n">sort</span><span class="o">.</span><span class="n">StringSlice</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">BackupHosts</span><span class="p">)</span><span class="o">.</span><span class="n">Sort</span><span class="p">()</span>
+    <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Avaliable targets: %q</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">dm</span><span class="o">.</span><span class="n">updateRRHosts</span><span class="p">)</span>
+    <span class="k">if</span> <span class="o">!</span><span class="n">reflect</span><span class="o">.</span><span class="n">DeepEqual</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">updateRRHosts</span><span class="p">,</span> <span class="n">dm</span><span class="o">.</span><span class="n">currentRRHosts</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">var</span> <span class="n">req</span> <span class="n">route53</span><span class="o">.</span><span class="n">ChangeResourceRecordSetsRequest</span>
+        <span class="k">var</span> <span class="n">req_rr</span> <span class="n">route53</span><span class="o">.</span><span class="n">ResourceRecordSet</span>
+        <span class="k">var</span> <span class="n">change</span> <span class="n">route53</span><span class="o">.</span><span class="n">Change</span>
+
+        <span class="k">if</span> <span class="n">dm</span><span class="o">.</span><span class="n">countAlivedTarget</span> <span class="o">!=</span> <span class="m">0</span> <span class="p">{</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Found difference, I'll fix it.</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+            <span class="n">req_rr</span><span class="o">.</span><span class="n">Name</span> <span class="o">=</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span> <span class="o">+</span> <span class="s">"."</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="o">+</span> <span class="s">"."</span>
+            <span class="n">req_rr</span><span class="o">.</span><span class="n">Type</span> <span class="o">=</span> <span class="s">"A"</span>
+            <span class="n">req_rr</span><span class="o">.</span><span class="n">TTL</span> <span class="o">=</span> <span class="m">600</span>
+            <span class="n">req_rr</span><span class="o">.</span><span class="n">Records</span> <span class="o">=</span> <span class="n">dm</span><span class="o">.</span><span class="n">updateRRHosts</span>
+
+            <span class="n">change</span><span class="o">.</span><span class="n">Action</span> <span class="o">=</span> <span class="s">"UPSERT"</span>
+            <span class="n">change</span><span class="o">.</span><span class="n">Record</span> <span class="o">=</span> <span class="n">req_rr</span>
+
+            <span class="n">req</span><span class="o">.</span><span class="n">Comment</span> <span class="o">=</span> <span class="n">change</span><span class="o">.</span><span class="n">Action</span> <span class="o">+</span> <span class="s">" to "</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span> <span class="o">+</span> <span class="s">"."</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="o">+</span> <span class="s">"."</span>
+            <span class="n">req</span><span class="o">.</span><span class="n">Changes</span> <span class="o">=</span> <span class="nb">append</span><span class="p">(</span><span class="n">req</span><span class="o">.</span><span class="n">Changes</span><span class="p">,</span> <span class="n">change</span><span class="p">)</span>
+
+            <span class="n">res</span><span class="p">,</span> <span class="n">err2</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">ChangeResourceRecordSets</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">req</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">err2</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+                <span class="nb">panic</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Change Status: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">ChangeInfo</span><span class="o">.</span><span class="n">Status</span><span class="p">)</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="c">// Delete if BackupHosts Empty</span>
+            <span class="k">if</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span> <span class="o">!=</span> <span class="s">"0"</span> <span class="p">{</span>
+                <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"All Hosts dead. I'll delete rrset.</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+                <span class="n">req_rr</span><span class="o">.</span><span class="n">Name</span> <span class="o">=</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span> <span class="o">+</span> <span class="s">"."</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="o">+</span> <span class="s">"."</span>
+                <span class="n">req_rr</span><span class="o">.</span><span class="n">Type</span> <span class="o">=</span> <span class="s">"A"</span>
+                <span class="n">req_rr</span><span class="o">.</span><span class="n">TTL</span> <span class="o">=</span> <span class="m">600</span>
+                <span class="n">req_rr</span><span class="o">.</span><span class="n">Records</span> <span class="o">=</span> <span class="n">dm</span><span class="o">.</span><span class="n">currentRRHosts</span>
+
+                <span class="n">change</span><span class="o">.</span><span class="n">Action</span> <span class="o">=</span> <span class="s">"DELETE"</span>
+                <span class="n">change</span><span class="o">.</span><span class="n">Record</span> <span class="o">=</span> <span class="n">req_rr</span>
+
+                <span class="n">req</span><span class="o">.</span><span class="n">Comment</span> <span class="o">=</span> <span class="n">change</span><span class="o">.</span><span class="n">Action</span> <span class="o">+</span> <span class="s">" to "</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">TargetRR</span> <span class="o">+</span> <span class="s">"."</span> <span class="o">+</span> <span class="n">dm</span><span class="o">.</span><span class="n">targetDomainName</span> <span class="o">+</span> <span class="s">"."</span>
+                <span class="n">req</span><span class="o">.</span><span class="n">Changes</span> <span class="o">=</span> <span class="nb">append</span><span class="p">(</span><span class="n">req</span><span class="o">.</span><span class="n">Changes</span><span class="p">,</span> <span class="n">change</span><span class="p">)</span>
+
+                <span class="n">res</span><span class="p">,</span> <span class="n">err2</span> <span class="o">:=</span> <span class="n">dm</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">ChangeResourceRecordSets</span><span class="p">(</span><span class="n">dm</span><span class="o">.</span><span class="n">targetDomainId</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">req</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">err2</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+                    <span class="nb">panic</span><span class="p">(</span><span class="n">err2</span><span class="p">)</span>
+                <span class="p">}</span>
+                <span class="n">fmt</span><span class="o">.</span><span class="n">Printf</span><span class="p">(</span><span class="s">"Change Status: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">ChangeInfo</span><span class="o">.</span><span class="n">Status</span><span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">dm</span><span class="o">.</span><span class="n">countAlivedTarget</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>Route 53対応を動かすとこんな感じ。さっき外れた末尾1のホストが復帰した時のログ。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>./build/darwin/amd64/healthbased-dnsrr route53
+Found: /hostedzone/Z1KM1PIxxxxxxx: example.net.
+Finding: wwwww.example.net.
+Current RR record: <span class="o">[</span><span class="s2">"210.152.xxx.xx2"</span><span class="o">]</span>
+Check HTTP: 210.152.xxx.xx1 200
+Check HTTP: 210.152.xxx.xx2 200
+Avaliable targets: <span class="o">[</span><span class="s2">"210.152.xxx.xx1"</span> <span class="s2">"210.152.xxx.xx2"</span><span class="o">]</span>
+Found difference, I<span class="s1">'ll fix it.
+Change Status: PENDING
+</span></pre></div></div>
+
+<p>ログがプロバイダによってまるで不揃いなのは日付をまたいだからだな。</p>
+
+<h3>
+<span id="httpの死活チェック" class="fragment"></span><a href="#http%E3%81%AE%E6%AD%BB%E6%B4%BB%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>HTTPの死活チェック</h3>
+
+<p>雑に10秒をリミットでつついた。Pingで見るよりいいだろう。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">go-healthbased-dnsrr/http_checker.go</span></div>
+<div class="highlight"><pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"net/http"</span>
+    <span class="s">"time"</span>
+<span class="p">)</span>
+
+<span class="k">var</span> <span class="n">httpClient</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">http</span><span class="o">.</span><span class="n">Client</span><span class="p">{</span><span class="n">Timeout</span><span class="o">:</span> <span class="n">time</span><span class="o">.</span><span class="n">Duration</span><span class="p">(</span><span class="m">10</span><span class="p">)</span> <span class="o">*</span> <span class="n">time</span><span class="o">.</span><span class="n">Second</span><span class="p">}</span>
+
+<span class="k">func</span> <span class="n">tryHttp</span><span class="p">(</span><span class="n">host</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="kt">int</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">resp</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">httpClient</span><span class="o">.</span><span class="n">Get</span><span class="p">(</span><span class="s">"http://"</span> <span class="o">+</span> <span class="n">host</span> <span class="o">+</span> <span class="s">"/"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="m">0</span><span class="p">,</span> <span class="n">err</span>
+    <span class="p">}</span>
+    <span class="k">defer</span> <span class="n">resp</span><span class="o">.</span><span class="n">Body</span><span class="o">.</span><span class="n">Close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">resp</span><span class="o">.</span><span class="n">StatusCode</span><span class="p">,</span> <span class="n">err</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>これだけ書いてなんとか目的はだいたいOK。 ほぼわからない所からだったが、<code>if err != nil</code>からの<code>panic(err)</code>(後でいくらか削除)を適当にいれておくだけでだいぶ違った。</p>
+
+<h2>
+<span id="macとlinux用にビルド" class="fragment"></span><a href="#mac%E3%81%A8linux%E7%94%A8%E3%81%AB%E3%83%93%E3%83%AB%E3%83%89"><i class="fa fa-link"></i></a>MacとLinux用にビルド</h2>
+
+<p>Rundeckでの実行を想定したので、Linux用にビルドする。goxを使った。</p>
+
+<p>goxで出力ファイル名を調整してビルド。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">go-healthbased-dnsrr/build.sh</span></div>
+<div class="highlight"><pre>gox <span class="nt">-osarch</span><span class="o">=</span><span class="s2">"linux/amd64 darwin/amd64"</span> <span class="nt">--output</span><span class="o">=</span><span class="s2">"build/{{.OS}}/{{.Arch}}/healthbased-dnsrr"</span>
+</pre></div>
+</div>
+
+<p><code>build.sh</code>でこの辺ができる。</p>
+
+<div class="code-frame" data-lang="tree"><div class="highlight"><pre>$ tree build
+build
+├── darwin
+│   └── amd64
+│       └── healthbased-dnsrr
+└── linux
+    └── amd64
+        └── healthbased-dnsrr
+
+4 directories, 2 files
+</pre></div></div>
+
+<p>Linuxに単品バイナリを運んだ所、ちゃんと動いた。速いし、何より依存が全くないので配備がとっても楽だ。</p>

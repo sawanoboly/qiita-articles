@@ -1,0 +1,461 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Ruby製のデプロイツールCapistranoは何かと便利でよくつかう。Railsにかぎらずコードベースから何かを持ってくる用途に向いている。</p>
+
+<p>capコマンドから実行するのもいいが、適当なSinatraアプリに組み込んだりできると良いかもしれないと思い、感触をつかむためirbなんかでインタラクティブに叩いてみた。</p>
+
+<p>単純にCapistranoのWEB-UIが必要ならrailsで作られた<a href="https://github.com/peritor/webistrano" rel="nofollow noopener" target="_blank">Webistrano</a>というのがある。元は古いけど幾つかのフォークされたものは新しめの環境でも動作するようだ。</p>
+
+<p>Capistranoソースのチェックには<a href="http://www.amazon.co.jp/dp/4048687158" rel="nofollow noopener" target="_blank">メタプログラミングRuby</a>をかなり参考にした。</p>
+
+<h2>
+<span id="まずは-capistranoconfigurationnew" class="fragment"></span><a href="#%E3%81%BE%E3%81%9A%E3%81%AF-capistranoconfigurationnew"><i class="fa fa-link"></i></a>まずは Capistrano::Configuration.new</h2>
+
+<p>今回はRubyの実行に<a href="http://pryrepl.org/" rel="nofollow noopener" target="_blank">Pry</a>を使う。</p>
+
+<p>どうやらCapistranoのすべては<code>Capistrano::Configuration</code>クラスのオブジェクトに集まる模様、インスタンスを作成する。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'capistrano'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">config</span> <span class="o">=</span> <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="p">.</span><span class="nf">new</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Capistrano::Configuration:0x00000001f26678</span>
+ <span class="vi">@callbacks</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@debug</span><span class="o">=</span><span class="kp">false</span><span class="p">,</span>
+ <span class="vi">@dry_run</span><span class="o">=</span><span class="kp">false</span><span class="p">,</span>
+ <span class="vi">@load_paths</span><span class="o">=</span>
+  <span class="p">[</span><span class="s2">"."</span><span class="p">,</span>
+   <span class="s2">"/usr/local/rvm/gems/ruby-1.9.3-p286@cap/gems/capistrano-2.13.5/lib/capistrano/recipes"</span><span class="p">],</span>
+ <span class="vi">@loaded_features</span><span class="o">=</span><span class="p">[],</span>
+ <span class="vi">@logger</span><span class="o">=</span>
+  <span class="c1">#&lt;Capistrano::Logger:0x00000001f264c0</span>
+   <span class="vi">@device</span><span class="o">=</span><span class="c1">#&lt;IO:&lt;STDERR&gt;&gt;,</span>
+   <span class="vi">@disable_formatters</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+   <span class="vi">@level</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+   <span class="vi">@options</span><span class="o">=</span><span class="p">{}</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="vi">@name</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@namespaces</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@original_procs</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@parent</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@preserve_roles</span><span class="o">=</span><span class="kp">false</span><span class="p">,</span>
+ <span class="vi">@roles</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@tasks</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@variable_locks</span><span class="o">=</span>
+  <span class="p">{</span><span class="ss">:ssh_options</span><span class="o">=&gt;</span><span class="sx">%&lt;8d5c2f16Mutex:0x00000001f26150&gt;</span><span class="p">,</span>
+   <span class="ss">:logger</span><span class="o">=&gt;</span><span class="c1">#&lt;Mutex:0x00000001f25fc0&gt;,</span>
+   <span class="ss">:default_environment</span><span class="o">=&gt;</span><span class="c1">#&lt;Mutex:0x00000001f25368&gt;,</span>
+   <span class="ss">:default_run_options</span><span class="o">=&gt;</span><span class="c1">#&lt;Mutex:0x00000001f251b0&gt;},</span>
+ <span class="vi">@variables</span><span class="o">=</span>
+  <span class="p">{</span><span class="ss">:ssh_options</span><span class="o">=&gt;</span><span class="p">{},</span>
+   <span class="ss">:logger</span><span class="o">=&gt;</span>
+    <span class="c1">#&lt;Capistrano::Logger:0x00000001f264c0</span>
+     <span class="vi">@device</span><span class="o">=</span><span class="c1">#&lt;IO:&lt;STDERR&gt;&gt;,</span>
+     <span class="vi">@disable_formatters</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+     <span class="vi">@level</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+     <span class="vi">@options</span><span class="o">=</span><span class="p">{}</span><span class="o">&gt;</span><span class="p">,</span>
+   <span class="ss">:default_environment</span><span class="o">=&gt;</span><span class="p">{},</span>
+   <span class="ss">:default_run_options</span><span class="o">=&gt;</span><span class="p">{}}</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+
+<p>Capistranoの<code>Capfile, deploy.rb</code>などに出てくる単語がインスタンス変数としてたくさん出てくる。</p>
+
+<h3>
+<span id="継承チェック" class="fragment"></span><a href="#%E7%B6%99%E6%89%BF%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>継承チェック</h3>
+
+<p>各モジュールやクラスから、CLIツールでデプロイする時のCapitranoの各挙動が垣間見れる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">class</span><span class="p">.</span><span class="nf">ancestors</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Callbacks</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Actions</span><span class="o">::</span><span class="no">FileTransfer</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Actions</span><span class="o">::</span><span class="no">Inspect</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Actions</span><span class="o">::</span><span class="no">Invocation</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">AliasTask</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Connections</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Execution</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Loading</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">LogFormatters</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Namespaces</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Roles</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Servers</span><span class="p">,</span>
+ <span class="no">Capistrano</span><span class="o">::</span><span class="no">Configuration</span><span class="o">::</span><span class="no">Variables</span><span class="p">,</span>
+ <span class="no">Object</span><span class="p">,</span>
+ <span class="no">PP</span><span class="o">::</span><span class="no">ObjectMixin</span><span class="p">,</span>
+ <span class="no">Kernel</span><span class="p">,</span>
+ <span class="no">BasicObject</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="出力を詳細に変更" class="fragment"></span><a href="#%E5%87%BA%E5%8A%9B%E3%82%92%E8%A9%B3%E7%B4%B0%E3%81%AB%E5%A4%89%E6%9B%B4"><i class="fa fa-link"></i></a>出力を詳細に変更</h3>
+
+<p>ここで<code>@logger</code>をTRACEレベルにして、Capistranoが実行する内容を逐一表示するように設定。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="no">Capistrano</span><span class="o">::</span><span class="no">Logger</span><span class="p">.</span><span class="nf">constants</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:IMPORTANT</span><span class="p">,</span> <span class="ss">:INFO</span><span class="p">,</span> <span class="ss">:DEBUG</span><span class="p">,</span> <span class="ss">:TRACE</span><span class="p">,</span> <span class="ss">:MAX_LEVEL</span><span class="p">,</span> <span class="ss">:COLORS</span><span class="p">,</span> <span class="ss">:STYLES</span><span class="p">]</span>
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">logger</span><span class="p">.</span><span class="nf">level</span> <span class="o">=</span> <span class="no">Capistrano</span><span class="o">::</span><span class="no">Logger</span><span class="o">::</span><span class="no">TRACE</span>
+<span class="o">=&gt;</span> <span class="mi">3</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="namespaceとタスクを定義" class="fragment"></span><a href="#namespace%E3%81%A8%E3%82%BF%E3%82%B9%E3%82%AF%E3%82%92%E5%AE%9A%E7%BE%A9"><i class="fa fa-link"></i></a>Namespaceとタスクを定義</h2>
+
+<p>この段階ではタスクは何もない。<br>
+confingについた<code>#namespace</code>はタスクを動的に定義する、これはどういうことか。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespace</span> <span class="ss">:hello</span> <span class="k">do</span>
+<span class="o">*</span>   <span class="n">task</span> <span class="ss">:world</span> <span class="k">do</span>
+<span class="o">*</span>     <span class="n">run</span> <span class="s2">"echo Hello World ?"</span>
+<span class="o">*</span>   <span class="k">end</span>  
+<span class="o">*</span> <span class="k">end</span>  
+<span class="o">=&gt;</span> <span class="c1">#&lt;Proc:0x000000022dadf0@/usr/local/rvm/gems/ruby-1.9.3-p286@cap/gems/capistrano-2.13.5/lib/capistrano/configuration/namespaces.rb:83 (lambda)&gt;</span>
+</pre></div>
+</div>
+
+<p>Procだった、どこかでcallする必要がある。</p>
+
+<h3>
+<span id="タスクprocの格納先" class="fragment"></span><a href="#%E3%82%BF%E3%82%B9%E3%82%AFproc%E3%81%AE%E6%A0%BC%E7%B4%8D%E5%85%88"><i class="fa fa-link"></i></a>タスクProcの格納先</h3>
+
+<p>configオブジェクトをたどっていく。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">.</span><span class="nf">keys</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:hello</span><span class="p">]</span>
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">[</span><span class="ss">:hello</span><span class="p">].</span><span class="nf">tasks</span><span class="p">.</span><span class="nf">keys</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:world</span><span class="p">]</span>
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">[</span><span class="ss">:hello</span><span class="p">].</span><span class="nf">tasks</span><span class="p">[</span><span class="ss">:world</span><span class="p">].</span><span class="nf">body</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Proc:0x000000022db110@(pry):9&gt;</span>
+</pre></div>
+</div>
+
+<p>あった、<code>#call</code>を叩いてみよう。中身の<code>run</code>が呼ばれる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">[</span><span class="ss">:hello</span><span class="p">].</span><span class="nf">tasks</span><span class="p">[</span><span class="ss">:world</span><span class="p">].</span><span class="nf">body</span><span class="p">.</span><span class="nf">call</span>
+  <span class="o">*</span> <span class="n">executing</span> <span class="s2">"echo Hello World ?"</span>
+<span class="no">Capistrano</span><span class="o">::</span><span class="no">NoMatchingServersError</span><span class="p">:</span> <span class="n">no</span> <span class="n">servers</span> <span class="n">found</span> <span class="n">to</span> <span class="n">match</span> <span class="p">{</span><span class="ss">:eof</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">}</span>
+<span class="n">from</span> <span class="sr">/usr/</span><span class="n">local</span><span class="o">/</span><span class="n">rvm</span><span class="o">/</span><span class="n">gems</span><span class="o">/</span><span class="n">ruby</span><span class="o">-</span><span class="mf">1.9</span><span class="o">.</span><span class="mi">3</span><span class="o">-</span><span class="n">p286</span><span class="vi">@cap</span><span class="o">/</span><span class="n">gems</span><span class="o">/</span><span class="n">capistrano</span><span class="o">-</span><span class="mf">2.13</span><span class="o">.</span><span class="mi">5</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">capistrano</span><span class="o">/</span><span class="n">configuration</span><span class="o">/</span><span class="n">connections</span><span class="p">.</span><span class="nf">rb</span><span class="p">:</span><span class="mi">174</span><span class="ss">:in</span> <span class="sb">`execute_on_servers'
+</span></pre></div>
+</div>
+
+<p><code>run</code>は対象のサーバを必要とするのでサーバのリストを取れるようにする。</p>
+
+<h2>
+<span id="roleserverの追加" class="fragment"></span><a href="#roleserver%E3%81%AE%E8%BF%BD%E5%8A%A0"><i class="fa fa-link"></i></a>Role(server)の追加</h2>
+
+<p>namespaceの方法から推測できるが、これもレシピ通りに定義出来る。<code>config.</code>を除けばCapistrano使いにはおなじみの内容。<br>
+こういう内部DSLの実装は<a href="http://www.amazon.co.jp/dp/4048687158" rel="nofollow noopener" target="_blank">メタプログラミングRuby</a>をみたら何となくわかる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">server</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="ss">:web</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:web</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p>空だった<code>@roles</code>にサーバリストが代入された。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">roles</span>          
+<span class="o">=&gt;</span> <span class="p">{</span><span class="ss">:web</span><span class="o">=&gt;</span>
+  <span class="c1">#&lt;Capistrano::Role:0x00000002427870</span>
+   <span class="vi">@dynamic_servers</span><span class="o">=</span><span class="p">[],</span>
+   <span class="vi">@static_servers</span><span class="o">=</span><span class="p">[</span><span class="n">localhost</span><span class="p">]</span><span class="o">&gt;</span><span class="p">}</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="タスクの実行を2通りの書式で" class="fragment"></span><a href="#%E3%82%BF%E3%82%B9%E3%82%AF%E3%81%AE%E5%AE%9F%E8%A1%8C%E3%82%922%E9%80%9A%E3%82%8A%E3%81%AE%E6%9B%B8%E5%BC%8F%E3%81%A7"><i class="fa fa-link"></i></a>タスクの実行を2通りの書式で</h3>
+
+<p>まず先ほどコケた<code>#call</code>。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">[</span><span class="ss">:hello</span><span class="p">].</span><span class="nf">tasks</span><span class="p">[</span><span class="ss">:world</span><span class="p">].</span><span class="nf">body</span><span class="p">.</span><span class="nf">call</span>
+  <span class="o">*</span> <span class="n">executing</span> <span class="s2">"echo Hello World ?"</span>
+    <span class="ss">servers: </span><span class="p">[</span><span class="s2">"localhost"</span><span class="p">]</span>
+    <span class="p">[</span><span class="n">localhost</span><span class="p">]</span> <span class="n">executing</span> <span class="n">command</span>
+ <span class="o">**</span> <span class="p">[</span><span class="n">out</span> <span class="o">::</span> <span class="n">localhost</span><span class="p">]</span> <span class="no">Hello</span> <span class="no">World</span> <span class="p">?</span>
+    <span class="n">command</span> <span class="n">finished</span> <span class="k">in</span> <span class="mi">171</span><span class="n">ms</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+</pre></div>
+</div>
+
+<p>これは次の書式でも一緒になる、要はCapistranoレシピと一緒だ。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">hello</span><span class="p">.</span><span class="nf">world</span> 
+  <span class="o">*</span> <span class="mi">2012</span><span class="o">-</span><span class="mi">11</span><span class="o">-</span><span class="mo">07</span> <span class="mi">09</span><span class="p">:</span><span class="mi">12</span><span class="p">:</span><span class="mi">24</span> <span class="n">executing</span> <span class="sb">`hello:world'
+  * executing "echo Hello World ?"
+    servers: ["localhost"]
+    [localhost] executing command
+ ** [out :: localhost] Hello World ?
+    command finished in 7ms
+=&gt; nil
+</span></pre></div>
+</div>
+
+<p>namespaceによってメソッドとして定義されてるのでconfigから呼べる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">methods</span><span class="p">(</span><span class="kp">false</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:hello</span><span class="p">,</span>
+ <span class="ss">:_cset</span><span class="p">,</span>
+ <span class="ss">:scm_default</span><span class="p">,</span>
+ <span class="ss">:depend</span><span class="p">,</span>
+ <span class="ss">:with_env</span><span class="p">,</span>
+ <span class="ss">:run_locally</span><span class="p">,</span>
+ <span class="ss">:try_sudo</span><span class="p">,</span>
+ <span class="ss">:try_runner</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p>これでひとまずRoleへのタスク実行が出来た。</p>
+
+<h2>
+<span id="いつもの-cap-deploy-をloadしてみる" class="fragment"></span><a href="#%E3%81%84%E3%81%A4%E3%82%82%E3%81%AE-cap-deploy-%E3%82%92load%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>いつもの cap deploy をloadしてみる</h2>
+
+<p><code>@load_paths</code>には組込みレシピへのパスがある。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">load_paths</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"."</span><span class="p">,</span> <span class="s2">"/usr/local/rvm/gems/ruby-1.9.3-p286@cap/gems/capistrano-2.13.5/lib/capistrano/recipes"</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p><code>#load</code>を使うと組み込める、これでいつもの<code>deploy</code>系タスクが定義される。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">load</span> <span class="s2">"deploy"</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"deploy"</span><span class="p">]</span>
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">.</span><span class="nf">keys</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:hello</span><span class="p">,</span> <span class="ss">:deploy</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p>CLI実行を補足するとcapifyで作成したCapfileにある<code>load "deploy"</code>でこれと同じことを行なっている事を確認できる。</p>
+
+<h3>
+<span id="組み込みのdeployを実行してみる" class="fragment"></span><a href="#%E7%B5%84%E3%81%BF%E8%BE%BC%E3%81%BF%E3%81%AEdeploy%E3%82%92%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>組み込みのDeployを実行してみる</h3>
+
+<p>ロードした<code>deploy</code>レシピのタスク一覧を確認すると、おなじみの面々が並んでいることがわかる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">[</span><span class="ss">:deploy</span><span class="p">].</span><span class="nf">tasks</span><span class="p">.</span><span class="nf">keys</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:default</span><span class="p">,</span>
+ <span class="ss">:setup</span><span class="p">,</span>
+ <span class="ss">:update</span><span class="p">,</span>
+ <span class="ss">:update_code</span><span class="p">,</span>
+ <span class="ss">:finalize_update</span><span class="p">,</span>
+ <span class="ss">:symlink</span><span class="p">,</span>
+ <span class="ss">:create_symlink</span><span class="p">,</span>
+ <span class="ss">:upload</span><span class="p">,</span>
+ <span class="ss">:restart</span><span class="p">,</span>
+ <span class="ss">:migrate</span><span class="p">,</span>
+ <span class="ss">:migrations</span><span class="p">,</span>
+ <span class="ss">:cleanup</span><span class="p">,</span>
+ <span class="ss">:check</span><span class="p">,</span>
+ <span class="ss">:cold</span><span class="p">,</span>
+ <span class="ss">:start</span><span class="p">,</span>
+ <span class="ss">:stop</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="軽そうなdeploysetupから" class="fragment"></span><a href="#%E8%BB%BD%E3%81%9D%E3%81%86%E3%81%AAdeploysetup%E3%81%8B%E3%82%89"><i class="fa fa-link"></i></a>軽そうなdeploy:setupから</h4>
+
+<p>もちろん<code>#set</code> が使えるので、setupに必須のパラメータ<code>:deploy_to</code>を定義したら<code>setup</code>実行。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">set</span> <span class="ss">:deploy_to</span><span class="p">,</span> <span class="s2">"/opt/deploy/hello"</span>
+<span class="o">=&gt;</span> <span class="s2">"/opt/deploy/hello"</span>
+
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">deploy</span><span class="p">.</span><span class="nf">setup</span>
+  <span class="o">*</span> <span class="mi">2012</span><span class="o">-</span><span class="mi">11</span><span class="o">-</span><span class="mo">07</span> <span class="mi">09</span><span class="p">:</span><span class="mi">34</span><span class="p">:</span><span class="mi">17</span> <span class="n">executing</span> <span class="sb">`deploy:setup'
+  * executing "sudo -p 'sudo password: ' mkdir -p /opt/deploy/hello /opt/deploy/hello/releases /opt/deploy/hello/shared /opt/deploy/hello/shared/system /opt/deploy/hello/shared/log /opt/deploy/hello/shared/pids"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 14ms
+  * executing "sudo -p 'sudo password: ' chmod g+w /opt/deploy/hello /opt/deploy/hello/releases /opt/deploy/hello/shared /opt/deploy/hello/shared/system /opt/deploy/hello/shared/log /opt/deploy/hello/shared/pids"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 11ms
+=&gt; nil
+
+
+&gt; Dir.glob("/opt/deploy/hello/**/")
+=&gt; ["/opt/deploy/hello/",
+ "/opt/deploy/hello/shared/",
+ "/opt/deploy/hello/shared/system/",
+ "/opt/deploy/hello/shared/log/",
+ "/opt/deploy/hello/shared/pids/",
+ "/opt/deploy/hello/releases/"]
+</span></pre></div>
+</div>
+
+<p>Capistranoぽいディレクトリツリーが出来た。</p>
+
+<h3>
+<span id="コードベースからデプロイするupdate_code-create_symlink" class="fragment"></span><a href="#%E3%82%B3%E3%83%BC%E3%83%89%E3%83%99%E3%83%BC%E3%82%B9%E3%81%8B%E3%82%89%E3%83%87%E3%83%97%E3%83%AD%E3%82%A4%E3%81%99%E3%82%8Bupdate_code-create_symlink"><i class="fa fa-link"></i></a>コードベースからデプロイする(update_code, create_symlink)</h3>
+
+<p><code>deploy</code>レシピを組み込んだことにより作成されたAttributeをチェック。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">namespaces</span><span class="p">[</span><span class="ss">:deploy</span><span class="p">].</span><span class="nf">variables</span><span class="p">.</span><span class="nf">keys</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="ss">:ssh_options</span><span class="p">,</span>
+ <span class="ss">:logger</span><span class="p">,</span>
+ <span class="ss">:default_environment</span><span class="p">,</span>
+ <span class="ss">:default_run_options</span><span class="p">,</span>
+ <span class="ss">:application</span><span class="p">,</span>
+ <span class="ss">:repository</span><span class="p">,</span>
+ <span class="ss">:scm</span><span class="p">,</span>
+ <span class="ss">:deploy_via</span><span class="p">,</span>
+ <span class="ss">:deploy_to</span><span class="p">,</span>
+ <span class="ss">:revision</span><span class="p">,</span>
+ <span class="ss">:rails_env</span><span class="p">,</span>
+ <span class="ss">:rake</span><span class="p">,</span>
+ <span class="ss">:source</span><span class="p">,</span>
+ <span class="ss">:real_revision</span><span class="p">,</span>
+ <span class="ss">:strategy</span><span class="p">,</span>
+ <span class="ss">:release_name</span><span class="p">,</span>
+ <span class="ss">:version_dir</span><span class="p">,</span>
+ <span class="ss">:shared_dir</span><span class="p">,</span>
+ <span class="ss">:shared_children</span><span class="p">,</span>
+ <span class="ss">:current_dir</span><span class="p">,</span>
+ <span class="ss">:releases_path</span><span class="p">,</span>
+ <span class="ss">:shared_path</span><span class="p">,</span>
+ <span class="ss">:current_path</span><span class="p">,</span>
+ <span class="ss">:release_path</span><span class="p">,</span>
+ <span class="ss">:releases</span><span class="p">,</span>
+ <span class="ss">:current_release</span><span class="p">,</span>
+ <span class="ss">:previous_release</span><span class="p">,</span>
+ <span class="ss">:current_revision</span><span class="p">,</span>
+ <span class="ss">:latest_revision</span><span class="p">,</span>
+ <span class="ss">:previous_revision</span><span class="p">,</span>
+ <span class="ss">:run_method</span><span class="p">,</span>
+ <span class="ss">:latest_release</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p>要るものだけ上書き＆定義する、コードベースの情報があればOK。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">set</span> <span class="ss">:scm</span><span class="p">,</span> <span class="s1">'git'</span>
+<span class="o">=&gt;</span> <span class="s2">"git"</span>
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">set</span> <span class="ss">:repository</span><span class="p">,</span> <span class="s1">'https://github.com/higanworks/Files_and_Tasks.git'</span>
+<span class="o">=&gt;</span> <span class="s2">"https://github.com/higanworks/Files_and_Tasks.git"</span>
+
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">deploy</span><span class="p">.</span><span class="nf">check</span>          
+  <span class="o">*</span> <span class="mi">2012</span><span class="o">-</span><span class="mi">11</span><span class="o">-</span><span class="mo">07</span> <span class="mi">10</span><span class="p">:</span><span class="mi">27</span><span class="p">:</span><span class="mi">26</span> <span class="n">executing</span> <span class="sb">`deploy:check'
+  * executing "test -d /opt/deploy/hello/releases"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 7ms
+  * executing "test -w /opt/deploy/hello"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 5ms
+  * executing "test -w /opt/deploy/hello/releases"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 5ms
+  * executing "which git"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 7ms
+You appear to have all necessary dependencies installed
+=&gt; nil
+</span></pre></div>
+</div>
+
+<h4>
+<span id="update_code" class="fragment"></span><a href="#update_code"><i class="fa fa-link"></i></a>update_code</h4>
+
+<p><code>Github</code>からコードを設置。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">deploy</span><span class="p">.</span><span class="nf">update_code</span>
+  <span class="o">*</span> <span class="mi">2012</span><span class="o">-</span><span class="mi">11</span><span class="o">-</span><span class="mo">07</span> <span class="mi">10</span><span class="p">:</span><span class="mi">11</span><span class="p">:</span><span class="mi">19</span> <span class="n">executing</span> <span class="sb">`deploy:update_code'
+  * executing "git clone -q https://github.com/higanworks/Files_and_Tasks.git /opt/deploy/hello/releases/20121107100343 &amp;&amp; cd /opt/deploy/hello/releases/20121107100343 &amp;&amp; git checkout -q -b deploy ea5f5e0f9e782305dcd3c27a091fe6c8387760c6 &amp;&amp; (echo ea5f5e0f9e782305dcd3c27a091fe6c8387760c6 &gt; /opt/deploy/hello/releases/20121107100343/REVISION)"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 6293ms
+  * 2012-11-07 10:11:26 executing `</span><span class="n">deploy</span><span class="ss">:finalize_update</span><span class="s1">'
+  * executing "chmod -R -- g+w /opt/deploy/hello/releases/20121107100343 &amp;&amp; rm -rf -- /opt/deploy/hello/releases/20121107100343/public/system &amp;&amp; mkdir -p -- /opt/deploy/hello/releases/20121107100343/public/ &amp;&amp; ln -s -- /opt/deploy/hello/shared/system /opt/deploy/hello/releases/20121107100343/public/system &amp;&amp; rm -rf -- /opt/deploy/hello/releases/20121107100343/log &amp;&amp; ln -s -- /opt/deploy/hello/shared/log /opt/deploy/hello/releases/20121107100343/log &amp;&amp; rm -rf -- /opt/deploy/hello/releases/20121107100343/tmp/pids &amp;&amp; mkdir -p -- /opt/deploy/hello/releases/20121107100343/tmp/ &amp;&amp; ln -s -- /opt/deploy/hello/shared/pids /opt/deploy/hello/releases/20121107100343/tmp/pids"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 22ms
+  * executing "find /opt/deploy/hello/releases/20121107100343/public/images\\ /opt/deploy/hello/releases/20121107100343/public/stylesheets\\ /opt/deploy/hello/releases/20121107100343/public/javascripts -exec touch -t -- 201211071011.26 {} '</span><span class="p">;</span><span class="s1">'; true"
+    servers: ["localhost"]
+    [localhost] executing command
+*** [err :: localhost] find: `/opt/deploy/hello/releases/20121107100343/public/images /opt/deploy/hello/releases/20121107100343/public/stylesheets /opt/deploy/hello/releases/20121107100343/public/javascripts'</span><span class="p">:</span> <span class="no">No</span> <span class="n">such</span> <span class="n">file</span> <span class="n">or</span> <span class="n">directory</span>
+    <span class="n">command</span> <span class="n">finished</span> <span class="k">in</span> <span class="mi">17</span><span class="n">ms</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="create_symlink" class="fragment"></span><a href="#create_symlink"><i class="fa fa-link"></i></a>create_symlink</h4>
+
+<p><code>load "deploy"</code>で自動的に定義されたattributeは、各タスクで使い回されている。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">release_name</span>
+<span class="o">=&gt;</span> <span class="s2">"20121107100343"</span>
+
+<span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">release_path</span>      
+<span class="o">=&gt;</span> <span class="s2">"/opt/deploy/hello/releases/20121107100343"</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry-Console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">config</span><span class="p">.</span><span class="nf">deploy</span><span class="p">.</span><span class="nf">create_symlink</span> 
+  <span class="o">*</span> <span class="mi">2012</span><span class="o">-</span><span class="mi">11</span><span class="o">-</span><span class="mo">07</span> <span class="mi">10</span><span class="p">:</span><span class="mi">22</span><span class="p">:</span><span class="mo">00</span> <span class="n">executing</span> <span class="sb">`deploy:create_symlink'
+  * executing "rm -f /opt/deploy/hello/current &amp;&amp; ln -s /opt/deploy/hello/releases/20121107100343 /opt/deploy/hello/current"
+    servers: ["localhost"]
+    [localhost] executing command
+    command finished in 11ms
+=&gt; nil
+</span></pre></div>
+</div>
+
+<h2>
+<span id="まとめ" class="fragment"></span><a href="#%E3%81%BE%E3%81%A8%E3%82%81"><i class="fa fa-link"></i></a>まとめ</h2>
+
+<p><code>Capistrano::Configuration</code>をうまいこと操作できれば、Dev向けにシンプルな共有デプロイツールを作れそうな気がする。</p>

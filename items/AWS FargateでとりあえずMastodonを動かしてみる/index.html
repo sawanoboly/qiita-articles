@@ -1,0 +1,406 @@
+<p>先日こんな記事を見かけて、</p>
+
+<ul>
+<li><a href="https://blog.haramishio.xyz/post/000022/" rel="nofollow noopener" target="_blank">Kubernetesの学習のためにMastodonを構築したら勉強になった | ハラミTech</a></li>
+</ul>
+
+<p>Web, Worker, Websocketと要素が揃っているMastodonのスタックをXXで動かしてみる、というのは感触をつかむのによいなと思いました。</p>
+
+<p>で、じゃあAWS Fargateではどうかなと、このようにしてみました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff7faf581-7f7b-0ea6-69a0-c2968c4bcc0a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=47e2144facfb2348f5f5e4fbb7e68c03" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff7faf581-7f7b-0ea6-69a0-c2968c4bcc0a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=47e2144facfb2348f5f5e4fbb7e68c03" alt="Amazon ECS .png" title="Amazon ECS .png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/f7faf581-7f7b-0ea6-69a0-c2968c4bcc0a.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff7faf581-7f7b-0ea6-69a0-c2968c4bcc0a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=da6cbd95b0670602f9a9d0f87f2cc85b 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="事前準備" class="fragment"></span><a href="#%E4%BA%8B%E5%89%8D%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>事前準備</h2>
+
+<p>Dockerコンテナ以外で、マネージドサービスで揃えられるものは優先的にそちらを使用します。</p>
+
+<ul>
+<li>AWSで用意
+
+<ul>
+<li>VPS (既存でも新規でも)</li>
+<li>RDS (Postgresで起動)</li>
+<li>ACMで証明書 (ALBに適用する)</li>
+<li>ALB
+
+<ul>
+<li>TargetGroup-web (HTTP/3000)</li>
+<li>TargetGroup-stream (HTTP/4000)</li>
+</ul>
+</li>
+<li>S3バケット (PAPERCLIP Wikiのポリシー適用が楽)</li>
+</ul>
+</li>
+<li>Redis =&gt; <a href="https://redislabs.com/" rel="nofollow noopener" target="_blank">Redis Labs</a> / 30MBまでならFreeプランでOK
+
+<ul>
+<li>ElastiCacheが使いたければそちらでも</li>
+</ul>
+</li>
+<li>MailGunアカウント
+
+<ul>
+<li>専用の認証情報をつくるとよいです</li>
+</ul>
+</li>
+</ul>
+
+<p>ALBは以下のルーティングを最後に割り当てます。</p>
+
+<ul>
+<li>
+<code>/</code> (default)=&gt; TargetGroup-web</li>
+<li>
+<code>/api/v1/streaming*</code> TargetGroup-stream</li>
+</ul>
+
+<p>こんな感じです。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe11ad232-9aa0-8b4f-664a-72cb6a101f78.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a43d69f6797d792a2aef8e8af8acd9d3" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe11ad232-9aa0-8b4f-664a-72cb6a101f78.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a43d69f6797d792a2aef8e8af8acd9d3" alt="EC2 Management Console 2017-12-03 14-04-04.png" title="EC2 Management Console 2017-12-03 14-04-04.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/e11ad232-9aa0-8b4f-664a-72cb6a101f78.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe11ad232-9aa0-8b4f-664a-72cb6a101f78.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=1ab14982d0f310ce389576d3de838e8b 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="fargateを考慮したtask-definitions" class="fragment"></span><a href="#fargate%E3%82%92%E8%80%83%E6%85%AE%E3%81%97%E3%81%9Ftask-definitions"><i class="fa fa-link"></i></a>Fargateを考慮したTask definitions</h2>
+
+<p>事前準備の内容が揃っていれば、Dockerのコンテナとして動かすのは次の3要素。</p>
+
+<ul>
+<li>Web(Rails/puma)</li>
+<li>Sidekiq(Ruby)</li>
+<li>Streaming(Node.js)</li>
+</ul>
+
+<p>これらをTask definitionsに起こすとして、全部のコンテナ定義を一つにまとめるとスケール変更が大げさになるので、それぞれを別のECSサービスとして登録できるようにバラします。<br>
+compose感はなくなりますが、Fargateならその方が良いように思います。</p>
+
+<p>各タスクはmastodonリポジトリのdocker-compose.ymlをベースに、kubedonを参考にしつつアレンジ。</p>
+
+<ul>
+<li><a href="https://github.com/tootsuite/mastodon/blob/v2.0.0/docker-compose.yml" rel="nofollow noopener" target="_blank">mastodon/docker-compose.yml at v2.0.0 · tootsuite/mastodon</a></li>
+<li><a href="https://github.com/jviide/kubedon" rel="nofollow noopener" target="_blank">jviide/kubedon: A Mastodon conf for Kubernetes / Google Container Engine</a></li>
+</ul>
+
+<h3>
+<span id="envproduction" class="fragment"></span><a href="#envproduction"><i class="fa fa-link"></i></a>.env.production</h3>
+
+<p>大筋として本家のdocker-composeを使いまわすので、もともと用意されている<code>.env.production</code>から環境変数という仕組みをほぼ踏襲します。<br>
+今回このようにしました。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">.env.production</span></div>
+<div class="highlight"><pre><span class="nv">RAILS_ENV</span><span class="o">=</span>production
+<span class="nv">NODE_ENV</span><span class="o">=</span>production
+<span class="nv">REDIS_URL</span><span class="o">=</span>redis://:&lt;RedisLabsのパスワード&gt;@&lt;RedisLabsのエンドポイント&gt;
+
+<span class="nv">DB_HOST</span><span class="o">=</span>&lt;RDSのエンドポイント&gt;
+<span class="nv">DB_USER</span><span class="o">=</span>&lt;RDSのユーザ&gt;
+<span class="nv">DB_NAME</span><span class="o">=</span>&lt;RDSのDB名&gt;
+<span class="nv">DB_PASS</span><span class="o">=</span>&lt;RDSのパスワード&gt;
+<span class="nv">DB_PORT</span><span class="o">=</span>5432
+
+<span class="nv">LOCAL_DOMAIN</span><span class="o">=</span>&lt;ALBに向けるドメイン&gt;
+<span class="nv">LOCAL_HTTPS</span><span class="o">=</span><span class="nb">true
+
+</span><span class="nv">PAPERCLIP_SECRET</span><span class="o">=</span>&lt;rake secretで作成&gt;
+<span class="nv">SECRET_KEY_BASE</span><span class="o">=</span>&lt;rake secretで作成&gt;
+<span class="nv">OTP_SECRET</span><span class="o">=</span>&lt;rake secretで作成&gt;
+
+<span class="nv">VAPID_PRIVATE_KEY</span><span class="o">=</span>&lt;rake mastodon:webpush:generate_vapid_key で作成&gt;
+<span class="nv">VAPID_PUBLIC_KEY</span><span class="o">=</span>&lt;rake mastodon:webpush:generate_vapid_key で作成&gt;
+
+<span class="nv">DEFAULT_LOCALE</span><span class="o">=</span>ja
+
+<span class="nv">SMTP_SERVER</span><span class="o">=</span>smtp.mailgun.org
+<span class="nv">SMTP_PORT</span><span class="o">=</span>465
+<span class="nv">SMTP_LOGIN</span><span class="o">=</span>&lt; MAILGUNの認証ユーザ <span class="o">&gt;</span>
+<span class="nv">SMTP_PASSWORD</span><span class="o">=</span>&lt; MAILGUNのパスワード <span class="o">&gt;</span>
+<span class="nv">SMTP_FROM_ADDRESS</span><span class="o">=</span>noreply@&lt; MAILGUNのドメイン <span class="o">&gt;</span>
+<span class="nv">SMTP_TLS</span><span class="o">=</span><span class="nb">true
+
+</span><span class="nv">S3_ENABLED</span><span class="o">=</span><span class="nb">true
+</span><span class="nv">S3_BUCKET</span><span class="o">=</span>&lt; S3のバケット <span class="o">&gt;</span>
+<span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>&lt; S3用のIAMユーザのキー <span class="o">&gt;</span>
+<span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span>&lt; S3用のIAMユーザのシークレットキー <span class="o">&gt;</span>
+<span class="nv">S3_REGION</span><span class="o">=</span>&lt; S3のリージョン <span class="o">&gt;</span>
+<span class="nv">S3_PROTOCOL</span><span class="o">=</span>https
+<span class="nv">S3_HOSTNAME</span><span class="o">=</span>&lt; S3のリージョン別エンドポイント <span class="o">&gt;</span>
+
+<span class="nv">STREAMING_CLUSTER_NUM</span><span class="o">=</span>1
+</pre></div>
+</div>
+
+<h3>
+<span id="web" class="fragment"></span><a href="#web"><i class="fa fa-link"></i></a>web</h3>
+
+<p>web用に<code>docker-compose.web.yml</code>, <code>ecs-param.web.yml</code>を用意します。ecs-cliの取り回しを考えると、ディレクトリ分けて標準のファイル名を使う方が楽だったかも。<br>
+また、汎用性を考えたらloggingは分けて、--fileで追加指定してもよいはずです。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">docker-compose.web.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="s1">'</span><span class="s">2'</span>
+<span class="na">services</span><span class="pi">:</span>
+  <span class="na">web</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">gargron/mastodon:v2.0.0</span>
+    <span class="na">env_file</span><span class="pi">:</span> <span class="s">.env.production</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="pi">[</span><span class="s2">"</span><span class="s">/bin/ash"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">-c"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">rails</span><span class="nv"> </span><span class="s">db:migrate</span><span class="nv"> </span><span class="s">&amp;&amp;</span><span class="nv"> </span><span class="s">rails</span><span class="nv"> </span><span class="s">assets:precompile</span><span class="nv"> </span><span class="s">&amp;&amp;</span><span class="nv"> </span><span class="s">rails</span><span class="nv"> </span><span class="s">s</span><span class="nv"> </span><span class="s">-p</span><span class="nv"> </span><span class="s">3000</span><span class="nv"> </span><span class="s">-b</span><span class="nv"> </span><span class="s">0.0.0.0"</span><span class="pi">]</span>
+    <span class="na">ports</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s2">"</span><span class="s">3000:3000"</span>
+    <span class="na">mem_limit</span><span class="pi">:</span> <span class="s">2GB</span>
+    <span class="na">logging</span><span class="pi">:</span>
+      <span class="na">driver</span><span class="pi">:</span> <span class="s">awslogs</span>
+      <span class="na">options</span><span class="pi">:</span>
+        <span class="na">awslogs-group</span><span class="pi">:</span> <span class="s">mstdn-fargate-demo</span>
+        <span class="na">awslogs-region</span><span class="pi">:</span> <span class="s">us-east-1</span>
+        <span class="na">awslogs-stream-prefix</span><span class="pi">:</span> <span class="s">web</span>
+
+</pre></div>
+</div>
+
+<p>assign_public_ipはイメージの取得にDockerhubを使う場合ENABLEDでないとPullできません。(※他にルートを用意できればおそらく可)<br>
+SGはALBとさえ通信できればOKなので、特にきにせずENABLEDで良いでしょう。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">ecs-param.web.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="m">1</span>
+<span class="na">task_definition</span><span class="pi">:</span>
+  <span class="na">ecs_network_mode</span><span class="pi">:</span> <span class="s">awsvpc</span>
+  <span class="na">task_execution_role</span><span class="pi">:</span> <span class="s">ecsTaskExecutionRole</span>
+  <span class="na">task_size</span><span class="pi">:</span>
+    <span class="na">cpu_limit</span><span class="pi">:</span> <span class="m">512</span>
+    <span class="na">mem_limit</span><span class="pi">:</span> <span class="s">2GB</span>
+  <span class="na">services</span><span class="pi">:</span>
+    <span class="na">web</span><span class="pi">:</span>
+      <span class="na">essential</span><span class="pi">:</span> <span class="no">true</span>
+<span class="na">run_params</span><span class="pi">:</span>
+  <span class="na">network_configuration</span><span class="pi">:</span>
+    <span class="na">awsvpc_configuration</span><span class="pi">:</span>
+      <span class="na">subnets</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SUBNETa&gt;</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SUBNETb&gt;</span>
+      <span class="na">security_groups</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SG&gt;</span>
+      <span class="na">assign_public_ip</span><span class="pi">:</span> <span class="s">ENABLED</span>
+</pre></div>
+</div>
+
+<p>webは他に比べてスペック高、ほぼ<code>asset:precompile</code>のため(メモリが足りないと落ちる)です。</p>
+
+<p>作成したファイルたちを指定して<code>ecs-cli compose</code>を使ってサービス登録するにはこんな感じ。<br>
+<code>CLUSTER_NAME</code>=既存ECSクラスタの名前、<code>TARGET_GROUP_WEB</code>=参加させるALBのターゲットグループに置き換えで。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>ecs-cli compose <span class="se">\</span>
+  <span class="nt">--file</span> docker-compose.web.yml <span class="se">\</span>
+  <span class="nt">--ecs-params</span> ecs-param.web.yml <span class="se">\</span>
+  <span class="nt">--project-name</span> mstdn-fargate-web <span class="se">\</span>
+  <span class="nt">--cluster</span> <span class="k">${</span><span class="nv">CLUSTER_NAME</span><span class="k">}</span> <span class="se">\</span>
+  service up <span class="nt">--launch-type</span> FARGATE <span class="se">\</span>
+  <span class="nt">--container-name</span> web <span class="se">\</span>
+  <span class="nt">--container-port</span> 3000 <span class="se">\</span>
+  <span class="nt">--target-group-arn</span> <span class="k">${</span><span class="nv">TARGET_GROUP_WEB</span><span class="k">}</span>
+  <span class="c"># --timeout 0</span>
+</pre></div></div>
+
+<p><code>--target-group-arn</code>は後から変更できないので、変更が必要な場合はサービスを一旦消すか別名で作成です。</p>
+
+<p>なお実行の際、CPUをケチる(&lt;1024)と<code>--timeout 0</code>を付与しておかないとデフォルト待ちの5分ではassets生成が終わりません。<br>
+このあたり考慮すると、実際に運用する場合は起動時間のことも考えて、よそでprecompileして<code>public</code>を別に用意するのが得策でしょう。</p>
+
+<h3>
+<span id="streaming" class="fragment"></span><a href="#streaming"><i class="fa fa-link"></i></a>streaming</h3>
+
+<p>streaming用に<code>docker-compose.streaming.yml</code>, <code>ecs-param.streaming.yml</code>を用意します。ecs-cliの取り回し(以下略</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">docker-compose.streaming.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="s1">'</span><span class="s">2'</span>
+<span class="na">services</span><span class="pi">:</span>
+  <span class="na">streaming</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">gargron/mastodon:v2.0.0</span>
+    <span class="na">env_file</span><span class="pi">:</span> <span class="s">.env.production</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="pi">[</span><span class="s2">"</span><span class="s">npm"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">run"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">start"</span><span class="pi">]</span>
+    <span class="na">ports</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s2">"</span><span class="s">4000:4000"</span>
+    <span class="na">logging</span><span class="pi">:</span>
+      <span class="na">driver</span><span class="pi">:</span> <span class="s">awslogs</span>
+      <span class="na">options</span><span class="pi">:</span>
+        <span class="na">awslogs-group</span><span class="pi">:</span> <span class="s">mstdn-fargate-demo</span>
+        <span class="na">awslogs-region</span><span class="pi">:</span> <span class="s">us-east-1</span>
+        <span class="na">awslogs-stream-prefix</span><span class="pi">:</span> <span class="s">streaming</span>
+</pre></div>
+</div>
+
+<p>streamingのパラメータ、サイズは最小。Fargateは<a href="http://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html#task_size" rel="nofollow noopener" target="_blank">CPUとメモリの組み合わせに制限</a>があるようです。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">ecs-param.streaming.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="m">1</span>
+<span class="na">task_definition</span><span class="pi">:</span>
+  <span class="na">ecs_network_mode</span><span class="pi">:</span> <span class="s">awsvpc</span>
+  <span class="na">task_execution_role</span><span class="pi">:</span> <span class="s">ecsTaskExecutionRole</span>
+  <span class="na">task_size</span><span class="pi">:</span>
+    <span class="na">cpu_limit</span><span class="pi">:</span> <span class="m">256</span>
+    <span class="na">mem_limit</span><span class="pi">:</span> <span class="m">512</span>
+  <span class="na">services</span><span class="pi">:</span>
+    <span class="na">streaming</span><span class="pi">:</span>
+      <span class="na">essential</span><span class="pi">:</span> <span class="no">true</span>
+<span class="na">run_params</span><span class="pi">:</span>
+  <span class="na">network_configuration</span><span class="pi">:</span>
+    <span class="na">awsvpc_configuration</span><span class="pi">:</span>
+      <span class="na">subnets</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SUBNETa&gt;</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SUBNETb&gt;</span>
+      <span class="na">security_groups</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SG&gt;</span>
+      <span class="na">assign_public_ip</span><span class="pi">:</span> <span class="s">ENABLED</span>
+</pre></div>
+</div>
+
+<p>作成したファイルたちを指定して<code>ecs-cli compose</code>を使ってサービス登録するにはこんな感じ。webとほぼおなじですね。<br>
+<code>CLUSTER_NAME</code>=既存ECSクラスタの名前、<code>TARGET_GROUP_STREAMING</code>=参加させるALBのターゲットグループに置き換えで。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>ecs-cli compose <span class="se">\</span>
+  <span class="nt">--file</span> docker-compose.streaming.yml <span class="se">\</span>
+  <span class="nt">--ecs-params</span> ecs-param.streaming.yml <span class="se">\</span>
+  <span class="nt">--project-name</span> mstdn-fargate-streaming <span class="se">\</span>
+  <span class="nt">--cluster</span> <span class="k">${</span><span class="nv">CLUSTER_NAME</span><span class="k">}</span> <span class="se">\</span>
+  service up <span class="nt">--launch-type</span> FARGATE <span class="se">\</span>
+  <span class="nt">--container-name</span> streaming <span class="se">\</span>
+  <span class="nt">--container-port</span> 4000 <span class="se">\</span>
+  <span class="nt">--target-group-arn</span> <span class="k">${</span><span class="nv">TARGET_GROUP_STREAMING</span><span class="k">}</span>
+</pre></div></div>
+
+<h3>
+<span id="sidekiq" class="fragment"></span><a href="#sidekiq"><i class="fa fa-link"></i></a>sidekiq</h3>
+
+<p>sidekiq用に<code>docker-compose.sidekiq.yml</code>, <code>ecs-param.sidekiq.yml</code>を用意します。ecs-cliの取り回し(以下略</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">docker-compose.sidekiq.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="s1">'</span><span class="s">2'</span>
+<span class="na">services</span><span class="pi">:</span>
+  <span class="na">sidekiq</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">gargron/mastodon:v2.0.0</span>
+    <span class="na">env_file</span><span class="pi">:</span> <span class="s">.env.production</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="pi">[</span><span class="s2">"</span><span class="s">sidekiq"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">-q"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">default"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">-q"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">mailers"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">-q"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">pull"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">-q"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">push"</span><span class="pi">]</span>
+    <span class="na">logging</span><span class="pi">:</span>
+      <span class="na">driver</span><span class="pi">:</span> <span class="s">awslogs</span>
+      <span class="na">options</span><span class="pi">:</span>
+        <span class="na">awslogs-group</span><span class="pi">:</span> <span class="s">mstdn-fargate-demo</span>
+        <span class="na">awslogs-region</span><span class="pi">:</span> <span class="s">us-east-1</span>
+        <span class="na">awslogs-stream-prefix</span><span class="pi">:</span> <span class="s">sidekiq</span>
+</pre></div>
+</div>
+
+<p>こちらも最小でOK。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">ecs-param.sidekiq.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="m">1</span>
+<span class="na">task_definition</span><span class="pi">:</span>
+  <span class="na">ecs_network_mode</span><span class="pi">:</span> <span class="s">awsvpc</span>
+  <span class="na">task_execution_role</span><span class="pi">:</span> <span class="s">ecsTaskExecutionRole</span>
+  <span class="na">task_size</span><span class="pi">:</span>
+    <span class="na">cpu_limit</span><span class="pi">:</span> <span class="m">256</span>
+    <span class="na">mem_limit</span><span class="pi">:</span> <span class="m">512</span>
+  <span class="na">services</span><span class="pi">:</span>
+    <span class="na">sidekiq</span><span class="pi">:</span>
+      <span class="na">essential</span><span class="pi">:</span> <span class="no">true</span>
+<span class="na">run_params</span><span class="pi">:</span>
+  <span class="na">network_configuration</span><span class="pi">:</span>
+    <span class="na">awsvpc_configuration</span><span class="pi">:</span>
+      <span class="na">subnets</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SUBNETa&gt;</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SUBNETb&gt;</span>
+      <span class="na">security_groups</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">&lt;YOUR_SG&gt;</span>
+      <span class="na">assign_public_ip</span><span class="pi">:</span> <span class="s">ENABLED</span>
+</pre></div>
+</div>
+
+<p><code>CLUSTER_NAME</code>=既存ECSクラスタの名前に置き換えで。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>ecs-cli compose <span class="se">\</span>
+  <span class="nt">--file</span> docker-compose.sidekiq.yml <span class="se">\</span>
+  <span class="nt">--ecs-params</span> ecs-param.sidekiq.yml <span class="se">\</span>
+  <span class="nt">--project-name</span> mstdn-fargate-sidekiq <span class="se">\</span>
+  <span class="nt">--cluster</span> <span class="k">${</span><span class="nv">CLUSTER_NAME</span><span class="k">}</span> <span class="se">\</span>
+  service up <span class="nt">--launch-type</span> FARGATE
+</pre></div></div>
+
+<h2>
+<span id="ecs状況" class="fragment"></span><a href="#ecs%E7%8A%B6%E6%B3%81"><i class="fa fa-link"></i></a>ECS状況</h2>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>ecs-cli ps <span class="nt">--cluster</span> <span class="k">${</span><span class="nv">CLUSTER_NAME</span><span class="k">}</span>
+Name                                            State                                                                               Ports                          TaskDefinition
+775a399c-19e1-4e2a-bd3d-98f8b4d7304e/streaming  RUNNING                                                                             34.204.191.189:4000-&gt;4000/tcp  mstdn-fargate-streaming:1
+921f2d1a-0e4f-49a6-a5b5-434e2b91cf11/sidekiq    RUNNING                                                                                                            mstdn-fargate-sidekiq:2
+edb1ba2e-533d-4afd-aaee-39db59ee616a/web        RUNNING                                                                             34.204.174.122:3000-&gt;3000/tcp  mstdn-fargate-web:15
+
+<span class="nv">$ </span>aws ecs list-services <span class="nt">--cluster</span> <span class="k">${</span><span class="nv">CLUSTER_NAME</span><span class="k">}</span> 
+<span class="o">{</span>
+    <span class="s2">"serviceArns"</span>: <span class="o">[</span>
+        <span class="s2">"arn:aws:ecs:us-east-1:xxxxxxxxxxxx:service/mstdn-fargate-web"</span>, 
+        <span class="s2">"arn:aws:ecs:us-east-1:xxxxxxxxxxxx:service/mstdn-fargate-sidekiq"</span>, 
+        <span class="s2">"arn:aws:ecs:us-east-1:xxxxxxxxxxxx:service/mstdn-fargate-streaming"</span>
+    <span class="o">]</span>
+<span class="o">}</span>
+</pre></div></div>
+
+<p>それぞれ別のECSサービスとして動かせたので、個別にコンテナ数を変更できて良い感じのはず。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9d922ab5-83d3-f217-7161-3af162be15eb.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=87a79b5d1215cced7b20eea8db6f765c" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9d922ab5-83d3-f217-7161-3af162be15eb.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=87a79b5d1215cced7b20eea8db6f765c" alt="Mastodon 2017-12-03 14-02-01.png" title="Mastodon 2017-12-03 14-02-01.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/9d922ab5-83d3-f217-7161-3af162be15eb.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9d922ab5-83d3-f217-7161-3af162be15eb.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=1fa163632e8592ca1b2e9152401562cc 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="mastodon-admin登録" class="fragment"></span><a href="#mastodon-admin%E7%99%BB%E9%8C%B2"><i class="fa fa-link"></i></a>Mastodon admin登録</h2>
+
+<p>さて、Mastodonの管理者になるには<code>mastodon:make_admin</code>タスクを実行すればよいのですが、Fargate上のDockerコンテナで何か実行(docker exec相当)できるのだろうか。</p>
+
+<p>さっとアタッチはできないぽいので、これもtask definitionからやりますか。</p>
+
+<p>yamlをかいてー</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">docker-compose.web_make_admin.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="s1">'</span><span class="s">2'</span>
+<span class="na">services</span><span class="pi">:</span>
+  <span class="na">web</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">gargron/mastodon:v2.0.0</span>
+    <span class="na">env_file</span><span class="pi">:</span> <span class="s">.env.production</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="pi">[</span><span class="s2">"</span><span class="s">/bin/ash"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">-c"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">rails</span><span class="nv"> </span><span class="s">mastodon:make_admin</span><span class="nv"> </span><span class="s">USERNAME=sawanoboly"</span><span class="pi">]</span>
+    <span class="na">mem_limit</span><span class="pi">:</span> <span class="s">512MB</span>
+    <span class="na">logging</span><span class="pi">:</span>
+      <span class="na">driver</span><span class="pi">:</span> <span class="s">awslogs</span>
+      <span class="na">options</span><span class="pi">:</span>
+        <span class="na">awslogs-group</span><span class="pi">:</span> <span class="s">mstdn-fargate-demo</span>
+        <span class="na">awslogs-region</span><span class="pi">:</span> <span class="s">us-east-1</span>
+        <span class="na">awslogs-stream-prefix</span><span class="pi">:</span> <span class="s">railstask</span>
+</pre></div>
+</div>
+
+<p><code>ecs-cli compose up</code>と。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>ecs-cli compose <span class="se">\</span>
+  <span class="nt">--file</span> docker-compose.web_make_admin.yml <span class="se">\</span>
+  <span class="nt">--ecs-params</span> ecs-param.web.yml <span class="se">\</span>
+  <span class="nt">--project-name</span> mstdn-fargate-makeadmin <span class="se">\</span>
+  <span class="nt">--cluster</span> <span class="k">${</span><span class="nv">CLUSTER_NAME</span><span class="k">}</span> <span class="se">\</span>
+  up <span class="nt">--launch-type</span> FARGATE
+</pre></div></div>
+
+<p>で、管理メニューアクセスオープン。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdc229af8-5ab5-fbc2-dd8e-6ffd662dbfae.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8115d69b05469cbea5bb6367ae6cf25b" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdc229af8-5ab5-fbc2-dd8e-6ffd662dbfae.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8115d69b05469cbea5bb6367ae6cf25b" alt="レポート - Mastodon 2017-12-03 14-34-44.png" title="レポート - Mastodon 2017-12-03 14-34-44.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/dc229af8-5ab5-fbc2-dd8e-6ffd662dbfae.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdc229af8-5ab5-fbc2-dd8e-6ffd662dbfae.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=6b26330055b215d0b016edcd617906b4 1x" loading="lazy"></a></p>
+
+<p>少々手間だが、できるのでよいです。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>これまではスケール変更を柔軟にしようと思ったら結局ECSクラスタなりk8s、docker swarmなどのノードを確保しておく必要があったことを考えると、リソース配分が目に見える分だけになるのでシンプルです。</p>
+
+<p>Fargateで起動するコンテナと通常のEC2インスタンスを比較すると、数字上で同等のCPU/メモリのインスタンスを維持するよりFargateのほうがちょっと割高になるはずです。<br>
+しかし、EC2ではサービス用のプロセス以外にも色々動かしたりケアする場所も多いため、コンテナより余分に性能やらディスクやらが必要になります。Fargateは下限ギリギリを攻めてもよい分、トータルでどっちがよいかは動かしたいものによるでしょう。</p>
+
+<p>スケールアウトの対応速度は比較にならないほどFargateの方がはやいです。※この記事の例での構成ではコンテナイメージの最適化をしてないので少々もたもたしますが。</p>
+
+<p>Fargate専用のSpotFleetでないかなあ。</p>

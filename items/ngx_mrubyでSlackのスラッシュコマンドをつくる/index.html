@@ -1,0 +1,270 @@
+<p>ただ、レスポンスを動的に組み立てるだけの話です。</p>
+
+<h2>
+<span id="botではない単発のslackのスラッシュコマンドslash-commands" class="fragment"></span><a href="#bot%E3%81%A7%E3%81%AF%E3%81%AA%E3%81%84%E5%8D%98%E7%99%BA%E3%81%AEslack%E3%81%AE%E3%82%B9%E3%83%A9%E3%83%83%E3%82%B7%E3%83%A5%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89slash-commands"><i class="fa fa-link"></i></a>botではない、単発のSlackのスラッシュコマンド(Slash Commands)</h2>
+
+<p>一応簡単に説明しておきます。スラッシュコマンドとは、<code>/foo [text]</code>のように、Slackのチャンネルで頭にスラッシュをつけて入力することでなにかしら処理をしてもらうためのシンタックスです。</p>
+
+<ul>
+<li><a href="https://api.slack.com/slash-commands" rel="nofollow noopener" target="_blank">Slash Commands | Slack</a></li>
+</ul>
+
+<p>さてこれ、一見Slack Applicationか、botフレームワークの知識が入りそうですが、プリセットのApp<code>Slash Commands</code>を使えば次のようなゆるゆる仕様で取り扱うことができます。</p>
+
+<ul>
+<li>
+<code>plain/text</code>でレスポンスが来たら、Bodyをそのままチャンネルに投稿する。</li>
+<li>
+<code>application/json</code>でレスポンスをしたら、Bodyをパースして規定の形式でチャンネルに投稿する。</li>
+<li>HTTP 200 以外のレスポンスはエラー</li>
+</ul>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fee18fc91-69f8-738e-ed57-afb6652e99ee.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8df5e5ebe541c0e433f187cd78849f8d" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fee18fc91-69f8-738e-ed57-afb6652e99ee.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8df5e5ebe541c0e433f187cd78849f8d" alt="Slash Commands | Slack App Directory 2017-12-18 15-38-11.png" title="Slash Commands | Slack App Directory 2017-12-18 15-38-11.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/ee18fc91-69f8-738e-ed57-afb6652e99ee.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fee18fc91-69f8-738e-ed57-afb6652e99ee.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0385f29042980731eec4bdc9108b96b4 1x" loading="lazy"></a></p>
+
+<p>これならほぼ絵文字感覚で追加できます。</p>
+
+<h2>
+<span id="テキストでシンプルなレスポンス" class="fragment"></span><a href="#%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88%E3%81%A7%E3%82%B7%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AA%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9"><i class="fa fa-link"></i></a>テキストでシンプルなレスポンス</h2>
+
+<p>ではこんなのを作ります。</p>
+
+<ul>
+<li>
+<code>/hello</code>コマンドで、"Hello World"のレスポンス。</li>
+</ul>
+
+<p>まずは<code>ngx_mruby</code>でのhello-world use_caseそのままです。</p>
+
+<ul>
+<li><a href="https://github.com/matsumotory/ngx_mruby/tree/master/docs/use_case#hello-world" rel="nofollow noopener" target="_blank">hello-world | ngx_mruby use_case</a></li>
+</ul>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">hello.rb</span></div>
+<div class="highlight"><pre><span class="no">Nginx</span><span class="p">.</span><span class="nf">echo</span> <span class="s2">"Hello World"</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="nginx">
+<div class="code-lang"><span class="bold">nginx.conf</span></div>
+<div class="highlight"><pre><span class="k">server</span> <span class="p">{</span>
+  <span class="kn">location</span> <span class="n">/hello</span> <span class="p">{</span>
+    <span class="kn">mruby_content_handler</span> <span class="n">/path/to/hello.rb</span><span class="p">;</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Access</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>curl http://127.0.0.1/hello
+Hello World
+</pre></div>
+</div>
+
+<p>slackの設定をします。今回はGETですね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8ffd8c6b-59c2-1dfd-fb84-9aef68a10d4d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=cddaadfe76695ae7907205b12f735ff8" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8ffd8c6b-59c2-1dfd-fb84-9aef68a10d4d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=cddaadfe76695ae7907205b12f735ff8" alt="Image 2017-12-18 15-46-20.png" title="Image 2017-12-18 15-46-20.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/8ffd8c6b-59c2-1dfd-fb84-9aef68a10d4d.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8ffd8c6b-59c2-1dfd-fb84-9aef68a10d4d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=bb6b678592326c166be358e98cc9a9d2 1x" loading="lazy"></a></p>
+
+<p><code>/hello</code>を実行、と。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8977c451-7f23-a82e-6552-73c7d9a9a16a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a347c35f1da856c002ea14fa707a528b" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8977c451-7f23-a82e-6552-73c7d9a9a16a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a347c35f1da856c002ea14fa707a528b" alt="Slack - higanworks-idobata 2017-12-18 15-44-20.png" title="Slack - higanworks-idobata 2017-12-18 15-44-20.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/8977c451-7f23-a82e-6552-73c7d9a9a16a.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8977c451-7f23-a82e-6552-73c7d9a9a16a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=8986a5a4f57910bafbfde83b5d7d1783 1x" loading="lazy"></a></p>
+
+<p><code>Only visible to you</code>とあるように、このメッセージは自分しか確認できませんが、とりあえず反応してもらえました。結果が他に見えない場合、入力したコマンドもチャンネルには表示されません。</p>
+
+<p>見た目などはSlackの設定で好きなように変更しましょう。今回はカレンダーのネタ出しを私に振ってきた<a href="https://twitter.com/matsumotory" rel="nofollow noopener" target="_blank">@matsumotory</a>を使います。</p>
+
+<h2>
+<span id="jsonでレスポンス" class="fragment"></span><a href="#json%E3%81%A7%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9"><i class="fa fa-link"></i></a>JSONでレスポンス</h2>
+
+<p>惜しいことにプレーンテキストでは、コマンドを実行したユーザでしか実行結果が見えません。<br>
+このあたりの挙動を変更するのも簡単で、レスポンスを<code>application/json</code>にして<code>response_type</code>パラメータを<code>in_channel</code>(デフォルトの挙動は<code>ephemeral</code>)にするなどでOKです。</p>
+
+<p>ついでにスラッシュコマンドの引数によって、すこし挙動を変えたりしてみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">hello2.rb</span></div>
+<div class="highlight"><pre><span class="k">def</span> <span class="nf">args_to_hash</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">ar</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">a</span><span class="o">|</span>
+        <span class="n">h</span><span class="p">[</span><span class="n">a</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s1">'='</span><span class="p">)[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">a</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s1">'='</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">end</span>
+    <span class="n">h</span>
+<span class="k">end</span>
+
+<span class="n">r</span> <span class="o">=</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">Request</span><span class="p">.</span><span class="nf">new</span>
+<span class="n">raw_args</span> <span class="o">=</span> <span class="n">r</span><span class="p">.</span><span class="nf">args</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s1">'&amp;'</span><span class="p">)</span>
+<span class="n">h_args</span> <span class="o">=</span> <span class="n">args_to_hash</span><span class="p">(</span><span class="n">raw_args</span><span class="p">)</span>
+
+<span class="n">resp</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="n">resp</span><span class="p">[</span><span class="s1">'response_type'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'in_channel'</span>
+
+<span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">h_args</span><span class="p">[</span><span class="s1">'user_name'</span><span class="p">]</span> <span class="o">+</span> <span class="s2">"さん、こんにちは。</span><span class="se">\n</span><span class="s2">"</span>
+
+<span class="k">if</span> <span class="n">h_args</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">==</span> <span class="kp">nil</span>
+    <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">+</span> <span class="s2">"それ、引数がないっていわれませんか？"</span>
+<span class="k">else</span>
+    <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">+</span> <span class="s2">"ほう、『</span><span class="si">#{</span><span class="no">HTTP</span><span class="o">::</span><span class="no">URL</span><span class="o">::</span><span class="n">decode</span><span class="p">(</span><span class="n">h_args</span><span class="p">[</span><span class="s1">'text'</span><span class="p">])</span><span class="si">}</span><span class="s2">』、ですか。興味はあります。</span><span class="se">\n</span><span class="s2">"</span>
+<span class="k">end</span>
+
+
+<span class="n">hout</span> <span class="o">=</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">Headers_out</span><span class="p">.</span><span class="nf">new</span>
+<span class="n">hout</span><span class="p">[</span><span class="s2">"Content-type"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"application/json"</span>
+
+<span class="no">Nginx</span><span class="p">.</span><span class="nf">echo</span> <span class="no">JSON</span><span class="o">::</span><span class="n">stringify</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+<span class="no">Nginx</span><span class="p">.</span><span class="nf">return</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">HTTP_OK</span>
+</pre></div>
+</div>
+
+<p>組み込みのヘルパーっぽい関数としても<code>args_to_hash</code>はある(※)んですが、keyに対するvalueが空っぽの場合(例: <code>&amp;key1=&amp;key2=value2</code> のようなケースのkey1)にコケるので一旦自前で実装。 </p>
+
+<blockquote>
+<ul>
+<li>※<a href="https://qiita.com/matsumotory/items/ab6e507d162f447c9c5d" id="reference-645867c81749768c0128">ngx_mrubyの裏(不人気)機能(2) - Qiita</a>
+問題は修正して取り込んだので、次のリリースくらいからは<code>r.uri_args[param_key]</code>で問題なく取れそうです。 <a href="https://github.com/matsumotory/ngx_mruby/pull/327" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/matsumotory/ngx_mruby/pull/327</a>
+</li>
+</ul>
+</blockquote>
+
+<p>こんな感じになりますね。かんたん。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5e25dd1e-4942-934f-def0-9e985baeb510.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4cb514aa7fd7686cd729c10f9486f1b1" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5e25dd1e-4942-934f-def0-9e985baeb510.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4cb514aa7fd7686cd729c10f9486f1b1" alt="Slack - higanworks-idobata 2017-12-18 16-07-05.png" title="Slack - higanworks-idobata 2017-12-18 16-07-05.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/5e25dd1e-4942-934f-def0-9e985baeb510.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5e25dd1e-4942-934f-def0-9e985baeb510.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=356e8c85d8918ef0b497006c5cd78bdf 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="サンプルコマンド-ngx_mrubyでテキスト翻訳" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89-ngx_mruby%E3%81%A7%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88%E7%BF%BB%E8%A8%B3"><i class="fa fa-link"></i></a>サンプルコマンド、 ngx_mrubyでテキスト翻訳</h2>
+
+<p>では、コマンドに渡したテキストの翻訳でもしてもらいましょう。from to で変換する言語を指定するタイプで。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">hello3.rb</span></div>
+<div class="highlight"><pre><span class="n">r</span> <span class="o">=</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">Request</span><span class="p">.</span><span class="nf">new</span>
+
+<span class="n">usage</span> <span class="o">=</span> <span class="s1">'引数のことなんですけど、3ついるんですよ。 このようにしてください =&gt; `/hello en ja Hello World.`'</span>
+<span class="no">MS_KEY</span> <span class="o">=</span> <span class="s1">'MicrosoftTranslatorのAPIキー'</span>
+<span class="no">V_TOKEN</span> <span class="o">=</span> <span class="s1">'SLACKがパラメータにつけるTOKEN、任意で変更可能'</span>
+
+
+<span class="k">def</span> <span class="nf">get_token</span>
+    <span class="n">http</span> <span class="o">=</span> <span class="no">HttpRequest</span><span class="p">.</span><span class="nf">new</span><span class="p">()</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">http</span><span class="p">.</span><span class="nf">post</span><span class="p">(</span>
+       <span class="s1">'https://api.cognitive.microsoft.com/sts/v1.0/issueToken'</span><span class="p">,</span>
+        <span class="s1">'{}'</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s1">'Content-Type'</span> <span class="o">=&gt;</span> <span class="s1">'application/json'</span><span class="p">,</span>
+            <span class="s1">'Accept'</span>       <span class="o">=&gt;</span> <span class="s1">'application/jwt'</span><span class="p">,</span>
+            <span class="s1">'Ocp-Apim-Subscription-Key'</span> <span class="o">=&gt;</span> <span class="no">MS_KEY</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">token</span> <span class="o">=</span> <span class="n">res</span><span class="p">.</span><span class="nf">body</span>
+    <span class="n">token</span>
+<span class="k">end</span>
+
+
+<span class="c1">## ここで翻訳。</span>
+<span class="k">def</span> <span class="nf">trans</span><span class="p">(</span><span class="n">from</span><span class="p">,</span> <span class="n">to</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+    <span class="n">utext</span> <span class="o">=</span> <span class="no">HTTP</span><span class="o">::</span><span class="no">URL</span><span class="o">::</span><span class="n">encode</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="n">http</span> <span class="o">=</span> <span class="no">HttpRequest</span><span class="p">.</span><span class="nf">new</span><span class="p">()</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">http</span><span class="p">.</span><span class="nf">get</span><span class="p">(</span>
+       <span class="s2">"https://api.microsofttranslator.com/V2/Http.svc/Translate?category=generalnn&amp;from=</span><span class="si">#{</span><span class="n">from</span><span class="si">}</span><span class="s2">&amp;to=</span><span class="si">#{</span><span class="n">to</span><span class="si">}</span><span class="s2">&amp;text=</span><span class="si">#{</span><span class="n">utext</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+        <span class="kp">nil</span><span class="p">,</span>
+        <span class="p">{</span> <span class="s1">'Authorization'</span> <span class="o">=&gt;</span> <span class="s1">'Bearer '</span> <span class="o">+</span> <span class="n">get_token</span> <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">t_txt</span> <span class="o">=</span> <span class="n">res</span><span class="p">.</span><span class="nf">body</span>
+
+    <span class="n">t_txt</span><span class="p">.</span><span class="nf">match</span><span class="p">(</span><span class="sr">/&lt;string.*?&gt;(.*)&lt;\/string&gt;$/</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">args_to_hash</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="p">{}.</span><span class="nf">tap</span> <span class="k">do</span> <span class="o">|</span><span class="n">h</span><span class="o">|</span>
+        <span class="n">ar</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">a</span><span class="o">|</span>
+            <span class="n">h</span><span class="p">[</span><span class="n">a</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s1">'='</span><span class="p">)[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">a</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s1">'='</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">end</span>
+    <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">raw_args</span> <span class="o">=</span> <span class="n">r</span><span class="p">.</span><span class="nf">args</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s1">'&amp;'</span><span class="p">)</span>
+<span class="n">h_args</span> <span class="o">=</span> <span class="n">args_to_hash</span><span class="p">(</span><span class="n">raw_args</span><span class="p">)</span>
+
+
+<span class="c1">## Nginx.returnからのlambdaについては =&gt; http://lamanotrama.hateblo.jp/entry/2015/08/02/005930</span>
+<span class="no">Nginx</span><span class="p">.</span><span class="nf">return</span> <span class="o">-&gt;</span> <span class="k">do</span>
+    <span class="c1"># Slackからのリクエストであるっぽい、に制限するためトークンをチェック。</span>
+    <span class="k">if</span> <span class="n">h_args</span><span class="p">[</span><span class="s1">'token'</span><span class="p">]</span> <span class="o">!=</span> <span class="no">V_TOKEN</span>
+        <span class="no">Nginx</span><span class="p">.</span><span class="nf">errlogger</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">LOG_WARN</span><span class="p">,</span> <span class="s2">"NO TOKEN ACCESS"</span>
+        <span class="k">return</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">HTTP_FORBIDDEN</span>
+    <span class="k">end</span>
+
+    <span class="n">resp</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">resp</span><span class="p">[</span><span class="s1">'response_type'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'ephemeral'</span>
+
+    <span class="k">if</span> <span class="n">h_args</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">==</span> <span class="kp">nil</span>
+        <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">usage</span>
+    <span class="k">else</span>
+        <span class="n">a_args</span> <span class="o">=</span> <span class="n">h_args</span><span class="p">[</span><span class="s1">'text'</span><span class="p">].</span><span class="nf">split</span><span class="p">(</span><span class="s1">'+'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">a_args</span><span class="p">.</span><span class="nf">length</span> <span class="o">&lt;</span> <span class="mi">3</span>
+            <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">usage</span>
+        <span class="k">else</span>         
+            <span class="n">t_body</span> <span class="o">=</span> <span class="n">a_args</span><span class="p">[</span><span class="mi">2</span><span class="o">..</span><span class="p">(</span><span class="n">a_args</span><span class="p">.</span><span class="nf">length</span><span class="p">)].</span><span class="nf">join</span><span class="p">(</span><span class="s1">'+'</span><span class="p">)</span>
+            <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">h_args</span><span class="p">[</span><span class="s1">'user_name'</span><span class="p">]</span> <span class="o">+</span> <span class="s2">"さん、こんにちは。</span><span class="se">\n</span><span class="s2">"</span>
+            <span class="k">begin</span>
+                <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">+</span> <span class="s2">"『</span><span class="si">#{</span><span class="no">HTTP</span><span class="o">::</span><span class="no">URL</span><span class="o">::</span><span class="n">decode</span><span class="p">(</span><span class="n">t_body</span><span class="p">)</span><span class="si">}</span><span class="s2">』、そうですね。</span><span class="se">\n</span><span class="s2">"</span>
+                <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">+</span> <span class="s2">"翻訳したら、『</span><span class="si">#{</span><span class="n">trans</span><span class="p">(</span><span class="n">a_args</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">a_args</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="no">HTTP</span><span class="o">::</span><span class="no">URL</span><span class="o">::</span><span class="n">decode</span><span class="p">(</span><span class="n">t_body</span><span class="p">))</span><span class="si">}</span><span class="s2">』、ですかね。"</span>
+                <span class="n">resp</span><span class="p">[</span><span class="s1">'response_type'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'in_channel'</span>
+
+            <span class="c1"># さすがに例外になりやすいところなのでざっくり拾う</span>
+            <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+                <span class="no">Nginx</span><span class="p">.</span><span class="nf">errlogger</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">LOG_ERR</span><span class="p">,</span> <span class="n">e</span>
+                <span class="n">resp</span><span class="p">[</span><span class="s1">'text'</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"`Some error occurerd on calling Microsoft Translate API.` (this message only visible to you.)</span><span class="se">\n</span><span class="s2"> maybe unsupported language.</span><span class="se">\n</span><span class="s2"> See https://msdn.microsoft.com/ja-jp/library/hh456380.aspx."</span>
+            <span class="k">end</span>
+        <span class="k">end</span>
+    <span class="k">end</span>
+
+    <span class="n">hout</span> <span class="o">=</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">Headers_out</span><span class="p">.</span><span class="nf">new</span>
+    <span class="n">hout</span><span class="p">[</span><span class="s2">"Content-type"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"application/json"</span>
+
+    <span class="no">Nginx</span><span class="p">.</span><span class="nf">echo</span> <span class="no">JSON</span><span class="o">::</span><span class="n">stringify</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+    <span class="k">return</span> <span class="no">Nginx</span><span class="o">::</span><span class="no">HTTP_OK</span>
+<span class="k">end</span><span class="p">.</span><span class="nf">call</span>
+</pre></div>
+</div>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F23bac855-f6ac-6242-2a5d-7ab19914bdbc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4fef7f63ca37db66ef21fc777371d7b0" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F23bac855-f6ac-6242-2a5d-7ab19914bdbc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4fef7f63ca37db66ef21fc777371d7b0" alt="Slack - higanworks-idobata 2017-12-18 17-01-20.png" title="Slack - higanworks-idobata 2017-12-18 17-01-20.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/23bac855-f6ac-6242-2a5d-7ab19914bdbc.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F23bac855-f6ac-6242-2a5d-7ab19914bdbc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=e71fec8d5f730b603ae8a5ade0ffad2c 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="今回使った環境と感想" class="fragment"></span><a href="#%E4%BB%8A%E5%9B%9E%E4%BD%BF%E3%81%A3%E3%81%9F%E7%92%B0%E5%A2%83%E3%81%A8%E6%84%9F%E6%83%B3"><i class="fa fa-link"></i></a>今回使った環境と感想</h2>
+
+<p>まず環境。</p>
+
+<ul>
+<li>Amazon EC2のインスタンスにNginx + ngx_mruby
+
+<ul>
+<li>ngx_mrubyは自分が保守している <a href="https://packagecloud.io/amimoto-nginx-mainline/main" rel="nofollow noopener" target="_blank">ngx_mruby RPM for amazon linux 1</a> があるので。</li>
+</ul>
+</li>
+<li>
+<a href="https://aws.amazon.com/jp/cloud9/" rel="nofollow noopener" target="_blank">AWS Cloud9</a>
+
+<ul>
+<li>nginx + ngx_mruby環境のEC2として。</li>
+<li>IDEでmrubyスクリプトの編集。</li>
+</ul>
+</li>
+<li>
+<a href="https://ngrok.com/" rel="nofollow noopener" target="_blank">ngrok</a>
+
+<ul>
+<li>slash commands対象のHTTPSホストにした。</li>
+<li>本格運用するならElasticIP+適当なEC2とか、ALB+Fargateとか。</li>
+</ul>
+</li>
+<li><a href="https://www.microsoft.com/ja-jp/translator/translatorapi.aspx" rel="nofollow noopener" target="_blank">Translator API - Microsoft Translator</a></li>
+</ul>
+
+<p>上記構成にはあまり必然性はなく、Cloud9を触ってるうちに思いついたというだけなので。試してみるならローカル+ngrokで十分です。</p>
+
+<p>さて、たいていこういうのはFaaSでやるのが一般的で、よほどの理由がなければあえてngx_mrubyでやる必要もないでしょう。ただ、slack側のタイムアウトがわりと厳しくて、FaaS側のウォームアップ周り次第でレスポンスが間に合わないことがある、と言う話も聞いたことはあるので意外とありなのかもしれません。</p>
+
+<p>nginxのlocation + rbファイルでわりとやりたい放題、デバッグもまあまあやりやすいので、遊んでるnginxがいたらスラッシュコマンドエンドポイントを生やしても良いかもですよ。</p>
+
+<p><a href="https://qiita.com/matsumotory/items/f48f41619cf53acdad45" id="reference-57f8b4c66dbc22719bad">mruby_add_handler</a>と組み合わせると、ルーズにコマンド追加・管理もできそう。</p>

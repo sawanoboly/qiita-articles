@@ -1,0 +1,116 @@
+<p>ecs-agentの1.9.0以降では、DockerのLogDriverにawslogsを指定できます。</p>
+
+<p>で、ECSを直接使う分には<code>logConfiguration</code>で指定すればよいのですが、ElasticBeanstalkから利用できるECS(に限らずですが)環境はいつもちょっと古く、この記事時点の最新でも1.8.2です。</p>
+
+<p>待ってりゃ1.9.0にはなるんでしょうが。。ひとまず強引にやってみました。</p>
+
+<h2>
+<span id="段取りとebextensions" class="fragment"></span><a href="#%E6%AE%B5%E5%8F%96%E3%82%8A%E3%81%A8ebextensions"><i class="fa fa-link"></i></a>段取りとebextensions</h2>
+
+<p>awslogsを使えるように設定しつつ、ecs-agentを更新する段取り。ひとまずこれでうまく動いたのでよしとします。</p>
+
+<ul>
+<li>ECS_AVAILABLE_LOGGING_DRIVERS設定を追加し、オプションの値にawslogsを許可する
+
+<ul>
+<li>すでにあれば何もしない</li>
+</ul>
+</li>
+<li>amazon-ecs-agentの<code>v1.9.0</code>をpullし、無理やりlatestタグを付与する
+
+<ul>
+<li>※ 別にlatestをそのままpullしても構いません。</li>
+</ul>
+</li>
+<li>ecs-agentコンテナを削除して、リスタート</li>
+</ul>
+
+<p>以上を踏まえた<code>ebextensions</code>がこちら。ecs-agent再起動へのステップで色々やっています、なくてもよい行も多分あるかなあ。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">ebextensions/01-logdriver.config</span></div>
+<div class="highlight"><pre>files:
+  "/root/setup-available-log-dirvers.sh":
+    mode: "000755"
+    owner: root
+    group: root
+    content: |
+      #!/bin/sh
+      set -e
+      if ! grep awslogs /etc/ecs/ecs.config &amp;&gt; /dev/null
+      then
+        echo 'ECS_AVAILABLE_LOGGING_DRIVERS=["json-file","syslog","awslogs"]' &gt;&gt; /etc/ecs/ecs.config
+        /usr/bin/docker pull amazon/amazon-ecs-agent:v1.9.0
+        /usr/bin/docker tag -f amazon/amazon-ecs-agent:v1.9.0 amazon/amazon-ecs-agent:latest
+        /usr/libexec/amazon-ecs-init pre-stop
+        /usr/bin/docker rm ecs-agent
+        /usr/libexec/amazon-ecs-init pre-start
+        /sbin/initctl start -n ecs
+      fi
+
+container_commands:
+  01-configure-awslogs:
+    command: /root/setup-available-log-dirvers.sh
+</pre></div>
+</div>
+
+<p>これをデプロイした後にenvをクローンしても大丈夫だったので、まあなんとかなってるんでしょう。</p>
+
+<p>このebextensionsの元ネタはこちら。 <a href="http://stackoverflow.com/questions/35789111/how-to-use-fluentd-log-driver-on-elastic-beanstalk-multicontainer-docker" rel="nofollow noopener" target="_blank">http://stackoverflow.com/questions/35789111/how-to-use-fluentd-log-driver-on-elastic-beanstalk-multicontainer-docker</a></p>
+
+<h2>
+<span id="サンプル-dockerrunawsjson" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB-dockerrunawsjson"><i class="fa fa-link"></i></a>サンプル Dockerrun.aws.json</h2>
+
+<p>では実際に使ってみるとして、指定の例を置いときます。<code>logs-group=eb-awslog-test</code>、ストリームはコンテナIDでログが投入されました。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">Dockerrun.aws.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"AWSEBDockerrunVersion"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"volumes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+  </span><span class="p">],</span><span class="w">
+  </span><span class="nl">"containerDefinitions"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"distribution"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"image"</span><span class="p">:</span><span class="w"> </span><span class="s2">"registry:2"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"essential"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"cpu"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"memory"</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"mountPoints"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"portMappings"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"hostPort"</span><span class="p">:</span><span class="w"> </span><span class="mi">80</span><span class="p">,</span><span class="w">
+          </span><span class="nl">"containerPort"</span><span class="p">:</span><span class="w"> </span><span class="mi">5000</span><span class="p">,</span><span class="w">
+          </span><span class="nl">"protocol"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tcp"</span><span class="w">
+        </span><span class="p">}</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"logConfiguration"</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"logDriver"</span><span class="p">:</span><span class="w"> </span><span class="s2">"awslogs"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"options"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"awslogs-region"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ap-northeast-1"</span><span class="p">,</span><span class="w">
+          </span><span class="nl">"awslogs-group"</span><span class="p">:</span><span class="w"> </span><span class="s2">"eb-awslog-test"</span><span class="w">
+        </span><span class="p">}</span><span class="w">
+      </span><span class="p">}</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>もし使ってみようと思っても、真似する前に既にecs-agentのバージョンが1.9.0以降になってないか確認しましょう。</p>
+
+<p>バージョンは<code>agent --version</code>で出てきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># docker exec -it 81f4c4d3e819 /agent --version
+2016-05-23T10:23:25Z [INFO] Starting Agent: Amazon ECS Agent - v1.9.0 (0931217)
+2016-05-23T10:23:25Z [INFO] Loading configuration
+2016-05-23T10:23:25Z [WARN] Invalid value for task cleanup duration, will be overridden to 3h0m0s module="config" parsed value="0" minimum threshold="1m0s"
+Amazon ECS Agent:
+    Version: 1.9.0
+    Commit: 0931217
+    DockerVersion: 1.9.1
+</pre></div></div>

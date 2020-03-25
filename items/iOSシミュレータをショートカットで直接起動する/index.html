@@ -1,0 +1,22 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>通常Xcodeのメニューから呼び出すiOSシミュレータを、Automaterワークフローを使って直接起動のショートカットを作成する。</p>
+
+<p>Automater &gt; ワークフロー作成 からシェルスクリプトの実行を追加して中身を下記にする。<br>
+OSXやXcodeの環境でパスが違うのでどちらにあるかは要確認。</p>
+
+<p>Xcode4.4 (mountain lion用?)</p>
+
+<div class="code-frame" data-lang="シェル：bin/bash"><div class="highlight"><pre>"/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Applications/iPhone Simulator.app/Contents/MacOS/iPhone Simulator"
+</pre></div></div>
+
+<p>Xcode4.3以前？</p>
+
+<div class="code-frame" data-lang="シェル：bin/bash"><div class="highlight"><pre>"/Developer/Platforms/iPhoneSimulator.platform/Developer/Applications/iPhone Simulator.app/Contents/MacOS/iPhone Simulator"
+</pre></div></div>
+
+<p>アイコンもショートカット先の<code>Resources</code>の下から取ってくればOK。</p>

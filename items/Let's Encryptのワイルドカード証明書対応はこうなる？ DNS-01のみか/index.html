@@ -1,0 +1,167 @@
+<p>お仕事の関係上、たまにLet's EncryptのAPIエンドポイントである<a href="https://github.com/letsencrypt/boulder" rel="nofollow noopener" target="_blank">letsencrypt/boulder</a>のソースを見ます。<br>
+組んだシステムがぶっ壊れないよう、事前にstagingへの変更を確認したり軽く結合テストをする目的ですね。</p>
+
+<p>新機能フラグとかは、なるべくONでーという感じでコンフィグをみたら。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span><span class="nb">cat test</span>/config-next/ca.json  | jq .ca.features
+<span class="o">{</span>
+  <span class="s2">"WildcardDomains"</span>: <span class="nb">true</span>,
+  <span class="s2">"AllowTLS02Challenges"</span>: <span class="nb">true</span>,
+  <span class="s2">"GenerateOCSPEarly"</span>: <span class="nb">true</span>
+<span class="o">}</span>
+</pre></div></div>
+
+<p>おや、<code>WildcardDomains</code>フラグですってよ。</p>
+
+<p>この調査をした時点の<a href="https://github.com/letsencrypt/boulder/tree/521e27acb383fb792e3ebc90be7e4d97c9483974" rel="nofollow noopener" target="_blank">stagingブランチ(521e27...)</a>をベースに、軽くどのように展開されるのか見てみました。</p>
+
+<h2>
+<span id="先に見通しの結論" class="fragment"></span><a href="#%E5%85%88%E3%81%AB%E8%A6%8B%E9%80%9A%E3%81%97%E3%81%AE%E7%B5%90%E8%AB%96"><i class="fa fa-link"></i></a>先に見通しの結論</h2>
+
+<p>実際リリースの時にこうなるかは保証しませんよ。</p>
+
+<ul>
+<li>Authorization(authz)の<code>domain</code>に<code>*.</code>で始まるドメインを渡せばワイルドカード判定
+
+<ul>
+<li>内部的にWildcardフラグが立つ</li>
+<li>
+<code>*.</code>を除いた部分がチャレンジ対象として扱われる</li>
+<li>
+<code>*.</code>を除いた部分でこれまでと同じポリシー(<a href="https://qiita.com/sawanoboly/items/8e3c57aa2e30fc58c4e3#%E5%88%B6%E9%99%90%E3%81%AE%E3%81%8B%E3%81%8B%E3%82%8B%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E3%81%AE%E5%8D%98%E4%BD%8D---public-suffix" id="reference-a7aba0deea804ba21222">PublicSuffix</a>など)判定</li>
+</ul>
+</li>
+<li>チャレンジ方式は<code>dns-01</code>のみ</li>
+</ul>
+
+<p>となるっぽい。</p>
+
+<h2>
+<span id="ソース" class="fragment"></span><a href="#%E3%82%BD%E3%83%BC%E3%82%B9"><i class="fa fa-link"></i></a>ソース</h2>
+
+<p>興味があったり、誤読を見つけたい方はこの先にどうぞ。</p>
+
+<p>前述のとおり<a href="https://github.com/letsencrypt/boulder/tree/521e27acb383fb792e3ebc90be7e4d97c9483974" rel="nofollow noopener" target="_blank">stagingブランチ(521e27...)</a>を見た感想です。ついでに言うと、まだフラグだけでは作れない模様(ACME v2実装部分のwfe2に行かない)。</p>
+
+<p>まずWebFrontEnd(wfe)のテストから。 <a href="https://github.com/letsencrypt/boulder/blob/521e27acb383fb792e3ebc90be7e4d97c9483974/wfe2/wfe_test.go#L2399-L2423" rel="nofollow noopener" target="_blank">boulder/wfe2/wfe_test.go</a></p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">boulder/wfe2/wfe_test.go</span></div>
+<div class="highlight"><pre><span class="k">func</span> <span class="n">TestPrepAuthzForDisplayWildcard</span><span class="p">(</span><span class="n">t</span> <span class="o">*</span><span class="n">testing</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">wfe</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">setupWFE</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+
+    <span class="c">// Make an authz for a wildcard identifier</span>
+    <span class="n">authz</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="n">core</span><span class="o">.</span><span class="n">Authorization</span><span class="p">{</span>
+        <span class="n">ID</span><span class="o">:</span>             <span class="s">"12345"</span><span class="p">,</span>
+        <span class="n">Status</span><span class="o">:</span>         <span class="n">core</span><span class="o">.</span><span class="n">StatusPending</span><span class="p">,</span>
+        <span class="n">RegistrationID</span><span class="o">:</span> <span class="m">1</span><span class="p">,</span>
+        <span class="n">Identifier</span><span class="o">:</span>     <span class="n">core</span><span class="o">.</span><span class="n">AcmeIdentifier</span><span class="p">{</span><span class="n">Type</span><span class="o">:</span> <span class="s">"dns"</span><span class="p">,</span> <span class="n">Value</span><span class="o">:</span> <span class="s">"*.example.com"</span><span class="p">},</span>
+        <span class="n">Challenges</span><span class="o">:</span> <span class="p">[]</span><span class="n">core</span><span class="o">.</span><span class="n">Challenge</span><span class="p">{</span>
+            <span class="p">{</span>
+                <span class="n">ID</span><span class="o">:</span>   <span class="m">12345</span><span class="p">,</span>
+                <span class="n">Type</span><span class="o">:</span> <span class="s">"dns"</span><span class="p">,</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="c">// Prep the wildcard authz for display</span>
+    <span class="n">wfe</span><span class="o">.</span><span class="n">prepAuthorizationForDisplay</span><span class="p">(</span><span class="o">&amp;</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">{</span><span class="n">Host</span><span class="o">:</span> <span class="s">"localhost"</span><span class="p">},</span> <span class="n">authz</span><span class="p">)</span>
+
+    <span class="c">// The authz should not have a wildcard prefix in the identifier value</span>
+    <span class="n">test</span><span class="o">.</span><span class="n">AssertEquals</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">strings</span><span class="o">.</span><span class="n">HasPrefix</span><span class="p">(</span><span class="n">authz</span><span class="o">.</span><span class="n">Identifier</span><span class="o">.</span><span class="n">Value</span><span class="p">,</span> <span class="s">"*."</span><span class="p">),</span> <span class="no">false</span><span class="p">)</span>
+    <span class="c">// The authz should be marked as corresponding to a wildcard name</span>
+    <span class="n">test</span><span class="o">.</span><span class="n">AssertEquals</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">authz</span><span class="o">.</span><span class="n">Wildcard</span><span class="p">,</span> <span class="no">true</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>APIにリクエストする際、ドメイン部分に<code>"*.example.com"</code>を指定すると、(Authorizationの受け口から)<a href="https://github.com/letsencrypt/boulder/blob/521e27acb383fb792e3ebc90be7e4d97c9483974/wfe2/wfe.go#L848-L869" rel="nofollow noopener" target="_blank"><code>prepAuthorizationForDisplay</code></a> によって <code>*.</code>が除去されて、Wildcardフラグを立てているのがわかりました。</p>
+
+<p>このあと色々追いかけてあれこれ実装をみた(<a href="https://github.com/letsencrypt/boulder/blob/521e27acb383fb792e3ebc90be7e4d97c9483974/va/va.go#L882-L886" rel="nofollow noopener" target="_blank">ValidationAuthority</a>とか、<a href="https://github.com/letsencrypt/boulder/blob/521e27acb383fb792e3ebc90be7e4d97c9483974/policy/pa.go#L318-L372" rel="nofollow noopener" target="_blank">Only provide a DNS-01-Wildcard challenge</a>の記述とか)のですが、結局ポリシーのテストがわかりやすかったので端折ります =&gt; <a href="https://github.com/letsencrypt/boulder/blob/521e27acb383fb792e3ebc90be7e4d97c9483974/policy/pa_test.go#L201-L273521e27acb383fb792e3ebc90be7e4d97c9483974/policy/pa_test.go#L201-L273" rel="nofollow noopener" target="_blank">boulder/policy/pa_test.go</a></p>
+
+<p>CSRで証明書をオーダーする途中でチェックしています。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">boulder/policy/pa_test.go</span></div>
+<div class="highlight"><pre><span class="k">func</span> <span class="n">TestWillingToIssueWildcard</span><span class="p">(</span><span class="n">t</span> <span class="o">*</span><span class="n">testing</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">bannedDomains</span> <span class="o">:=</span> <span class="p">[]</span><span class="kt">string</span><span class="p">{</span>
+        <span class="s">`zombo.gov.us`</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">pa</span> <span class="o">:=</span> <span class="n">paImpl</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+
+    <span class="n">bannedBytes</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">json</span><span class="o">.</span><span class="n">Marshal</span><span class="p">(</span><span class="n">blacklistJSON</span><span class="p">{</span>
+        <span class="n">Blacklist</span><span class="o">:</span> <span class="n">bannedDomains</span><span class="p">,</span>
+    <span class="p">})</span>
+    <span class="n">test</span><span class="o">.</span><span class="n">AssertNotError</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="s">"Couldn't serialize banned list"</span><span class="p">)</span>
+    <span class="n">f</span><span class="p">,</span> <span class="n">_</span> <span class="o">:=</span> <span class="n">ioutil</span><span class="o">.</span><span class="n">TempFile</span><span class="p">(</span><span class="s">""</span><span class="p">,</span> <span class="s">"test-wildcard-banlist.txt"</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="n">os</span><span class="o">.</span><span class="n">Remove</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">Name</span><span class="p">())</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="n">ioutil</span><span class="o">.</span><span class="n">WriteFile</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">Name</span><span class="p">(),</span> <span class="n">bannedBytes</span><span class="p">,</span> <span class="m">0640</span><span class="p">)</span>
+    <span class="n">test</span><span class="o">.</span><span class="n">AssertNotError</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="s">"Couldn't write serialized banned list to file"</span><span class="p">)</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">SetHostnamePolicyFile</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">Name</span><span class="p">())</span>
+    <span class="n">test</span><span class="o">.</span><span class="n">AssertNotError</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="s">"Couldn't load policy contents from file"</span><span class="p">)</span>
+
+    <span class="n">makeDNSIdent</span> <span class="o">:=</span> <span class="k">func</span><span class="p">(</span><span class="n">domain</span> <span class="kt">string</span><span class="p">)</span> <span class="n">core</span><span class="o">.</span><span class="n">AcmeIdentifier</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">core</span><span class="o">.</span><span class="n">AcmeIdentifier</span><span class="p">{</span>
+            <span class="n">Type</span><span class="o">:</span>  <span class="n">core</span><span class="o">.</span><span class="n">IdentifierDNS</span><span class="p">,</span>
+            <span class="n">Value</span><span class="o">:</span> <span class="n">domain</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">testCases</span> <span class="o">:=</span> <span class="p">[]</span><span class="k">struct</span> <span class="p">{</span>
+        <span class="n">Name</span>        <span class="kt">string</span>
+        <span class="n">Ident</span>       <span class="n">core</span><span class="o">.</span><span class="n">AcmeIdentifier</span>
+        <span class="n">ExpectedErr</span> <span class="kt">error</span>
+    <span class="p">}{</span>
+        <span class="p">{</span>
+            <span class="n">Name</span><span class="o">:</span>        <span class="s">"Non-DNS identifier"</span><span class="p">,</span>
+            <span class="n">Ident</span><span class="o">:</span>       <span class="n">core</span><span class="o">.</span><span class="n">AcmeIdentifier</span><span class="p">{</span><span class="n">Type</span><span class="o">:</span> <span class="s">"nickname"</span><span class="p">,</span> <span class="n">Value</span><span class="o">:</span> <span class="s">"cpu"</span><span class="p">},</span>
+            <span class="n">ExpectedErr</span><span class="o">:</span> <span class="n">errInvalidIdentifier</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="n">Name</span><span class="o">:</span>        <span class="s">"Too many wildcards"</span><span class="p">,</span>
+            <span class="n">Ident</span><span class="o">:</span>       <span class="n">makeDNSIdent</span><span class="p">(</span><span class="s">"ok.*.whatever.*.example.com"</span><span class="p">),</span>
+            <span class="n">ExpectedErr</span><span class="o">:</span> <span class="n">errTooManyWildcards</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="n">Name</span><span class="o">:</span>        <span class="s">"Misplaced wildcard"</span><span class="p">,</span>
+            <span class="n">Ident</span><span class="o">:</span>       <span class="n">makeDNSIdent</span><span class="p">(</span><span class="s">"ok.*.whatever.example.com"</span><span class="p">),</span>
+            <span class="n">ExpectedErr</span><span class="o">:</span> <span class="n">errMalformedWildcard</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="n">Name</span><span class="o">:</span>        <span class="s">"Missing ICANN TLD"</span><span class="p">,</span>
+            <span class="n">Ident</span><span class="o">:</span>       <span class="n">makeDNSIdent</span><span class="p">(</span><span class="s">"*.ok.madeup"</span><span class="p">),</span>
+            <span class="n">ExpectedErr</span><span class="o">:</span> <span class="n">errNonPublic</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="n">Name</span><span class="o">:</span>        <span class="s">"Wildcard for ICANN TLD"</span><span class="p">,</span>
+            <span class="n">Ident</span><span class="o">:</span>       <span class="n">makeDNSIdent</span><span class="p">(</span><span class="s">"*.com"</span><span class="p">),</span>
+            <span class="n">ExpectedErr</span><span class="o">:</span> <span class="n">errICANNTLDWildcard</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="n">Name</span><span class="o">:</span>        <span class="s">"Forbidden base domain"</span><span class="p">,</span>
+            <span class="n">Ident</span><span class="o">:</span>       <span class="n">makeDNSIdent</span><span class="p">(</span><span class="s">"*.zombo.gov.us"</span><span class="p">),</span>
+            <span class="n">ExpectedErr</span><span class="o">:</span> <span class="n">errBlacklisted</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="n">Name</span><span class="o">:</span>        <span class="s">"Valid wildcard domain"</span><span class="p">,</span>
+            <span class="n">Ident</span><span class="o">:</span>       <span class="n">makeDNSIdent</span><span class="p">(</span><span class="s">"*.everything.is.possible.at.zombo.com"</span><span class="p">),</span>
+            <span class="n">ExpectedErr</span><span class="o">:</span> <span class="no">nil</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">tc</span> <span class="o">:=</span> <span class="k">range</span> <span class="n">testCases</span> <span class="p">{</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">Run</span><span class="p">(</span><span class="n">tc</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span> <span class="k">func</span><span class="p">(</span><span class="n">t</span> <span class="o">*</span><span class="n">testing</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">result</span> <span class="o">:=</span> <span class="n">pa</span><span class="o">.</span><span class="n">WillingToIssueWildcard</span><span class="p">(</span><span class="n">tc</span><span class="o">.</span><span class="n">Ident</span><span class="p">)</span>
+            <span class="n">test</span><span class="o">.</span><span class="n">AssertEquals</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">tc</span><span class="o">.</span><span class="n">ExpectedErr</span><span class="p">)</span>
+        <span class="p">})</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>Non-DNSは全てダメ、かつ<code>Valid〜</code>のケースだけワイルドカード発行OK、ということですね。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>ドメイン所有=認証基盤利用可能、はそもそも初期からあってもよい組み合わせだったのではないかなあ。と思いつつ、これでサーバ認証には事欠かなくなりそうです。</p>

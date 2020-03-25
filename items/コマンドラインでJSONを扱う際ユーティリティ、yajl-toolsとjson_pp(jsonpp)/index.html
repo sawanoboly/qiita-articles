@@ -1,0 +1,112 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Chefなどを使ってインフラ構築がメタデータ編集で済ませるようになると、jsonフォーマットとの付き合いが多くなる。</p>
+
+<h2>
+<span id="cliでjsonを扱うケース" class="fragment"></span><a href="#cli%E3%81%A7json%E3%82%92%E6%89%B1%E3%81%86%E3%82%B1%E3%83%BC%E3%82%B9"><i class="fa fa-link"></i></a>CLIでjsonを扱うケース</h2>
+
+<p>例えばバックアップからChefのRoleを流用しようとすると、くたびれた状態のjsonテキストになっており面倒。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cat </span>server_backup/roles/base.json 
+<span class="o">{</span><span class="s2">"name"</span>:<span class="s2">"base"</span>,<span class="s2">"description"</span>:<span class="s2">""</span>,<span class="s2">"json_class"</span>:<span class="s2">"Chef::Role"</span>,<span class="s2">"default_attributes"</span>:<span class="o">{}</span>,<span class="s2">"override_attributes"</span>:<span class="o">{}</span>,<span class="s2">"chef_type"</span>:<span class="s2">"role"</span>,<span class="s2">"run_list"</span>:[<span class="s2">"recipe[ntp]"</span><span class="o">]</span>,<span class="s2">"env_run_lists"</span>:<span class="o">{}}</span>
+</pre></div>
+</div>
+
+<p>※ 補足：knifeの出力はppなjsonにも出来る。</p>
+
+<p>同様にchef-soloでもattributeのためにjsonを使うため、書式等チェックが出来たほうがよい。</p>
+
+<h2>
+<span id="ツールを導入する" class="fragment"></span><a href="#%E3%83%84%E3%83%BC%E3%83%AB%E3%82%92%E5%B0%8E%E5%85%A5%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ツールを導入する</h2>
+
+<p>インストールしやすいものから、下記を入れておく。</p>
+
+<ul>
+<li>json_reformat</li>
+<li>json_verify</li>
+<li>json_pp(jsonpp)</li>
+</ul>
+
+<p>ppはいつもの通りpretty_print、STDINなどを整形してくれる。<br>
+他も大体名前の通り。</p>
+
+<h3>
+<span id="ubuntuでインストール" class="fragment"></span><a href="#ubuntu%E3%81%A7%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>ubuntuでインストール</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>apt-get install libjson-pp-perl
+apt-get install yajl-tools
+</pre></div></div>
+
+<p>libjson-pp-perlはいつの間にか入ってることも多い。</p>
+
+<h3>
+<span id="macosのhomebrewでインストール" class="fragment"></span><a href="#macos%E3%81%AEhomebrew%E3%81%A7%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>macOSのHomebrewでインストール</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>brew install yaji
+brew install jsonpp
+</pre></div></div>
+
+<p>こちらのjsonppはubuntuのperl版とは違うが役割は一緒。</p>
+
+<h2>
+<span id="使用例" class="fragment"></span><a href="#%E4%BD%BF%E7%94%A8%E4%BE%8B"><i class="fa fa-link"></i></a>使用例</h2>
+
+<h3>
+<span id="jsonppjson_pp" class="fragment"></span><a href="#jsonppjson_pp"><i class="fa fa-link"></i></a>jsonpp(json_pp)</h3>
+
+<p>先ほどの平べったいJsonファイルをppする。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cat </span>server_backup/roles/base.json | jsonpp 
+<span class="o">{</span>
+  <span class="s2">"name"</span>: <span class="s2">"base"</span>,
+  <span class="s2">"description"</span>: <span class="s2">""</span>,
+  <span class="s2">"json_class"</span>: <span class="s2">"Chef::Role"</span>,
+  <span class="s2">"default_attributes"</span>: <span class="o">{}</span>,
+  <span class="s2">"override_attributes"</span>: <span class="o">{}</span>,
+  <span class="s2">"chef_type"</span>: <span class="s2">"role"</span>,
+  <span class="s2">"run_list"</span>: <span class="o">[</span>
+    <span class="s2">"recipe[ntp]"</span>
+  <span class="o">]</span>,
+  <span class="s2">"env_run_lists"</span>: <span class="o">{}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+
+<p>見やすい。</p>
+
+<h3>
+<span id="json_verify" class="fragment"></span><a href="#json_verify"><i class="fa fa-link"></i></a>json_verify</h3>
+
+<p>閉じ忘れたJsonを渡してみる。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cat </span>roles/base.json | json_verify 
+lexical error: invalid character inside string.
+                                        <span class="o">{</span>   <span class="s2">"name"</span>: <span class="s2">"base,   "</span>descript
+
+                     <span class="o">(</span>right here<span class="o">)</span> <span class="nt">------</span>^
+JSON is invalid
+</pre></div>
+</div>
+
+<p>invalidはexit_codeも1になる。</p>
+
+<p>該当箇所を直してみる。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cat </span>roles/base.json | json_verify 
+JSON is valid
+</pre></div>
+</div>
+
+<p>validになった。</p>

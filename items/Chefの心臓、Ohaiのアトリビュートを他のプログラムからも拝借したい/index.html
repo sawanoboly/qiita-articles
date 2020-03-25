@@ -1,0 +1,261 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>アプリケーションプラットフォームの構築運用を少人数で行うためのツールとして、だいぶ浸透してきた感のある<a href="http://www.opscode.com/" rel="nofollow noopener" target="_blank">OpscodeのChef</a>。</p>
+
+<p>chef-clientのクロスプラットフォーム性を支えるのが同じくOpscodeが保守するOhaiだ。</p>
+
+<p><a href="https://github.com/opscode/ohai" rel="nofollow noopener" target="_blank">Github::opscode/ohai</a></p>
+
+<h2>
+<span id="ohaiに聞くとプラットフォームの情報が取れる" class="fragment"></span><a href="#ohai%E3%81%AB%E8%81%9E%E3%81%8F%E3%81%A8%E3%83%97%E3%83%A9%E3%83%83%E3%83%88%E3%83%95%E3%82%A9%E3%83%BC%E3%83%A0%E3%81%AE%E6%83%85%E5%A0%B1%E3%81%8C%E5%8F%96%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a>Ohaiに聞くとプラットフォームの情報が取れる</h2>
+
+<p>Ohaiはインベントリ収集ツール。<br>
+レシピ(リソース/プロバイダ)を複数のプラットフォームに対応させるため、Chef-Clientが今から作用する対象を判断する情報をリストアップする。</p>
+
+<p>Ohaiの利点は全てのプラットフォームで同じ問い合わせが出来ることだ、折角なので他のプログラムからも使えるように動作をチェックしてみる。</p>
+
+<h2>
+<span id="ohaiコマンド" class="fragment"></span><a href="#ohai%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89"><i class="fa fa-link"></i></a>ohaiコマンド</h2>
+
+<p>gemで<code>ohai</code>をインストールした後なら、コマンドラインからohaiを叩ける。<br>
+これは<code>stdout</code>にJSONを出すだけだが、Chefが<code>node</code>のインベントリとして表示する情報がそのまま出ているのがわかる。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="nv">$ </span>ohai | <span class="nb">head</span>
+<span class="o">{</span>
+  <span class="s2">"languages"</span>: <span class="o">{</span>
+    <span class="s2">"ruby"</span>: <span class="o">{</span>
+      <span class="s2">"platform"</span>: <span class="s2">"x86_64-darwin12.2.0"</span>,
+      <span class="s2">"version"</span>: <span class="s2">"1.9.3"</span>,
+      <span class="s2">"release_date"</span>: <span class="s2">"2012-04-20"</span>,
+      <span class="s2">"target"</span>: <span class="s2">"x86_64-apple-darwin12.2.0"</span>,
+      <span class="s2">"target_cpu"</span>: <span class="s2">"x86_64"</span>,
+      <span class="s2">"target_vendor"</span>: <span class="s2">"apple"</span>,
+      <span class="s2">"target_os"</span>: <span class="s2">"darwin12.2.0"</span>,
+</pre></div>
+</div>
+
+<p>結構これでも十分だ。</p>
+
+<h2>
+<span id="ohaisystemオブジェクト" class="fragment"></span><a href="#ohaisystem%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88"><i class="fa fa-link"></i></a>Ohai::Systemオブジェクト</h2>
+
+<p>OhaiをPryからインタラクティブに実行して、Ohaiプラグインを使ってインベントリを収集していく。<br>
+各アトリビュートは<code>Ohai::System</code>から作成したインスタンスの<code>@data</code>に溜まっていく。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'ohai'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span> <span class="o">=</span> <span class="no">Ohai</span><span class="o">::</span><span class="no">System</span><span class="p">.</span><span class="nf">new</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Ohai::System:0x007fc7ec050440</span>
+ <span class="vi">@data</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@hints</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@plugin_path</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+ <span class="vi">@providers</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@seen_plugins</span><span class="o">=</span><span class="p">{}</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+
+<p>プラグインパスが空に見えるが、デフォルトでOhai同梱のものへパスが通っており使用出来る。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="no">Ohai</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:plugin_path</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"/Users/sawanoboriyu/.rvm/gems/ruby-1.9.3-p194@chef-labs/gems/ohai-6.14.0/lib/ohai/plugins"</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="require_pluginで基本のosプラグインを実行" class="fragment"></span><a href="#require_plugin%E3%81%A7%E5%9F%BA%E6%9C%AC%E3%81%AEos%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%82%92%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>require_pluginで基本のOSプラグインを実行</h3>
+
+<p>プラグインの実行には<code>require_plugin</code>メソッドを使う、まずOS情報を取らないと他のプラグインは満足に動かないので初めに実行。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">require_plugin</span> <span class="s2">"os"</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">data</span>
+<span class="o">=&gt;</span> <span class="p">{</span><span class="s2">"languages"</span><span class="o">=&gt;</span>
+  <span class="p">{</span><span class="s2">"ruby"</span><span class="o">=&gt;</span>
+    <span class="p">{</span><span class="s2">"platform"</span><span class="o">=&gt;</span><span class="s2">"x86_64-darwin12.2.0"</span><span class="p">,</span>
+     <span class="s2">"version"</span><span class="o">=&gt;</span><span class="s2">"1.9.3"</span><span class="p">,</span>
+     <span class="s2">"release_date"</span><span class="o">=&gt;</span><span class="s2">"2012-04-20"</span><span class="p">,</span>
+     <span class="s2">"target"</span><span class="o">=&gt;</span><span class="s2">"x86_64-apple-darwin12.2.0"</span><span class="p">,</span>
+     <span class="s2">"target_cpu"</span><span class="o">=&gt;</span><span class="s2">"x86_64"</span><span class="p">,</span>
+     <span class="s2">"target_vendor"</span><span class="o">=&gt;</span><span class="s2">"apple"</span><span class="p">,</span>
+     <span class="s2">"target_os"</span><span class="o">=&gt;</span><span class="s2">"darwin12.2.0"</span><span class="p">,</span>
+     <span class="s2">"host"</span><span class="o">=&gt;</span><span class="s2">"x86_64-apple-darwin12.2.0"</span><span class="p">,</span>
+     <span class="s2">"host_cpu"</span><span class="o">=&gt;</span><span class="s2">"x86_64"</span><span class="p">,</span>
+     <span class="s2">"host_os"</span><span class="o">=&gt;</span><span class="s2">"darwin12.2.0"</span><span class="p">,</span>
+     <span class="s2">"host_vendor"</span><span class="o">=&gt;</span><span class="s2">"apple"</span><span class="p">,</span>
+     <span class="s2">"bin_dir"</span><span class="o">=&gt;</span><span class="s2">"/Users/sawanoboriyu/.rvm/rubies/ruby-1.9.3-p194/bin"</span><span class="p">,</span>
+     <span class="s2">"ruby_bin"</span><span class="o">=&gt;</span><span class="s2">"/Users/sawanoboriyu/.rvm/rubies/ruby-1.9.3-p194/bin/ruby"</span><span class="p">,</span>
+     <span class="s2">"gems_dir"</span><span class="o">=&gt;</span><span class="s2">"/Users/sawanoboriyu/.rvm/gems/ruby-1.9.3-p194@chef-labs"</span><span class="p">,</span>
+     <span class="s2">"gem_bin"</span><span class="o">=&gt;</span><span class="s2">"/Users/sawanoboriyu/.rvm/rubies/ruby-1.9.3-p194/bin/gem"</span><span class="p">}},</span>
+ <span class="s2">"kernel"</span><span class="o">=&gt;</span>
+  <span class="p">{</span><span class="s2">"name"</span><span class="o">=&gt;</span><span class="s2">"Darwin"</span><span class="p">,</span>
+   <span class="s2">"release"</span><span class="o">=&gt;</span><span class="s2">"12.2.0"</span><span class="p">,</span>
+   <span class="s2">"version"</span><span class="o">=&gt;</span>
+    <span class="s2">"Darwin Kernel Version 12.2.0: Sat Aug 25 00:48:52 PDT 2012; root:xnu-2050.18.24~1/RELEASE_X86_64"</span><span class="p">,</span>
+   <span class="s2">"machine"</span><span class="o">=&gt;</span><span class="s2">"x86_64"</span><span class="p">,</span>
+   <span class="s2">"modules"</span><span class="o">=&gt;</span><span class="p">{}},</span>
+ <span class="s2">"os"</span><span class="o">=&gt;</span><span class="s2">"darwin"</span><span class="p">,</span>
+ <span class="s2">"os_version"</span><span class="o">=&gt;</span><span class="s2">"12.2.0"</span><span class="p">}</span>
+</pre></div>
+</div>
+
+<p>裏で色々と泥臭い処理が走った結果、見事にOSに関するインベントリが収集されている。<br>
+相手の<strong>OSが何でも同じ構造のハッシュに格納</strong>してくれるのは色々と助かるはず。</p>
+
+<h3>
+<span id="プラグインの追加実行でアトリビュート追加" class="fragment"></span><a href="#%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%81%AE%E8%BF%BD%E5%8A%A0%E5%AE%9F%E8%A1%8C%E3%81%A7%E3%82%A2%E3%83%88%E3%83%AA%E3%83%93%E3%83%A5%E3%83%BC%E3%83%88%E8%BF%BD%E5%8A%A0"><i class="fa fa-link"></i></a>プラグインの追加実行でアトリビュート追加</h3>
+
+<p>"OS"のインベントリ採取が終わった後なら他のプラグインも適当に実行できる。<br>
+<code>platform</code>や<code>ohai(plugin)</code>を実行して、関連するアトリビュートを<code>@data</code>に追加しておく。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">require_plugin</span> <span class="s2">"platform"</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">require_plugin</span> <span class="s2">"platform"</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">data</span>
+<span class="o">=&gt;</span> <span class="p">{</span><span class="s2">"languages"</span><span class="o">=&gt;</span>
+  <span class="p">{</span><span class="s2">"ruby"</span><span class="o">=&gt;</span>
+
+<span class="o">--</span> <span class="n">snip</span> <span class="o">--</span>
+
+ <span class="s2">"os"</span><span class="o">=&gt;</span><span class="s2">"darwin"</span><span class="p">,</span>
+ <span class="s2">"os_version"</span><span class="o">=&gt;</span><span class="s2">"12.2.0"</span><span class="p">,</span>
+ <span class="s2">"platform"</span><span class="o">=&gt;</span><span class="s2">"mac_os_x"</span><span class="p">,</span>
+ <span class="s2">"platform_version"</span><span class="o">=&gt;</span><span class="s2">"10.8.2"</span><span class="p">,</span>
+ <span class="s2">"platform_build"</span><span class="o">=&gt;</span><span class="s2">"12C60"</span><span class="p">,</span>
+ <span class="s2">"platform_family"</span><span class="o">=&gt;</span><span class="s2">"mac_os_x"</span><span class="p">}</span>
+
+
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">require_plugin</span> <span class="s2">"ohai"</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">data</span><span class="p">[</span><span class="ss">:chef_packages</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="p">{</span><span class="s2">"ohai"</span><span class="o">=&gt;</span>
+  <span class="p">{</span><span class="s2">"version"</span><span class="o">=&gt;</span><span class="s2">"6.14.0"</span><span class="p">,</span>
+   <span class="s2">"ohai_root"</span><span class="o">=&gt;</span>
+    <span class="s2">"/Users/sawanoboriyu/.rvm/gems/ruby-1.9.3-p194@chef-labs/gems/ohai-6.14.0/lib/ohai"</span><span class="p">}}</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="パスにあるすべてのプラグインを実行" class="fragment"></span><a href="#%E3%83%91%E3%82%B9%E3%81%AB%E3%81%82%E3%82%8B%E3%81%99%E3%81%B9%E3%81%A6%E3%81%AE%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%82%92%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>パスにあるすべてのプラグインを実行</h3>
+
+<p><code>all_plugins</code>はすべてのプラグインを実行する。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">all_plugins</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">seen_plugins</span>
+<span class="o">=&gt;</span> <span class="p">{</span><span class="s2">"os"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"kernel"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"ruby"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"languages"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"c"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"chef"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"cloud"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"ec2"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"hostname"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::hostname"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"network"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::network"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"rackspace"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"eucalyptus"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"command"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"dmi"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"dmi_common"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"erlang"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"groovy"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"ip_scopes"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"java"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"keys"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"lua"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"mono"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"network_listeners"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"ohai"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"ohai_time"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"passwd"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"perl"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"php"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"platform"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::platform"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"python"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"uptime"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"virtualization"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::virtualization"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::filesystem"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::kernel"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::ps"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::ssh_host_key"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::system_profiler"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">,</span>
+ <span class="s2">"darwin::uptime"</span><span class="o">=&gt;</span><span class="kp">true</span><span class="p">}</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="ohaiプラグインを作成する" class="fragment"></span><a href="#ohai%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Ohaiプラグインを作成する</h2>
+
+<p>インベントリを取得したいノードによってはなにかしらアトリビュートを追加したい時もある。<br>
+他のプラグインにならえば、Ohaiプラグインはプロバイダと取得するコマンドラインを指定する形で追加になる。</p>
+
+<h3>
+<span id="プロバイダを追加" class="fragment"></span><a href="#%E3%83%97%E3%83%AD%E3%83%90%E3%82%A4%E3%83%80%E3%82%92%E8%BF%BD%E5%8A%A0"><i class="fa fa-link"></i></a>プロバイダを追加</h3>
+
+<p>Pryのまま行う、実際は<code>プラグイン名.rb</code>ファイルに<code>ohai.</code>を除いた形で書いておく。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">provides</span> <span class="s2">"brew_path"</span><span class="p">,</span> <span class="s2">"brew_ver"</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"brew_path"</span><span class="p">,</span> <span class="s2">"brew_ver"</span><span class="p">]</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Ohai::System:0x007f8ecbbef940</span>
+ <span class="vi">@data</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@hints</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@plugin_path</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+ <span class="vi">@providers</span><span class="o">=</span>
+  <span class="p">{</span><span class="s2">"brew_path"</span><span class="o">=&gt;</span><span class="p">{</span><span class="s2">"_providers"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">""</span><span class="p">]},</span> <span class="s2">"brew_ver"</span><span class="o">=&gt;</span><span class="p">{</span><span class="s2">"_providers"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">""</span><span class="p">]}},</span>
+ <span class="vi">@seen_plugins</span><span class="o">=</span><span class="p">{}</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="プロバイダの取得方法を定義" class="fragment"></span><a href="#%E3%83%97%E3%83%AD%E3%83%90%E3%82%A4%E3%83%80%E3%81%AE%E5%8F%96%E5%BE%97%E6%96%B9%E6%B3%95%E3%82%92%E5%AE%9A%E7%BE%A9"><i class="fa fa-link"></i></a>プロバイダの取得方法を定義</h3>
+
+<p>簡単な方法の一つ、<code>Ohai::Ststem</code>のインスタンスメソッド<code>from</code>をつかう。<br>
+マルチプラットフォーム対応で実行したコマンドの標準出力を格納できる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">brew_path</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">from</span><span class="p">(</span><span class="s2">"which brew"</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"/usr/local/bin/brew"</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">brew_ver</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">from</span><span class="p">(</span><span class="s2">"</span><span class="si">#{</span><span class="n">ohai</span><span class="p">.</span><span class="nf">brew_path</span><span class="si">}</span><span class="s2"> -v"</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"Homebrew 0.9.3"</span>
+
+<span class="o">&gt;</span> <span class="n">ohai</span><span class="p">.</span><span class="nf">data</span>
+<span class="o">=&gt;</span> <span class="p">{</span><span class="s2">"brew_path"</span><span class="o">=&gt;</span><span class="s2">"/usr/local/bin/brew"</span><span class="p">,</span> <span class="s2">"brew_ver"</span><span class="o">=&gt;</span><span class="s2">"Homebrew 0.9.3"</span><span class="p">}</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>Chefは全体的にまずガサ入れをしてからなんぼというツールだが、特にこのOhaiの泥臭さはなかなかだ。</p>

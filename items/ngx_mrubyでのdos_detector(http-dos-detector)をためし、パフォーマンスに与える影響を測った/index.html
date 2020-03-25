@@ -1,0 +1,241 @@
+
+<h2>
+<span id="http-dos-detectorとは" class="fragment"></span><a href="#http-dos-detector%E3%81%A8%E3%81%AF"><i class="fa fa-link"></i></a>http-dos-detectorとは？</h2>
+
+<p>任意の条件でいわゆるDDos攻撃を判定し、ブロックなり当局に通報するなり、適切な処理を施すための実装だ。</p>
+
+<p><a href="https://github.com/matsumoto-r/http-dos-detector" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/matsumoto-r/http-dos-detector</a></p>
+
+<p>Apache httpd用のmod_mrubyと、Nginx用のngx_mrubyはそれぞれの差異を抽象化して吸収し、同じmrubyコードを使用できるように作られている。<br>
+この<code>http-dos-detector</code>は同じコードで両方対応のデモとしてもよくできている。パラメータの意味などは作者ブログへ。</p>
+
+<p><a href="http://hb.matsumoto-r.jp/entry/2015/06/08/224827" rel="nofollow noopener" target="_blank">nginxでもapacheでも使用可能なDoS的アクセスを検知して任意の制御をするWebサーバ拡張をmrubyで作った</a></p>
+
+<h2>
+<span id="処理性能への影響をみたよ" class="fragment"></span><a href="#%E5%87%A6%E7%90%86%E6%80%A7%E8%83%BD%E3%81%B8%E3%81%AE%E5%BD%B1%E9%9F%BF%E3%82%92%E3%81%BF%E3%81%9F%E3%82%88"><i class="fa fa-link"></i></a>処理性能への影響をみたよ。</h2>
+
+<table>
+<thead>
+<tr>
+<th>Env</th>
+<th>Req/sec</th>
+<th>Time per request(ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mruby_access_handlerなし</td>
+<td>2177.34</td>
+<td>13.778</td>
+</tr>
+<tr>
+<td>mruby_access_handlerあり、ブロックしない</td>
+<td>1522.99</td>
+<td>19.698</td>
+</tr>
+<tr>
+<td>mruby_access_handlerあり、ブロックする</td>
+<td>1515.88</td>
+<td>19.790</td>
+</tr>
+</tbody>
+</table>
+
+<p>3割くらいあったね。割合よりは、リクエストあたり6msくらい時間が増える、のほうが目安にするにはよいかも。<br>
+とりあえず今日の測定結果を残しておけば、またいつか測りたくなったときに比較できる。</p>
+
+<h3>
+<span id="試した環境" class="fragment"></span><a href="#%E8%A9%A6%E3%81%97%E3%81%9F%E7%92%B0%E5%A2%83"><i class="fa fa-link"></i></a>試した環境</h3>
+
+<p>ハードはMacBook Pro 2014特盛り x Boot2Docker。ngx_mrubyの公式においてあるDockerfileちょっといじってます。</p>
+
+<p>Nginxのビルドは次のように。ngx_mrubyはタグ<code>v1.10.12</code>がついてる奴。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>nginx version: nginx/1.8.0
+built by gcc 4.8.4 (Ubuntu 4.8.4-2ubuntu1~14.04) 
+built with OpenSSL 1.0.1f 6 Jan 2014
+TLS SNI support enabled
+configure arguments: --add-module=/usr/local/src/ngx_mruby --add-module=/usr/local/src/ngx_mruby/dependence/ngx_devel_kit --with-debug --with-http_stub_status_module --with-http_ssl_module --prefix=/usr/local/nginx --with-http_realip_module --with-http_addition_module --with-http_sub_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_random_index_module --with-http_secure_link_module --add-module=/usr/local/src/ngx_cache_purge-2.3
+</pre></div></div>
+
+<p>worker_processesはautoにしたので8個かな。</p>
+
+<p>abはこのくらい。 <code>ab -n 6000 -c 30 http://</code>boot2docker ip<code>:8080/404.html</code></p>
+
+<h2>
+<span id="detectorなしのab結果" class="fragment"></span><a href="#detector%E3%81%AA%E3%81%97%E3%81%AEab%E7%B5%90%E6%9E%9C"><i class="fa fa-link"></i></a>detectorなしのab結果</h2>
+
+<p>なしといっても、クラスのロードとかは入れており、locationにて<code>mruby_access_handler</code>を入れていない状態でかるくabしてみた。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>Server Software:        nginx/1.8.0
+Server Hostname:        192.168.59.103
+Server Port:            8080
+
+Document Path:          /404.html
+Document Length:        4 bytes
+
+Concurrency Level:      30
+Time taken for tests:   2.756 seconds
+Complete requests:      6000
+Failed requests:        0
+Total transferred:      1392000 bytes
+HTML transferred:       24000 bytes
+Requests per second:    2177.34 [#/sec] (mean)
+Time per request:       13.778 [ms] (mean)
+Time per request:       0.459 [ms] (mean, across all concurrent requests)
+Transfer rate:          493.30 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    4   2.8      3      18
+Processing:     1   10   4.4      9      30
+Waiting:        1   10   4.4      9      30
+Total:          2   14   4.6     13      33
+
+Percentage of the requests served within a certain time (ms)
+  50%     13
+  66%     15
+  75%     17
+  80%     17
+  90%     20
+  95%     22
+  98%     25
+  99%     27
+ 100%     33 (longest request)
+</pre></div></div>
+
+<h2>
+<span id="detectorありブロックなしのab結果" class="fragment"></span><a href="#detector%E3%81%82%E3%82%8A%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E3%81%AA%E3%81%97%E3%81%AEab%E7%B5%90%E6%9E%9C"><i class="fa fa-link"></i></a>detectorあり、ブロックなしのab結果</h2>
+
+<p>threshold_counterを十分大きな値にして、カウントはするけどブロックまではしない。<br>
+locationにて次のようにdos_detectorを通るようにした。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>        location = /404.html {
+            mruby_access_handler conf/dos_detector/dos_detector.rb cache;
+            root   html;
+        }
+...
+</pre></div></div>
+
+<p>abでは性能にそれなりの変化があった。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>Server Software:        nginx/1.8.0
+Server Hostname:        192.168.59.103
+Server Port:            8080
+
+Document Path:          /404.html
+Document Length:        4 bytes
+
+Concurrency Level:      30
+Time taken for tests:   3.940 seconds
+Complete requests:      6000
+Failed requests:        0
+Total transferred:      1392000 bytes
+HTML transferred:       24000 bytes
+Requests per second:    1522.99 [#/sec] (mean)
+Time per request:       19.698 [ms] (mean)
+Time per request:       0.657 [ms] (mean, across all concurrent requests)
+Transfer rate:          345.05 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    4   3.0      3      17
+Processing:     2   16  15.8     12     269
+Waiting:        2   16  15.8     12     269
+Total:          4   19  15.6     17     270
+
+Percentage of the requests served within a certain time (ms)
+  50%     17
+  66%     19
+  75%     21
+  80%     22
+  90%     26
+  95%     33
+  98%     69
+  99%    105
+ 100%    270 (longest request)
+</pre></div></div>
+
+<h2>
+<span id="detectorありブロックする場合のab結果" class="fragment"></span><a href="#detector%E3%81%82%E3%82%8A%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E3%81%99%E3%82%8B%E5%A0%B4%E5%90%88%E3%81%AEab%E7%B5%90%E6%9E%9C"><i class="fa fa-link"></i></a>detectorあり、ブロックする場合のab結果</h2>
+
+<p>5秒で1,000リクエストのルールでブロックしてみた。次のようなコンフィグ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>config = {
+  :counter_key =&gt; r.hostname,
+  :magic_str =&gt; "....",
+
+  :behind_counter =&gt; -500,
+
+  :threshold_counter =&gt; 1000,
+  :threshold_time =&gt; 5,
+
+  :expire_time =&gt; 60,
+}
+</pre></div></div>
+
+<p><code>Non-2xx responses =&gt; 2000</code>ってことで、しっかりブロックされているのがわかる。<br>
+ブロック回数が5,000でないのは<code>behind_counter</code>が消費されたからなのでOK。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>Server Software:        nginx/1.8.0
+Server Hostname:        192.168.59.103
+Server Port:            8080
+
+Document Path:          /404.html
+Document Length:        4 bytes
+
+Concurrency Level:      30
+Time taken for tests:   3.958 seconds
+Complete requests:      6000
+Failed requests:        2000
+   (Connect: 0, Receive: 0, Length: 2000, Exceptions: 0)
+Non-2xx responses:      2000
+Total transferred:      2214000 bytes
+HTML transferred:       914000 bytes
+Requests per second:    1515.88 [#/sec] (mean)
+Time per request:       19.790 [ms] (mean)
+Time per request:       0.660 [ms] (mean, across all concurrent requests)
+Transfer rate:          546.25 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    4   2.9      3      18
+Processing:     2   16  15.4     13     264
+Waiting:        2   16  15.4     13     264
+Total:          5   20  15.3     17     265
+
+Percentage of the requests served within a certain time (ms)
+  50%     17
+  66%     19
+  75%     21
+  80%     23
+  90%     27
+  95%     32
+  98%     69
+  99%     94
+ 100%    265 (longest request)
+</pre></div></div>
+
+<h2>
+<span id="それじゃあつかっとく" class="fragment"></span><a href="#%E3%81%9D%E3%82%8C%E3%81%98%E3%82%83%E3%81%82%E3%81%A4%E3%81%8B%E3%81%A3%E3%81%A8%E3%81%8F"><i class="fa fa-link"></i></a>それじゃあつかっとく</h2>
+
+<p>今回採用を目論む環境ではバックエンドがわりと遠くにあるし元々のアクセスも多くはないので、このくらいの性能差は許容範囲だ。</p>
+
+<p>このNginxの前には色々いるので、<code>counter_key</code>はつど判断でいーかな。</p>
+
+<blockquote>
+<p>追記: 条件をちょっと直した。</p>
+</blockquote>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>config = {
+  :counter_key =&gt; r.headers_in["X-Forwarded-For"] ? r.headers_in["X-Forwarded-For"].split(",").first : r.headers_in["X-Real-IP"],
+  :magic_str =&gt; "....",
+
+  :behind_counter =&gt; -5000,
+
+  :threshold_counter =&gt; 1000,
+  :threshold_time =&gt; 5,
+
+  :expire_time =&gt; 60,
+}
+</pre></div></div>

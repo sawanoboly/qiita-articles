@@ -1,0 +1,270 @@
+<p><a href="https://http2.github.io/" title="HTTP/2" rel="nofollow noopener" target="_blank">HTTP/2</a>もほぼ仕様ができました。<br>
+代表的なWEBブラウザのうち、Firefox, Google ChromeならHTTP2が利用可能です。</p>
+
+<p>HTTP/2は大雑把にいうとデータの転送周りでいろいろ効率がよくなって嬉しい感じ。<br>
+真面目に導入するにはまだ大変だけど、普通のサイトでもとりあえずDockerがあればHTTP/2に対応させて試すことができる。</p>
+
+<h2>
+<span id="環境" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83"><i class="fa fa-link"></i></a>環境</h2>
+
+<p>普通のWeb環境のモデルとして、Amazon EC2上にWordPressをHTTP(TCP/80)のみでホストしてるAMIMOTOさんを使ってみた。</p>
+
+<p><a href="http://ja.amimoto-ami.com/" title="AWS + Nginx + WordPress | WordPress AMI 網元" rel="nofollow noopener" target="_blank">WordPress AMI 網元</a></p>
+
+<p>AMIからEC2インスタンスを起動すれば、平文のHTTPでWordPressが動いている。<br>
+※ 起動時にセキュリティグループでHTTPS(TCP/443)も許可しておこう。</p>
+
+<p>Dockerで起動するプロセスは、HTTP2で受けてupstream(reverse proxy)できる何かで。</p>
+
+<h2>
+<span id="dockerの準備" class="fragment"></span><a href="#docker%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>Dockerの準備</h2>
+
+<p>Amazon LinuxなのでDockerホストはパッケージですぐに開始できる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>      ___         _            __
+     / _ | __ _  (_)_ _  ___  / /____
+    / __ |/  ' \/ /  ' \/ _ \/ __/ _ \
+   /_/ |_/_/_/_/_/_/_/_/\___/\__/\___/
+
+
+Amazon Linux AMI release 2014.09
+    Nginx 1.6 + PHP 5.5 + Percona 5.6
+
+  amimoto     http://ja.amimoto-ami.com/
+  digitalcube https://www.digitalcube.jp/
+
+[ec2-user@ip-xxx-xxx-xxx-xxx ~]$
+</pre></div></div>
+
+<p>yumでOK、起動しておこう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo yum install docker -y
+$ sudo service docker start
+</pre></div></div>
+
+<h2>
+<span id="サンプルのdockerファイルを取得" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AEdocker%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E5%8F%96%E5%BE%97"><i class="fa fa-link"></i></a>サンプルのDockerファイルを取得</h2>
+
+<p>真似する用にDocerfileをGithubにおいてます。 #=&gt; <a href="https://github.com/higanworks/http2_by_docker" rel="nofollow noopener" target="_blank">higanworks/http2_by_docker</a></p>
+
+<p>適当にクローンしましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mkdir github.com &amp;&amp; cd $_
+$ git clone https://github.com/higanworks/http2_by_docker.git
+</pre></div></div>
+
+<h2>
+<span id="wordpress側の仕込み" class="fragment"></span><a href="#wordpress%E5%81%B4%E3%81%AE%E4%BB%95%E8%BE%BC%E3%81%BF"><i class="fa fa-link"></i></a>WordPress側の仕込み</h2>
+
+<p>このやり方ではリバースプロキシになるため、WordPressに到達したリクエストはHTTPになります。<br>
+とりあえず何も考えずにHTTPSを使うようにコンフィグで指定します。</p>
+
+<p><code>/var/www/vhosts/i-xxxx/wp-config.php</code></p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$_SERVER['HTTPS'] = 'on';
+</pre></div></div>
+
+<p>注： この設定を入れるとスタイルなどの部品がすべてHTTPSのリンクで埋め込まれるようになります。</p>
+
+<p>真面目に使う場合は次のいずれかでもうすこし細かく調整すればいいとおもいます。</p>
+
+<ul>
+<li>
+<code>wp-config.php</code>で条件を書いて<code>HTTPS</code>ヘッダを操作する</li>
+<li>nginxで条件<code>x-forwarded-***</code>を付与したりする</li>
+</ul>
+
+<h2>
+<span id="h2oをつかってhttp2" class="fragment"></span><a href="#h2o%E3%82%92%E3%81%A4%E3%81%8B%E3%81%A3%E3%81%A6http2"><i class="fa fa-link"></i></a>h2oをつかってHTTP/2</h2>
+
+<p>ではまずh2oを使ってみましょう。</p>
+
+<p><a href="https://github.com/h2o/h2o" title="h2o/h2o" rel="nofollow noopener" target="_blank">h2o/h2o</a></p>
+
+<p>h2oのDockerfileは <a href="https://github.com/tcnksm/dockerfiles" title="tcnksm/dockerfiles" rel="nofollow noopener" target="_blank">tcnksm/dockerfiles</a> をほぼ拝借しました。</p>
+
+<p>Docerfileを確認したら、イメージをビルドします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cd h2o
+$ sudo docker build -t local/h2o .
+
+...
+
+Successfully built 21fee39e3a54
+</pre></div></div>
+
+<p>h2oのコンフィグはこんな感じで。<code>proxy.reverse.url</code>がDocker用バーチャルネットワークを指しています。</p>
+
+<div class="code-frame" data-lang="YAML">
+<div class="code-lang"><span class="bold">conf/h2o.conf</span></div>
+<div class="highlight"><pre><span class="na">listen</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="m">8080</span>
+  <span class="na">ssl</span><span class="pi">:</span>
+    <span class="na">certificate-file</span><span class="pi">:</span> <span class="s">examples/h2o/server.crt</span>
+    <span class="na">key-file</span><span class="pi">:</span> <span class="s">examples/h2o/server.key</span>
+<span class="na">hosts</span><span class="pi">:</span>
+   <span class="na">default</span><span class="pi">:</span>
+    <span class="na">paths</span><span class="pi">:</span>
+      <span class="s">/</span><span class="pi">:</span>
+        <span class="s">proxy.reverse.url</span><span class="pi">:</span> <span class="s">http://172.17.42.1:80/</span>
+    <span class="na">access-log</span><span class="pi">:</span> <span class="s">/dev/stdout</span>
+</pre></div>
+</div>
+
+<p>ではDockerでh2oプロセスを上げましょう。だいたい次のような指定です。</p>
+
+<ul>
+<li>ポートをフォワード</li>
+<li>コンフィグのディレクトリをマウント</li>
+<li>引数をつかってマウントしたコンフィグを渡す。</li>
+</ul>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo docker run -t --rm -p 443:8080 -v `pwd`/conf:/conf local/h2o /conf/h2o.conf
+</pre></div></div>
+
+<p>これでWEBブラウザからのリクエストをTLS(TCP/443)で受けつけて、h2oの8080に流し、さらにnginxへと渡していきます。</p>
+
+<p>早速ブラウザで<code>https://${ec2_public_ip}</code>を開いてみましょう。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3e17fb72-36f8-4343-dc4c-8117a2cfe0cc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=13455587845c83976af9fc0d61383b91" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3e17fb72-36f8-4343-dc4c-8117a2cfe0cc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=13455587845c83976af9fc0d61383b91" alt="HTTP2___Just_another_WordPress_site.png" title="HTTP2___Just_another_WordPress_site.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/3e17fb72-36f8-4343-dc4c-8117a2cfe0cc.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3e17fb72-36f8-4343-dc4c-8117a2cfe0cc.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=2c121369a8cd5d0c0e9073c661655258 1x" loading="lazy"></a></p>
+
+<p>開発ツールをみると、serverがh2oで、HTTP2を使っていることがわかります。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F828cc4c6-f30e-8aef-1095-898cdba6d88a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e1c8b9b3c832bb6a713cc2ac79317b5b" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F828cc4c6-f30e-8aef-1095-898cdba6d88a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e1c8b9b3c832bb6a713cc2ac79317b5b" alt="ネットワーク_-_https___ec2-176-34-3-108_ap-northeast-1_compute_amazonaws_com_wp-login_php_と_HTTP2___Just_another_WordPress_site.png" title="ネットワーク_-_https___ec2-176-34-3-108_ap-northeast-1_compute_amazonaws_com_wp-login_php_と_HTTP2___Just_another_WordPress_site.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/828cc4c6-f30e-8aef-1095-898cdba6d88a.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F828cc4c6-f30e-8aef-1095-898cdba6d88a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=3a4528ead9faf3be69dbf31c2a41f098 1x" loading="lazy"></a></p>
+
+<p>h2oはクライアントの対応状況によってHTTP2ではなくHTTP1.xを自動で切り替えるので、大抵のブラウザ、クライアントは普通にサイトを表示できます。</p>
+
+<h2>
+<span id="trusterdをつかってhttp2" class="fragment"></span><a href="#trusterd%E3%82%92%E3%81%A4%E3%81%8B%E3%81%A3%E3%81%A6http2"><i class="fa fa-link"></i></a>TrusterdをつかってHTTP/2</h2>
+
+<p>同じようなことを、今度は<a href="http://trusterd.github.io/" title="Trusterd - HTTP/2 Web Server scripting with mruby by trusterd" rel="nofollow noopener" target="_blank">Trusterd</a>でやってみます。</p>
+
+<p>こちらもイメージのビルドから。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cd ../trusterd
+$ sudo docker build -t local/trusterd .
+
+...
+
+</pre></div></div>
+
+<p>Trusterdの設定ファイルはこんな感じ。Ruby!</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">conf/trusterd.conf</span></div>
+<div class="highlight"><pre><span class="no">SERVER_NAME</span> <span class="o">=</span> <span class="s2">"Trusterd"</span>
+<span class="no">SERVER_VERSION</span> <span class="o">=</span> <span class="s2">"0.0.1"</span>
+<span class="no">SERVER_DESCRIPTION</span> <span class="o">=</span> <span class="s2">"</span><span class="si">#{</span><span class="no">SERVER_NAME</span><span class="si">}</span><span class="s2">/</span><span class="si">#{</span><span class="no">SERVER_VERSION</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="n">root_dir</span> <span class="o">=</span> <span class="s2">"/usr/local/trusterd"</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="no">HTTP2</span><span class="o">::</span><span class="no">Server</span><span class="p">.</span><span class="nf">new</span><span class="p">({</span>
+  <span class="ss">:port</span>           <span class="o">=&gt;</span> <span class="mi">8080</span><span class="p">,</span>
+  <span class="ss">:document_root</span>  <span class="o">=&gt;</span> <span class="s2">"</span><span class="si">#{</span><span class="n">root_dir</span><span class="si">}</span><span class="s2">/htdocs"</span><span class="p">,</span>
+  <span class="ss">:server_name</span>    <span class="o">=&gt;</span> <span class="no">SERVER_DESCRIPTION</span><span class="p">,</span>
+
+  <span class="ss">:worker</span>         <span class="o">=&gt;</span> <span class="s2">"auto"</span><span class="p">,</span>
+  <span class="ss">:server_host</span>  <span class="o">=&gt;</span> <span class="s2">"0.0.0.0"</span><span class="p">,</span>
+
+  <span class="ss">:debug</span>  <span class="o">=&gt;</span>  <span class="kp">true</span><span class="p">,</span>
+  <span class="ss">:key</span>    <span class="o">=&gt;</span> <span class="s2">"/usr/local/src/trusterd/docker/conf/server.key"</span><span class="p">,</span>
+  <span class="ss">:crt</span>    <span class="o">=&gt;</span> <span class="s2">"/usr/local/src/trusterd/docker/conf/server.crt"</span><span class="p">,</span>
+  <span class="ss">:tls</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span>
+
+  <span class="ss">:callback</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span>
+
+  <span class="ss">:run_user</span> <span class="o">=&gt;</span> <span class="s2">"nobody"</span><span class="p">,</span>
+
+  <span class="ss">:server_status</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span>
+  <span class="ss">:upstream</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span>
+
+<span class="p">})</span>
+
+<span class="n">s</span><span class="p">.</span><span class="nf">set_map_to_storage_cb</span> <span class="p">{</span>
+  <span class="n">s</span><span class="p">.</span><span class="nf">upstream_uri</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="nf">percent_encode_uri</span>
+  <span class="n">s</span><span class="p">.</span><span class="nf">upstream_host</span> <span class="o">=</span> <span class="s2">"172.17.42.1"</span>
+  <span class="n">s</span><span class="p">.</span><span class="nf">upstream_port</span> <span class="o">=</span> <span class="mi">80</span>
+<span class="p">}</span>
+
+<span class="n">s</span><span class="p">.</span><span class="nf">run</span>
+</pre></div>
+</div>
+
+<p>DockerでTrusterdプロセスを起動するときはこう。h2oの時と基本同じやり方です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo docker run -t --rm -p 443:8080 -v `pwd`/conf:/conf local/trusterd /conf/trusterd.conf
+</pre></div></div>
+
+<p>こちらもブラウザで開発ツールから確認します、<code>HTTP/2.0</code>が使われていますね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2883fa3c-6486-5c6d-de6e-174195e24bb5.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=2a7a2f11c28e3ba290b7464d0afbc6c7" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2883fa3c-6486-5c6d-de6e-174195e24bb5.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=2a7a2f11c28e3ba290b7464d0afbc6c7" alt="ネットワーク_-_https___ec2-176-34-3-108_ap-northeast-1_compute_amazonaws_com_.png" title="ネットワーク_-_https___ec2-176-34-3-108_ap-northeast-1_compute_amazonaws_com_.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/2883fa3c-6486-5c6d-de6e-174195e24bb5.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2883fa3c-6486-5c6d-de6e-174195e24bb5.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=24f623d97134c339091d8b51cee80506 1x" loading="lazy"></a></p>
+
+<p>Trusterdは<code>via</code>ヘッダをつかうなど、プロキシらしい振る舞いが見られます。要所のコールバックでヘッダはじめ色々と通信内容に介入できるのも面白い。</p>
+
+<p>ただ本記事公開時バージョンのTrusterdはHTTP/2に対応していないWEBブラウザ・クライアントには無慈悲です。<code>bad connection</code>で接続を切っておしまい。</p>
+
+<div class="code-frame" data-lang="trusterd_log(stdout)"><div class="highlight"><pre>xxx.xxx.xxx.xxx connected
+session_recv: datalen = 611
+Fatal error: Received bad connection preface114.172.124.198 disconnected
+</pre></div></div>
+
+<p>主に切られるのは<del>Safari</del>(&lt;=対応した)とIE。。？ で考えると別にいいのかもよ。</p>
+
+<h2>
+<span id="h2oとtrusterd" class="fragment"></span><a href="#h2o%E3%81%A8trusterd"><i class="fa fa-link"></i></a>h2oとtrusterd</h2>
+
+<p>使った2つのHTTP/2サーバをざっくり比較。</p>
+
+<table>
+<thead>
+<tr>
+<th>-</th>
+<th>h2o</th>
+<th>trusterd</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTPプロトコル</td>
+<td>1.0/1.1/2.0</td>
+<td>2.0</td>
+</tr>
+<tr>
+<td>設定ファイル</td>
+<td>yaml (ビルド時にWITH_MRUBYでmRubyも。)</td>
+<td>mRuby</td>
+</tr>
+<tr>
+<td>プロキシらしいふるまい</td>
+<td>特になし</td>
+<td>プロキシ的ヘッダを付ける(任意で追加も可)</td>
+</tr>
+<tr>
+<td>安定度</td>
+<td>ほぼ安定</td>
+<td>よーわからん</td>
+</tr>
+<tr>
+<td>即戦力度</td>
+<td>実績もあるっぽいし、十分</td>
+<td>これから。ユーザフィードバック次第？</td>
+</tr>
+<tr>
+<td>拡張性</td>
+<td>Cが書けるなら拡張できそう。trusterd 作者により<a href="http://hb.matsumoto-r.jp/entry/2015/06/30/144717" rel="nofollow noopener" target="_blank">h2o_mrubyが追加され</a>、基本的なクラスの実装もすすんでいる。</td>
+<td>フルmRubyで結構やりたい放題。Cが読み書きできるとなおよし。</td>
+</tr>
+<tr>
+<td>ロゴ</td>
+<td>ない</td>
+<td>かっこいい</td>
+</tr>
+</tbody>
+</table>
+
+<p>とりあえずh2oで、リクエスト・レスポンスの動作に(手軽に)凝ってみたければTrustedで。君のサイトもHTTP/2対応にしてみよう。</p>
+
+<blockquote>
+<p>表の更新<br>
+- 2015.8 h2oにmruby拡張を追記</p>
+</blockquote>

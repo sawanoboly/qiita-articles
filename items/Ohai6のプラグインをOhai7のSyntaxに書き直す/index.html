@@ -1,0 +1,279 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>書き換えの対象はJoyent SmartOSでの固有情報を収集するために書いたプラグイン。Ohai本家にプルリクエストして、長い間放置していたもの。</p>
+
+<p>コミットはこのツリー。</p>
+
+<p><a href="https://github.com/ZCloud-Firstserver/ohai/tree/b55bbc4a887e01958d8ffc064011e49982fb1966" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/ZCloud-Firstserver/ohai/tree/b55bbc4a887e01958d8ffc064011e49982fb1966</a></p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">6_ohai/lib/ohai/plugins/joyent.rb</span></div>
+<div class="highlight"><pre><span class="n">provides</span> <span class="s2">"joyent"</span>
+<span class="n">require_plugin</span> <span class="s2">"os"</span>
+<span class="n">require_plugin</span> <span class="s2">"platform"</span>
+
+<span class="k">if</span> <span class="n">platform</span> <span class="o">==</span> <span class="s2">"smartos"</span> <span class="k">then</span>
+  <span class="n">joyent</span> <span class="no">Mash</span><span class="p">.</span><span class="nf">new</span>
+
+  <span class="c1"># get uuid</span>
+  <span class="n">status</span><span class="p">,</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">run_command</span><span class="p">(</span><span class="ss">:no_status_check</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span> <span class="ss">:command</span> <span class="o">=&gt;</span> <span class="s2">"/usr/bin/zonename"</span><span class="p">)</span>
+  <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_uuid</span><span class="p">]</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">.</span><span class="nf">chomp</span>
+
+  <span class="c1"># get zone id unless globalzone</span>
+  <span class="n">status</span><span class="p">,</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">run_command</span><span class="p">(</span><span class="ss">:no_status_check</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span> <span class="ss">:command</span> <span class="o">=&gt;</span> <span class="s2">"/usr/sbin/zoneadm list -p | awk -F: '{ print $1 }'"</span><span class="p">)</span>
+  <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">.</span><span class="nf">chomp</span> <span class="k">unless</span> <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_uuid</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"global"</span>
+
+  <span class="c1"># retrieve image name and pkgsrc</span>
+  <span class="k">if</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">exist?</span><span class="p">(</span><span class="s2">"/etc/product"</span><span class="p">)</span> <span class="k">then</span>
+    <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">open</span><span class="p">(</span><span class="s2">"/etc/product"</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">file</span><span class="o">|</span>
+      <span class="k">while</span> <span class="n">line</span> <span class="o">=</span> <span class="n">file</span><span class="p">.</span><span class="nf">gets</span>
+        <span class="k">case</span> <span class="n">line</span>
+        <span class="k">when</span> <span class="sr">/^Image/</span>
+          <span class="n">sm_image</span> <span class="o">=</span> <span class="n">line</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_image_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_image</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_image_ver</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_image</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">when</span> <span class="sr">/^Base Image/</span>
+          <span class="n">sm_baseimage</span> <span class="o">=</span> <span class="n">line</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_baseimage_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_baseimage</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_baseimage_ver</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_baseimage</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+        <span class="k">end</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+
+    <span class="c1">## retrieve pkgsrc</span>
+    <span class="n">sm_pkgsrc</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="s2">"/opt/local/etc/pkg_install.conf"</span><span class="p">).</span><span class="nf">split</span><span class="p">(</span><span class="s2">"="</span><span class="p">)</span>
+    <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_pkgsrc</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_pkgsrc</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="nf">chomp</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>チケット<a href="https://tickets.opscode.com/browse/OHAI-458" rel="nofollow noopener" target="_blank">OHAI-458</a>で色々指摘があったので、それも込みで上記のやつをそのままOhai7の書式に書きなおしたのがこちら。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">7_ohai/lib/ohai/plugins/joyent.rb</span></div>
+<div class="highlight"><pre><span class="no">Ohai</span><span class="p">.</span><span class="nf">plugin</span><span class="p">(</span><span class="ss">:Joyent</span><span class="p">)</span> <span class="k">do</span>
+  <span class="sx">%w{ sm_uuid sm_id sm_image sm_image_id sm_image_ver sm_baseimage sm_baseimage_id sm_baseimage_ver sm_pkgsrc }</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">info</span><span class="o">|</span>
+    <span class="n">provides</span> <span class="s2">"joyent/</span><span class="si">#{</span><span class="n">info</span><span class="si">}</span><span class="s2">"</span>
+  <span class="k">end</span>
+  <span class="n">provides</span> <span class="s1">'virtualization/guest_id'</span>
+  <span class="n">depends</span> <span class="s1">'os'</span><span class="p">,</span> <span class="s1">'platform'</span><span class="p">,</span> <span class="s1">'virtualization'</span>
+
+
+  <span class="k">def</span> <span class="nf">collect_solaris_guestid</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="s1">'/usr/sbin/zoneadm list -p'</span>
+    <span class="n">so</span> <span class="o">=</span> <span class="n">shell_out</span><span class="p">(</span><span class="n">command</span><span class="p">)</span>
+    <span class="n">so</span><span class="p">.</span><span class="nf">stdout</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s1">':'</span><span class="p">).</span><span class="nf">first</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">collect_product_file</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="s2">"/etc/product"</span><span class="p">)</span>
+      <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">open</span><span class="p">(</span><span class="s2">"/etc/product"</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">file</span><span class="o">|</span>
+        <span class="k">while</span> <span class="n">line</span> <span class="o">=</span> <span class="n">file</span><span class="p">.</span><span class="nf">gets</span>
+          <span class="n">lines</span> <span class="o">&lt;&lt;</span> <span class="n">line</span>
+        <span class="k">end</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+    <span class="n">lines</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">collect_pkgsrc</span>
+    <span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exist?</span><span class="p">(</span><span class="s1">'/opt/local/etc/pkg_install.conf'</span><span class="p">)</span>
+      <span class="n">sm_pkgsrc</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="s2">"/opt/local/etc/pkg_install.conf"</span><span class="p">).</span><span class="nf">split</span><span class="p">(</span><span class="s2">"="</span><span class="p">)</span>
+      <span class="n">sm_pkgsrc</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="nf">chomp</span>
+    <span class="k">else</span>
+      <span class="kp">nil</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">is_smartos?</span>
+    <span class="n">platform</span> <span class="o">==</span> <span class="s1">'smartos'</span>
+  <span class="k">end</span>
+
+  <span class="n">collect_data</span> <span class="k">do</span>
+    <span class="k">if</span> <span class="n">is_smartos?</span>
+      <span class="n">joyent</span> <span class="no">Mash</span><span class="p">.</span><span class="nf">new</span>
+
+      <span class="c1"># copy uuid</span>
+      <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_uuid</span><span class="p">]</span> <span class="o">=</span> <span class="n">virtualization</span><span class="p">[</span><span class="ss">:guest_uuid</span><span class="p">]</span>
+
+      <span class="c1"># get zone id unless globalzone</span>
+      <span class="k">unless</span> <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_uuid</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"global"</span>
+        <span class="n">virtualization</span><span class="p">[</span><span class="ss">:guest_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">collect_solaris_guestid</span>
+        <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">virtualization</span><span class="p">[</span><span class="ss">:guest_id</span><span class="p">]</span>
+      <span class="k">end</span>
+
+      <span class="c1"># retrieve image name and pkgsrc</span>
+      <span class="n">collect_product_file</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">line</span><span class="o">|</span>
+        <span class="k">case</span> <span class="n">line</span>
+        <span class="k">when</span> <span class="sr">/^Image/</span>
+          <span class="n">sm_image</span> <span class="o">=</span> <span class="n">line</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_image_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_image</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_image_ver</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_image</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">when</span> <span class="sr">/^Base Image/</span>
+          <span class="n">sm_baseimage</span> <span class="o">=</span> <span class="n">line</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_baseimage_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_baseimage</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+          <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_baseimage_ver</span><span class="p">]</span> <span class="o">=</span> <span class="n">sm_baseimage</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+        <span class="k">end</span>
+      <span class="k">end</span>
+
+      <span class="c1">## retrieve pkgsrc</span>
+      <span class="n">joyent</span><span class="p">[</span><span class="ss">:sm_pkgsrc</span><span class="p">]</span> <span class="o">=</span> <span class="n">collect_pkgsrc</span> <span class="k">if</span> <span class="n">collect_pkgsrc</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>同じようでところどころ違いますね。カタマリ単位で再分配した感じ。</p>
+
+<h2>
+<span id="ピックアップ解説" class="fragment"></span><a href="#%E3%83%94%E3%83%83%E3%82%AF%E3%82%A2%E3%83%83%E3%83%97%E8%A7%A3%E8%AA%AC"><i class="fa fa-link"></i></a>ピックアップ解説</h2>
+
+<h3>
+<span id="require_pluginはdependsになった" class="fragment"></span><a href="#require_plugin%E3%81%AFdepends%E3%81%AB%E3%81%AA%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a><code>require_plugin</code>は<code>depends</code>になった</h3>
+
+<p>これは見たままですね。<br>
+事前に依存をある程度解決するようになったのかな。</p>
+
+<h3>
+<span id="ohaipluginjoyentのブロックで囲んだ" class="fragment"></span><a href="#ohaipluginjoyent%E3%81%AE%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E3%81%A7%E5%9B%B2%E3%82%93%E3%81%A0"><i class="fa fa-link"></i></a><code>Ohai.plugin(:Joyent)</code>のブロックで囲んだ</h3>
+
+<p>Ohai7で作られたしきたり。とりあえず囲もう。</p>
+
+<h3>
+<span id="データ収集をcollect_dataブロックで囲んだ" class="fragment"></span><a href="#%E3%83%87%E3%83%BC%E3%82%BF%E5%8F%8E%E9%9B%86%E3%82%92collect_data%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E3%81%A7%E5%9B%B2%E3%82%93%E3%81%A0"><i class="fa fa-link"></i></a>データ収集を<code>collect_data</code>ブロックで囲んだ</h3>
+
+<p><code>def</code>と明確に分けるのが目的っぽい。 <br>
+<code>Ohai.plugin</code>ブロック直下の<code>def</code>(メソッド定義)は、<code>collect_data</code>の中でしか呼べなかった。</p>
+
+<p>例えば<code>if is_smartos?</code>は2行上では<code>No Methodエラー</code>で動かないんですね。</p>
+
+<p>その他、他のプラグインで収集済みのattributeも、<code>def</code>内または<code>collect_data</code>内でのみ使えるようです。<br>
+<code>Ohai.plugin</code>直下で使えないのは、誤爆を防いだりするためでしょうかね。</p>
+
+<h3>
+<span id="環境依存がある所をメソッドにした" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83%E4%BE%9D%E5%AD%98%E3%81%8C%E3%81%82%E3%82%8B%E6%89%80%E3%82%92%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89%E3%81%AB%E3%81%97%E3%81%9F"><i class="fa fa-link"></i></a>環境依存がある所をメソッドにした</h3>
+
+<p>要はファイルや、コマンドラインで結果を取得するものをメソッドにしています。<br>
+これは7だからってわけではないのですが、テストの書きやすさに影響しています。この件は次の段落もどうぞ。</p>
+
+<h2>
+<span id="本家にprするためrspec" class="fragment"></span><a href="#%E6%9C%AC%E5%AE%B6%E3%81%ABpr%E3%81%99%E3%82%8B%E3%81%9F%E3%82%81rspec"><i class="fa fa-link"></i></a>本家にPRするため、RSpec</h2>
+
+<p>Ohai6で見られた<code>@ohai</code>を使ったテストが姿を潜め、軒並み<code>@plugin</code>を使う形式に様変わりしています。</p>
+
+<p>defを別にしたのはここでスタブしやすくするためでもあるようです。<br>
+結構ラクにモックを使ったテストができるようになりました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">ohai/spec/unit/plugins/joyent_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'spec_helper'</span>
+
+
+<span class="n">describe</span> <span class="no">Ohai</span><span class="o">::</span><span class="no">System</span><span class="p">,</span> <span class="s2">"plugin joyent"</span> <span class="k">do</span>
+  <span class="n">before</span><span class="p">(</span><span class="ss">:each</span><span class="p">)</span> <span class="k">do</span>
+    <span class="vi">@plugin</span> <span class="o">=</span> <span class="n">get_plugin</span><span class="p">(</span><span class="s1">'joyent'</span><span class="p">)</span>
+  <span class="k">end</span>
+
+  <span class="n">describe</span> <span class="s2">"without joyent"</span> <span class="k">do</span>
+    <span class="n">before</span><span class="p">(</span><span class="ss">:each</span><span class="p">)</span> <span class="k">do</span>
+      <span class="vi">@plugin</span><span class="p">.</span><span class="nf">stub</span><span class="p">(</span><span class="ss">:is_smartos?</span><span class="p">).</span><span class="nf">and_return</span><span class="p">(</span><span class="kp">false</span><span class="p">)</span>
+    <span class="k">end</span>
+
+    <span class="n">it</span> <span class="s2">"should NOT create joyent"</span> <span class="k">do</span>
+      <span class="vi">@plugin</span><span class="p">.</span><span class="nf">run</span>
+      <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">].</span><span class="nf">should</span> <span class="n">be_nil</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="n">describe</span> <span class="s2">"with joyent"</span> <span class="k">do</span>
+    <span class="n">before</span><span class="p">(</span><span class="ss">:each</span><span class="p">)</span> <span class="k">do</span>
+      <span class="vi">@plugin</span><span class="p">.</span><span class="nf">stub</span><span class="p">(</span><span class="ss">:is_smartos?</span><span class="p">).</span><span class="nf">and_return</span><span class="p">(</span><span class="kp">true</span><span class="p">)</span>
+      <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:virtualization</span><span class="p">]</span> <span class="o">=</span> <span class="no">Mash</span><span class="p">.</span><span class="nf">new</span>
+      <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:virtualization</span><span class="p">][</span><span class="ss">:guest_uuid</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"global"</span>
+    <span class="k">end</span>
+
+    <span class="n">it</span> <span class="s2">"should create joyent"</span> <span class="k">do</span>
+      <span class="vi">@plugin</span><span class="p">.</span><span class="nf">run</span>
+      <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">].</span><span class="nf">should_not</span> <span class="n">be_nil</span>
+    <span class="k">end</span>
+
+    <span class="n">describe</span> <span class="s2">"under global zone"</span> <span class="k">do</span>
+      <span class="n">before</span><span class="p">(</span><span class="ss">:each</span><span class="p">)</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">.</span><span class="nf">run</span>
+      <span class="k">end</span>
+
+      <span class="n">it</span> <span class="s2">"should ditect global zone"</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_uuid</span><span class="p">].</span><span class="nf">should</span> <span class="n">eql</span> <span class="s1">'global'</span>
+      <span class="k">end</span>
+
+      <span class="n">it</span> <span class="s2">"should NOT create sm_id"</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_id</span><span class="p">].</span><span class="nf">should</span> <span class="n">be_nil</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+
+    <span class="n">describe</span> <span class="s2">"under smartmachine"</span> <span class="k">do</span>
+      <span class="n">before</span><span class="p">(</span><span class="ss">:each</span><span class="p">)</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:virtualization</span><span class="p">][</span><span class="ss">:guest_uuid</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx'</span>
+        <span class="vi">@plugin</span><span class="p">.</span><span class="nf">stub</span><span class="p">(</span><span class="ss">:collect_solaris_guestid</span><span class="p">).</span><span class="nf">and_return</span><span class="p">(</span><span class="s1">'30'</span><span class="p">)</span>
+        <span class="vi">@plugin</span><span class="p">.</span><span class="nf">stub</span><span class="p">(</span><span class="ss">:collect_product_file</span><span class="p">).</span><span class="nf">and_return</span><span class="p">([</span><span class="s2">"Name: Joyent Instance"</span><span class="p">,</span> <span class="s2">"Image: base64 13.4.2"</span><span class="p">,</span> <span class="s2">"Documentation: http://wiki.joyent.com/jpc2/SmartMachine+Base"</span><span class="p">])</span>
+        <span class="vi">@plugin</span><span class="p">.</span><span class="nf">stub</span><span class="p">(</span><span class="ss">:collect_pkgsrc</span><span class="p">).</span><span class="nf">and_return</span><span class="p">(</span><span class="s1">'http://pkgsrc.joyent.com/packages/SmartOS/2013Q4/x86_64/All'</span><span class="p">)</span>
+        <span class="vi">@plugin</span><span class="p">.</span><span class="nf">run</span>
+      <span class="k">end</span>
+
+      <span class="n">it</span> <span class="s2">"should retrive zone uuid"</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_uuid</span><span class="p">].</span><span class="nf">should</span> <span class="n">eql</span> <span class="s1">'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx'</span>
+      <span class="k">end</span>
+
+      <span class="n">it</span> <span class="s2">"should collect sm_id"</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_id</span><span class="p">].</span><span class="nf">should</span> <span class="n">eql</span> <span class="s1">'30'</span>
+      <span class="k">end</span>
+
+      <span class="n">it</span> <span class="s2">"should collect images"</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_image</span><span class="p">].</span><span class="nf">should_not</span> <span class="kp">nil</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_image_id</span><span class="p">].</span><span class="nf">should_not</span> <span class="kp">nil</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_image_ver</span><span class="p">].</span><span class="nf">should_not</span> <span class="kp">nil</span>
+      <span class="k">end</span>
+
+      <span class="n">it</span> <span class="s2">"should collect pkgsrc"</span> <span class="k">do</span>
+        <span class="vi">@plugin</span><span class="p">[</span><span class="ss">:joyent</span><span class="p">][</span><span class="ss">:sm_pkgsrc</span><span class="p">].</span><span class="nf">should</span> <span class="n">eql</span> <span class="s1">'http://pkgsrc.joyent.com/packages/SmartOS/2013Q4/x86_64/All'</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>テストもOK。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_joyent_spec.output</span></div>
+<div class="highlight"><pre>Ohai::System plugin joyent
+  without joyent
+    should NOT create joyent
+  with joyent
+    should create joyent
+    under global zone
+      should ditect global zone
+      should NOT create sm_id
+    under smartmachine
+      should retrive zone uuid
+      should collect sm_id
+      should collect images
+      should collect pkgsrc
+
+Finished <span class="k">in </span>0.01159 seconds
+8 examples, 0 failures
+</pre></div>
+</div>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>だいたいこの辺を抑えておけば、7書式への移行もスムーズに行くんじゃないかと。</p>

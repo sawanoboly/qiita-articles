@@ -1,0 +1,338 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>前回 <a href="http://qiita.com/items/9c09afc49f5229f646ed">ChefでSourceから何かをインストールするCookbookのウォークスルー</a> で、IRCサーバの<code>ngircd</code>をインストールするためにtarballを展開してmakeするサンプルを出しました。</p>
+
+<p>折角なので同じことを <strong>LWRP(Lightweight Resources and Providers)</strong> で表すことでLWRPについて解説をしてみます。</p>
+
+<p>これもGithubでCookbookを確認できます。タグは<code>v0.2.1</code>。 <a href="https://github.com/higanworks-cookbooks/ngircd_smartos/tree/v0.2.1" rel="nofollow noopener" target="_blank">higanworks-cookbooks/ngircd_smartos(v0.2.1)</a></p>
+
+<h1>
+<span id="lwrpの取り扱い" class="fragment"></span><a href="#lwrp%E3%81%AE%E5%8F%96%E3%82%8A%E6%89%B1%E3%81%84"><i class="fa fa-link"></i></a>LWRPの取り扱い</h1>
+
+<p><a href="http://qiita.com/items/9c09afc49f5229f646ed">前回</a>作成したレシピでは以下の事をやりました。</p>
+
+<ol>
+<li>
+<code>tarball</code>をダウンロード</li>
+<li><code>coufigure &amp;&amp; make &amp;&amp; make install</code></li>
+</ol>
+
+<p><code>LWRP</code>は関数みたいに捉えられがちなので、一連の<code>configure, make</code>を使いまわせるようにまとめておくところかな？ と思われていたりしますが、実はそうではありません。</p>
+
+<p>そういうのは <a href="http://docs.opscode.com/essentials_cookbook_definitions.html" rel="nofollow noopener" target="_blank">Definitions</a> であったり、 <a href="http://docs.opscode.com/essentials_cookbook_libraries.html" rel="nofollow noopener" target="_blank">Libraries</a>の役回りですね、<code>LWRP</code>の考え方とはまた別の話です。</p>
+
+<h2>
+<span id="resoucesの定義" class="fragment"></span><a href="#resouces%E3%81%AE%E5%AE%9A%E7%BE%A9"><i class="fa fa-link"></i></a>Resoucesの定義</h2>
+
+<p>さて<strong>Resouces</strong>です。<br>
+Chefはレシピの<code>new_resource</code>と現状の<code>current_resouce</code>を比較して<strong>Converge</strong>するフレームワークなので、そこを中心に考えていきます。</p>
+
+<p>前回の<code>ngircd</code>のレシピで大事な要素だったのはなんでしょうか。<br>
+リモートのリポジトリ？ コンフィグのオプション？ makeのやり方？ それらは実際のところResouceの定義とは関連が無くても困りません。</p>
+
+<p>極端な話、<code>ngircd</code>のバイナリが目当ての場所にあればOKです。</p>
+
+<h2>
+<span id="ngircdについてのattributes" class="fragment"></span><a href="#ngircd%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E3%81%AEattributes"><i class="fa fa-link"></i></a>ngircdについてのAttributes</h2>
+
+<p>Resourceは決まりました、ではそれの持つ要素をつけて行きましょう。<br>
+目当てのバージョンやincludeしているライブラリを定義可能にして、適切なものにしたいですね。</p>
+
+<p>とりあえずVersion情報を取ります。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>ngircd <span class="nt">-V</span>
+ngIRCd 20.2-IRCPLUS+SSL+SYSLOG+ZLIB-x86_64/pc/solaris2.11
+Copyright <span class="o">(</span>c<span class="o">)</span>2001-2013 Alexander Barton <span class="o">(</span>&lt;alex@barton.de&gt;<span class="o">)</span> and Contributors.
+Homepage: &lt;http://ngircd.barton.de/&gt;
+
+This is free software<span class="p">;</span> see the <span class="nb">source </span><span class="k">for </span>copying conditions. There is NO
+warranty<span class="p">;</span> not even <span class="k">for </span>MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+</pre></div>
+</div>
+
+<del>ひどいよ、Ops怒るよ。</del>
+
+<p><code>20.2-IRCPLUS+SSL+SYSLOG+ZLIB</code>、このへんから<code>ngircd</code>バイナリの要素を定義できそうです。</p>
+
+<h3>
+<span id="versionを要素に" class="fragment"></span><a href="#version%E3%82%92%E8%A6%81%E7%B4%A0%E3%81%AB"><i class="fa fa-link"></i></a>Versionを要素に</h3>
+
+<p>バイナリにattibute[version]を持たせるためにパースしてみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irb-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="sb">`ngircd -V`</span><span class="p">.</span><span class="nf">split</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="nf">split</span><span class="p">(</span><span class="s1">'-'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="s2">"20.2"</span>
+</pre></div>
+</div>
+
+<p>アーカイブのバージョンと一致していて良い感じです。</p>
+
+<h3>
+<span id="includeしているライブラリを要素に" class="fragment"></span><a href="#include%E3%81%97%E3%81%A6%E3%81%84%E3%82%8B%E3%83%A9%E3%82%A4%E3%83%96%E3%83%A9%E3%83%AA%E3%82%92%E8%A6%81%E7%B4%A0%E3%81%AB"><i class="fa fa-link"></i></a>includeしているライブラリを要素に</h3>
+
+<p>バイナリにattibute[option]を持たせるためにパースしてみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Irb-Out</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="sb">`ngircd -V`</span><span class="p">.</span><span class="nf">split</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="nf">split</span><span class="p">(</span><span class="s1">'-'</span><span class="p">)[</span><span class="mi">1</span><span class="p">].</span><span class="nf">split</span><span class="p">(</span><span class="s1">'+'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"IRCPLUS"</span><span class="p">,</span> <span class="s2">"SSL"</span><span class="p">,</span> <span class="s2">"SYSLOG"</span><span class="p">,</span> <span class="s2">"ZLIB"</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p>これはまあ、SSLあたりに気をつければいいかなと思いつつ、一応Arrayに。</p>
+
+<h2>
+<span id="レシピに書く内容" class="fragment"></span><a href="#%E3%83%AC%E3%82%B7%E3%83%94%E3%81%AB%E6%9B%B8%E3%81%8F%E5%86%85%E5%AE%B9"><i class="fa fa-link"></i></a>レシピに書く内容</h2>
+
+<p><code>Recouce</code>と<code>attributs</code>を決めたので、レシピには次のように書けばあとはよろしくやってくれるようにします。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipes/binary.rb</span></div>
+<div class="highlight"><pre><span class="n">ngircd_smartos_binary</span> <span class="s1">'ngircd'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:create</span>
+  <span class="n">version</span> <span class="s1">'20.2'</span>
+  <span class="n">options</span> <span class="p">[</span><span class="s2">"SSL"</span><span class="p">]</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>current_resouce</code>の<code>version</code>が違う、または<code>option</code>のアレイに目的のものが入っていなければ<strong>Convergence</strong>を起こしてもらいます。<br>
+もちろんバイナリ本体が無ければ<strong>手段は特に問わないので</strong>置くようにという事でもあります。</p>
+
+<h1>
+<span id="lwrp版cookbookngircdをウォークスルー" class="fragment"></span><a href="#lwrp%E7%89%88cookbookngircd%E3%82%92%E3%82%A6%E3%82%A9%E3%83%BC%E3%82%AF%E3%82%B9%E3%83%AB%E3%83%BC"><i class="fa fa-link"></i></a>LWRP版Cookbook[ngircd]をウォークスルー</h1>
+
+<p>比較しやすいよう前回のレシピをほぼ使いまわしつつ、<code>LWRP[NgircdSmartosBinary]</code>を作りました。<br>
+順に注釈を入れてみます。</p>
+
+<h2>
+<span id="attributes" class="fragment"></span><a href="#attributes"><i class="fa fa-link"></i></a>attributes</h2>
+
+<p>attributesは大きく変わってません。<code>version,options</code>の省略時に使うデフォルトの値を追加したこと、<code>arch_file</code>の指定で<code>version</code>を使いまわせるようにしたくらいです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">attributes/default.rb</span></div>
+<div class="highlight"><pre><span class="c1">## base settings</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'prefix_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'/opt/local'</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'conf_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'prefix_dir'</span><span class="p">],</span> <span class="s1">'etc'</span><span class="p">)</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'version'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'20.2'</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'config_options'</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"SSL"</span><span class="p">]</span>
+
+
+<span class="c1">## repository</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'site_url'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'http://ngircd.barton.de/pub/ngircd/'</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"ngircd-</span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'version'</span><span class="p">]</span><span class="si">}</span><span class="s2">.tar.gz"</span>
+
+<span class="c1">## for tempolary working</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:file_cache_path</span><span class="p">],</span> <span class="s1">'ngircd'</span><span class="p">)</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="resources" class="fragment"></span><a href="#resources"><i class="fa fa-link"></i></a>Resources</h2>
+
+<p>さてresourceですが、シンプルです。<br>
+指定できる<code>Actions</code>、それと要素の型やデフォルト値、必須かどうかをここで定義します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">resources/binary.rb</span></div>
+<div class="highlight"><pre><span class="n">actions</span> <span class="ss">:create</span><span class="p">,</span> <span class="ss">:delete</span>
+
+<span class="n">default_action</span> <span class="ss">:create</span>
+
+<span class="n">attribute</span> <span class="ss">:version</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:default</span> <span class="o">=&gt;</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'version'</span><span class="p">]</span>
+<span class="n">attribute</span> <span class="ss">:options</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">Array</span><span class="p">,</span> <span class="ss">:default</span> <span class="o">=&gt;</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'config_options'</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p>Cookbookの<code>resouces/</code>以下に定義したリソースは、Chef実行時には<code>NameSpace</code>が与えられます。大雑把に<code>cookbookの名前＋ファイル名</code>に変換されるので覚えておくとよいです。</p>
+
+<h2>
+<span id="providers" class="fragment"></span><a href="#providers"><i class="fa fa-link"></i></a>Providers</h2>
+
+<p>そして<strong>ツケを全部払う場所</strong>、<code>Providers</code>です。<a href="http://docs.opscode.com/essentials_cookbook_definitions.html" rel="nofollow noopener" target="_blank">Definitions</a> や <a href="http://docs.opscode.com/essentials_cookbook_libraries.html" rel="nofollow noopener" target="_blank">Libraries</a>によるリファクタリングの余地は十分にありますが前回レシピの使い回しということで。</p>
+
+<p>まずはざっと眺めるだけで、だいたい何をしているかわかると思います。ちなみに<code>action :delete</code>の部分は作ってません、<code>unlink</code>で済むんですが。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">providers/binary.rb</span></div>
+<div class="highlight"><pre><span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="n">directory</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">]</span> <span class="k">do</span>
+    <span class="n">action</span> <span class="ss">:create</span>
+  <span class="k">end</span>
+
+  <span class="k">unless</span> <span class="n">new_resource</span><span class="p">.</span><span class="nf">version</span> <span class="o">==</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">version</span> <span class="n">and</span> <span class="n">new_resource</span><span class="p">.</span><span class="nf">options</span> <span class="o">-</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">options</span> <span class="o">==</span> <span class="p">[]</span>
+    <span class="o">::</span><span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">info</span> <span class="s2">"Install ngircd"</span>
+    <span class="n">node</span><span class="p">.</span><span class="nf">set</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"ngircd-</span><span class="si">#{</span><span class="n">new_resource</span><span class="p">.</span><span class="nf">version</span><span class="si">}</span><span class="s2">.tar.gz"</span>
+
+    <span class="n">remote_file</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">])</span> <span class="k">do</span>
+      <span class="n">action</span> <span class="ss">:create</span>
+      <span class="n">source</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'site_url'</span><span class="p">]</span> <span class="o">+</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">]</span>
+    <span class="k">end</span>
+
+    <span class="n">bash</span> <span class="s1">'make and install ngircd'</span> <span class="k">do</span>
+      <span class="n">action</span> <span class="ss">:run</span>
+      <span class="n">flags</span> <span class="s1">'-ex'</span>
+      <span class="n">cwd</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">]</span>
+      <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">EOH</span><span class="sh">
+tar xzf </span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">]</span><span class="si">}</span><span class="sh">
+cd </span><span class="si">#{</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">basename</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">],</span> <span class="s1">'.tar.gz'</span><span class="p">)</span><span class="si">}</span><span class="sh">
+./configure </span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'configure_flags'</span><span class="p">]</span><span class="si">}</span><span class="sh">
+make -j2
+make install
+</span><span class="no">EOH</span>
+    <span class="k">end</span>
+
+    <span class="c1">## clean up workdir</span>
+    <span class="n">directory</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">],</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">basename</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">],</span> <span class="s1">'.tar.gz'</span><span class="p">))</span> <span class="k">do</span>
+      <span class="n">action</span> <span class="ss">:delete</span>
+      <span class="n">recursive</span> <span class="kp">true</span>
+    <span class="k">end</span>
+
+    <span class="n">new_resource</span><span class="p">.</span><span class="nf">updated_by_last_action</span><span class="p">(</span><span class="kp">true</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">load_current_resource</span>
+  <span class="vi">@current_resource</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">NgircdSmartosBinary</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">new_resource</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span>
+  <span class="k">if</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">exist?</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'prefix_dir'</span><span class="p">],</span> <span class="s1">'sbin/ngircd'</span><span class="p">))</span>
+    <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">version</span> <span class="sb">`ngircd -V`</span><span class="p">.</span><span class="nf">split</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="nf">split</span><span class="p">(</span><span class="s1">'-'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">options</span> <span class="sb">`ngircd -V`</span><span class="p">.</span><span class="nf">split</span><span class="p">[</span><span class="mi">1</span><span class="p">].</span><span class="nf">split</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)[</span><span class="mi">1</span><span class="p">].</span><span class="nf">split</span><span class="p">(</span><span class="s2">"+"</span><span class="p">)</span>
+  <span class="k">else</span>
+    <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">version</span> <span class="s1">'0.0'</span>
+    <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">options</span> <span class="p">[]</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="action-create-do" class="fragment"></span><a href="#action-create-do"><i class="fa fa-link"></i></a>action :create do</h3>
+
+<p>レシピにこの<code>Resouce</code>が定義されていた時に<code>:create</code>に対して何をするか、そのままですね。</p>
+
+<h3>
+<span id="unless-new_resourceversion--current_resource-以下略" class="fragment"></span><a href="#unless-new_resourceversion--current_resource-%E4%BB%A5%E4%B8%8B%E7%95%A5"><i class="fa fa-link"></i></a>unless new_resource.version == <a href="/current_resource" class="user-mention js-hovercard" title="current_resource" data-hovercard-target-type="user" data-hovercard-target-name="current_resource">@current_resource</a> (以下略</h3>
+
+<p>まさにここで  <code>new_resource</code><strong>と現状の</strong><code>current_resouce</code><strong>を比較</strong>  が行われます。<br>
+違った場合、とにかく<code>new_resource</code>に合わせるように処理を書いていきます。</p>
+
+<h3>
+<span id="def-load_current_resource" class="fragment"></span><a href="#def-load_current_resource"><i class="fa fa-link"></i></a>def load_current_resource</h3>
+
+<p>ちょっと一番下に飛んで、<code>def load_current_resource</code>です。<br>
+<code>@current_resource</code>を読むとこのdefが呼ばれます、既存のバイナリに対して<code>attributes</code>を収集していますね。</p>
+
+<h3>
+<span id="nodesetngircdarch_file" class="fragment"></span><a href="#nodesetngircdarch_file"><i class="fa fa-link"></i></a>node.set['ngircd']['arch_file']</h3>
+
+<p>リモート取得対象のattributeを<code>set</code>で上書きします。<code>attributes</code>すべてをリビルドすることもできますが手っ取り早さで<code>set</code>を使いました。</p>
+
+<h3>
+<span id="remote_file-filejoinnodengircdworking_dir-nodengircdarch_file-以降" class="fragment"></span><a href="#remote_file-filejoinnodengircdworking_dir-nodengircdarch_file-%E4%BB%A5%E9%99%8D"><i class="fa fa-link"></i></a>remote_file ::File.join(node['ngircd']['working_dir'], node['ngircd']['arch_file']) 以降</h3>
+
+<p>ここで<a href="http://qiita.com/items/9c09afc49f5229f646ed">前回のレシピ</a>が役に立つ、というかほぼ使いまわしです。</p>
+
+<p>ポイントとしては</p>
+
+<ul>
+<li>
+<code>bash 'make and install ngircd'</code> に実行条件がない、<code>action :run</code>にしている。
+
+<ul>
+<li>ここに入った時点で無条件で実行してOKですよね。</li>
+</ul>
+</li>
+<li>
+<code>remote_file</code>がnotifyしない
+
+<ul>
+<li>同上な感じです、順序も変えてます。</li>
+</ul>
+</li>
+<li>## clean up workdir
+
+<ul>
+<li>ビルド後は一応掃除しておこうかなと、追加してます。</li>
+</ul>
+</li>
+</ul>
+
+<h3>
+<span id="new_resourceupdated_by_last_actiontrue" class="fragment"></span><a href="#new_resourceupdated_by_last_actiontrue"><i class="fa fa-link"></i></a>new_resource.updated_by_last_action(true)</h3>
+
+<p>レシピ内でnotifyのフラグを立てます。<br>
+<code>ngircd_smartos_binary</code>に<code>notification</code>をさせる場合に必要ですが、何かしらConversion実行がなされる時は無条件で立てておくのがよいでしょう。</p>
+
+<h2>
+<span id="実行してみる" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>実行してみる</h2>
+
+<p>前述のレシピの内容を実行しました。<code>chef-shell</code>でもOKです。</p>
+
+<h3>
+<span id="バイナリがない状態で実施-or-なにかオプションが違うバージョンが違う場合" class="fragment"></span><a href="#%E3%83%90%E3%82%A4%E3%83%8A%E3%83%AA%E3%81%8C%E3%81%AA%E3%81%84%E7%8A%B6%E6%85%8B%E3%81%A7%E5%AE%9F%E6%96%BD-or-%E3%81%AA%E3%81%AB%E3%81%8B%E3%82%AA%E3%83%97%E3%82%B7%E3%83%A7%E3%83%B3%E3%81%8C%E9%81%95%E3%81%86%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%8C%E9%81%95%E3%81%86%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>バイナリがない状態で実施 or なにかオプションが違う、バージョンが違う場合</h3>
+
+<p><code>action :create</code>の内容がすべて実行されました。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'ngircd_smartos::binary'</span> 
+Starting Chef Client, version 11.4.4
+<span class="o">[</span>2013-05-01T23:18:01+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-05-01T23:18:01+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-05-01T23:18:01+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[ngircd_smartos::binary]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: ngircd_smartos::binary
+  <span class="k">*</span> ngircd_smartos_binary[ngircd] action create
+
+Recipe: &lt;Dynamically Defined Resource&gt;
+  <span class="k">*</span> directory[/var/tmp/chef/ngircd] action create <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+  <span class="k">*</span> remote_file[/var/tmp/chef/ngircd/ngircd-20.2.tar.gz] action create <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+  <span class="k">*</span> bash[make and <span class="nb">install </span>ngircd] action run
+    - execute <span class="s2">"bash"</span> <span class="nt">-ex</span> <span class="s2">"/tmp/chef-script20130501-84816-19exjd8"</span>
+
+  <span class="k">*</span> directory[/var/tmp/chef/ngircd/ngircd-20.2] action delete
+    - delete existing directory /var/tmp/chef/ngircd/ngircd-20.2
+
+Chef Client finished, 3 resources updated
+</pre></div>
+</div>
+
+<h3>
+<span id="もう一度実行してみるup-to-date" class="fragment"></span><a href="#%E3%82%82%E3%81%86%E4%B8%80%E5%BA%A6%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8Bup-to-date"><i class="fa fa-link"></i></a>もう一度実行してみる、<code>up to date</code>
+</h3>
+
+<p><code>new_resouce == current_resource</code> と判断したのでとくに影響のある動作はしてませんね。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'ngircd_smartos::binary'</span> 
+Starting Chef Client, version 11.4.4
+<span class="o">[</span>2013-05-02T00:53:41+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-05-02T00:53:41+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-05-02T00:53:41+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[ngircd_smartos::binary]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: ngircd_smartos::binary
+  <span class="k">*</span> ngircd_smartos_binary[ngircd] action create <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+Recipe: &lt;Dynamically Defined Resource&gt;
+  <span class="k">*</span> directory[/var/tmp/chef/ngircd] action create <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+Chef Client finished, 0 resources updated
+</pre></div>
+</div>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p><code>LWRP</code>の勘所、ひいては<code>Convergence</code>を実現する為のリソース比較について伝わったでしょうか。</p>
+
+<p>OpsCode公式や<code>Community Cookbook</code>ではもっと沢山の - 例えば<code>mongodb</code>のShardingをLWRPで定義するなど - 色々と面白い例が見られます。<br>
+<code>chef_gem</code>リソースを使えば少々のgemならレシピ/Providers内で使えるので、定義と収束の基本を押さえておけばとても便利にLWRPを活用することができるかも？</p>

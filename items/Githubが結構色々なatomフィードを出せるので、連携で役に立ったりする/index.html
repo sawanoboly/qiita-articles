@@ -1,0 +1,66 @@
+<p>自分がオーナのリポジトリはサービス連携やらWebHookやら色々あるので、他との連携は容易です。<br>
+ただ、他所様のリポジトリの更新具合を見たり、何かが進んだら結合テストを流しておきたい時などに、とりあえずフィード購読からトリガーを作成できます。</p>
+
+<table>
+<thead>
+<tr>
+<th>要素</th>
+<th>説明</th>
+<th>例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>releases</td>
+<td>Githubに登録されたリリース</td>
+<td><a href="https://github.com/higanworks/sakurraform/releases.atom" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/sakurraform/releases.atom</a></td>
+</tr>
+<tr>
+<td>wiki</td>
+<td>Wikiの更新履歴</td>
+<td><a href="https://github.com/fog/fog-sakuracloud/wiki.atom" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/fog/fog-sakuracloud/wiki.atom</a></td>
+</tr>
+<tr>
+<td>{org or user}/{repo}/commits/{branch}</td>
+<td>任意のブランチのコミットログ</td>
+<td><a href="https://github.com/higanworks/sakurraform/commits/master.atom" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/sakurraform/commits/master.atom</a></td>
+</tr>
+<tr>
+<td>{org or user}/{repo}/commits/{branch}/{path_to_file}</td>
+<td>任意のブランチで、特定ファイルに関わる更新を含むコミットログ</td>
+<td><a href="https://github.com/higanworks/sakurraform/commits/master/lib/sakurraform/version.rb.atom" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/sakurraform/commits/master/lib/sakurraform/version.rb.atom</a></td>
+</tr>
+</tbody>
+</table>
+
+<p>これで IFTTTでFeed購読 =&gt; 何か。が捗ります。最近作った連携はこんな感じ。</p>
+
+<ul>
+<li>リリースを
+
+<ul>
+<li>メールで自分におしらせ</li>
+<li>CIのビルドをキック</li>
+</ul>
+</li>
+<li>master更新を
+
+<ul>
+<li>DockerhubのAutoBuildをキック</li>
+</ul>
+</li>
+</ul>
+
+<p>他にも、見落としがちなWikiの更新をチャットに突っ込むとかで使えそう。</p>
+
+<p>ちなみにアクティビティのタイムラインもフィードを出していて、ユーザ単位、Org単位、ひいてはGithubグローバル(!)なんかもあるけど、さすがにそれは範囲が広い。<br>
+Orgをうまいことフィルタすれば、特定リポジトリのIssueやPRをトリガにできるかも。(メールならwatchで十分ですが)</p>
+
+<h2>
+<span id="プライベートリポジトリの場合" class="fragment"></span><a href="#%E3%83%97%E3%83%A9%E3%82%A4%E3%83%99%E3%83%BC%E3%83%88%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%81%AE%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>プライベートリポジトリの場合</h2>
+
+<p>プライベートリポジトリからフィードを取ってくる場合は、今のところBasic認証の形式でユーザ名にTokenを使えばOK。</p>
+
+<p>こうですね、</p>
+
+<p><code>https://{Personal access token}:@github.com/higanworks/circleci-private-sandbox/commits/master.atom</code></p>

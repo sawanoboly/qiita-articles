@@ -1,0 +1,26 @@
+<p>まるっと破棄して作りなおす場合には問題ないが、更新をする場合は事前にマイグレーションしておいたほうがよいみたい。</p>
+
+<blockquote>
+<p>このマイグレーションなしでも、更新後の起動時に自動実行されるようです。ダウンタイムを節約したい場合にこの手順が有効。</p>
+</blockquote>
+
+<p>インストーラで更新しようとしたら、警告。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>If you installed the current Docker package using this script and are using it
+again to update Docker, we urge you to migrate your image store before upgrading
+to v1.10+.
+
+You can find instructions for this here:
+https://github.com/docker/docker/wiki/Engine-v1.10.0-content-addressability-migration
+</pre></div></div>
+
+<p>こちらを参照しろとのことだ。あーそんな感じのこと、ブログで言うてたな。。</p>
+
+<p><a href="https://github.com/docker/docker/wiki/Engine-v1.10.0-content-addressability-migration" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/docker/docker/wiki/Engine-v1.10.0-content-addressability-migration</a></p>
+
+<p>マイグレーションツールもDockerで動かせる、更新前に起動中のDocker1.9系を使い、マイグレーションを行なう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>docker run --rm -v /var/lib/docker:/var/lib/docker docker/v1.10-migrator
+</pre></div></div>
+
+<p>その後、1.10系に更新すればOK。</p>

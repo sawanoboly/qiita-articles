@@ -1,0 +1,134 @@
+<p>とりあえずやってみたくなるやつ。</p>
+
+<p>今回使用したDockerイメージのソース、タスク用のJSONなどはこちら。</p>
+
+<ul>
+<li><a href="https://github.com/sawanoboly/amazonlinux-sshd" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/sawanoboly/amazonlinux-sshd</a></li>
+</ul>
+
+<p>一回ログインしたらセッション切断時にタスクも終了する(sshdが<code>-d</code>で起動している)ようにしています。</p>
+
+<h2>
+<span id="ログインしてみる" class="fragment"></span><a href="#%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>ログインしてみる</h2>
+
+<p><code>ssh root@52.90.198.xxx</code> で。環境変数<code>ROOT_PW</code>をrun-taskで指定していなければパスワード<code>rooooot</code>で。</p>
+
+<p>一応amazonlinuxをベースにしており、ログインしたときの環境変数はこんな感じ。 (※ 元の環境変数から<code>AWS_*</code>のみ自動でexportするように指定済。)</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>ssh root@34.236.216.xxx
+root@34.236.216.xxx<span class="s1">'s password: 
+There was 1 failed login attempt since the last successful login.
+debug1: PAM: reinitializing credentials
+debug1: permanently_set_uid: 0/0
+
+Environment:
+  USER=root
+  LOGNAME=root
+  HOME=/root
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/aws/bin
+  MAIL=/var/mail/root
+  SHELL=/bin/bash
+  SSH_CLIENT=xxxxxxxxx 57401 22
+  SSH_CONNECTION=xxxxxxxxx 57401 10.0.1.188 22
+  SSH_TTY=/dev/pts/0
+  TERM=xterm-256color
+  AWS_CONTAINER_CREDENTIALS_RELATIVE_URI=/v2/credentials/2bf9b4ff-70a8-4d84-9733-xxxxxxx
+  AWS_DEFAULT_REGION=us-east-1
+  AWS_REGION=us-east-1
+
+-bash-4.2# 
+</span></pre></div></div>
+
+<p>普通のメタデータは取れません。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># ec2-metadata 
+[ERROR] Command not valid outside EC2 instance. Please run this command within a running EC2 instance.
+</pre></div></div>
+
+<p>Task Roleの取得はOK</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nt">-bash-4</span>.2# curl 169.254.170.2<span class="nv">$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI</span> | jq <span class="nb">.</span>
+<span class="o">{</span>
+  <span class="s2">"RoleArn"</span>: <span class="s2">"arn:aws:iam::xxxxxxxx:role/ecsTaskExecutionRole"</span>,
+  <span class="s2">"AccessKeyId"</span>: <span class="s2">"ASIAXXXXXXXXX"</span>,
+  <span class="s2">"SecretAccessKey"</span>: <span class="s2">"XXXXXXXXXX"</span>,
+  <span class="s2">"Token"</span>: <span class="s2">"xxx=="</span>,
+  <span class="s2">"Expiration"</span>: <span class="s2">"2017-12-04T11:37:56Z"</span>
+<span class="o">}</span>
+</pre></div></div>
+
+<p>という程度の軽い動作チェック程度には使えるというのと、一応このまま何かを頑張って構築しても稼働はするはず。。※コンテナポートはtask-definitionに追加で。<br>
+ホストのファイルシステムをマウントとかできないのであまり探るところもないけれど、気になるところは各自でチェックという感じで。</p>
+
+<h2>
+<span id="ふろく-aws-cliでrun-task" class="fragment"></span><a href="#%E3%81%B5%E3%82%8D%E3%81%8F-aws-cli%E3%81%A7run-task"><i class="fa fa-link"></i></a>ふろく: AWS-CLIでrun-task</h2>
+
+<p>CLIの実行例にTask Roleはつけていないので、必要なら<code>register-task-definition</code>か、<code>run-task</code>のoverrideで付与します。</p>
+
+<p>task-definitionを作成する。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ EXEC_ROLE_ARN</span><span class="o">=</span>&lt;ロールのARN&gt; <span class="c"># AmazonECSTaskExecutionRolePolicyが付いたなにかしらのRole</span>
+<span class="nv">$ </span>aws ecs register-task-definition <span class="se">\</span>
+  <span class="nt">--execution-role-arn</span> <span class="nv">$EXEC_ROLE_ARN</span> <span class="se">\</span>
+  <span class="nt">--family</span> ssh-login <span class="se">\</span>
+  <span class="nt">--network-mode</span> awsvpc <span class="se">\</span>
+  <span class="nt">--requires-compatibilities</span> FARGATE <span class="se">\</span>
+  <span class="nt">--cpu</span> 256 <span class="se">\</span>
+  <span class="nt">--memory</span> 512 <span class="se">\</span>
+  <span class="nt">--container-definitions</span> <span class="s2">"</span><span class="sb">`</span><span class="nb">cat </span>example/task-def-sshlogin.json<span class="sb">`</span><span class="s2">"</span>
+
+<span class="o">&gt;</span> <span class="o">{</span>
+<span class="o">&gt;</span>    <span class="s2">"taskDefinition"</span>: <span class="o">{</span>
+<span class="o">&gt;</span>        <span class="s2">"taskDefinitionArn"</span>: <span class="s2">"arn:aws:ecs:us-east-1:xxxxxxxx:task-definition/ssh-login:2"</span>,
+<span class="o">&gt;</span>        <span class="s2">"containerDefinitions"</span>: <span class="o">[</span>
+...
+</pre></div></div>
+
+<p>taskを実行する。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ CLUSTER_NAME</span><span class="o">=</span>&lt;クラスタの名前&gt;
+<span class="nv">$ SUBNET_ID</span><span class="o">=</span>&lt;コンテナを実行するサブネット&gt;
+<span class="nv">$ SG_ID</span><span class="o">=</span>&lt;TCP/22が開いているSG&gt;
+<span class="nv">$ </span>aws ecs run-task <span class="se">\</span>
+  <span class="nt">--cluster</span> <span class="nv">$CLUSTER_NAME</span> <span class="se">\</span>
+  <span class="nt">--launch-type</span> FARGATE <span class="se">\</span>
+  <span class="nt">--task-definition</span> ssh-login:1 <span class="se">\</span>
+  <span class="nt">--network-configurationawsvpcConfiguration</span><span class="o">=</span><span class="s2">"{subnets=[</span><span class="nv">$SUBNET_ID</span><span class="s2">],securityGroups=[</span><span class="nv">$SG_ID</span><span class="s2">],assignPublicIp=ENABLED}"</span>
+
+<span class="c">#=&gt; タスクのIDが返ってくるで変数に入れておくと良い</span>
+</pre></div></div>
+
+<p>ENIのPublicIPはrun-taskの時点ではすぐにわからないので、ENIのIDがわかるまで適当にdescribe。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ TASK_ARN</span><span class="o">=</span>arn:aws:ecs:us-east-1:xxxxxxxxxxx:task/677c0132-9086-4087-bd18-xxxxxxxxxxx
+<span class="nv">$ </span>aws ecs <span class="nt">--region</span> us-east-1 describe-tasks <span class="se">\</span>
+  <span class="nt">--cluster</span> <span class="nv">$CLUSTER_NAME</span> <span class="se">\</span>
+  <span class="nt">--tasks</span> arn:aws:ecs:us-east-1:xxxxxxxxxxx:task/677c0132-9086-4087-bd18-xxxxxxxxxxx
+
+<span class="c"># =&gt;</span>
+...
+
+                <span class="o">{</span>
+                    <span class="s2">"id"</span>: <span class="s2">"xxxxxxxxxxx"</span>,
+                    <span class="s2">"type"</span>: <span class="s2">"ElasticNetworkInterface"</span>,
+                    <span class="s2">"status"</span>: <span class="s2">"ATTACHED"</span>,
+                    <span class="s2">"details"</span>: <span class="o">[</span>
+                        <span class="o">{</span>
+                            <span class="s2">"name"</span>: <span class="s2">"subnetId"</span>,
+                            <span class="s2">"value"</span>: <span class="s2">"subnet-xxxxxxx"</span>
+                        <span class="o">}</span>,
+                        <span class="o">{</span>
+                            <span class="s2">"name"</span>: <span class="s2">"networkInterfaceId"</span>,
+                            <span class="s2">"value"</span>: <span class="s2">"eni-xxxxxxxx"</span>
+                        <span class="o">}</span>,
+...
+
+</pre></div></div>
+
+<p>ENIのIDが分かったらPublicIPをとります。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>aws ec2 <span class="nt">--region</span> us-east-1 describe-network-interfaces <span class="nt">--network-interface-ids</span> eni-xxxxxx | jq .NetworkInterfaces[].Association.PublicIp
+<span class="s2">"52.90.198.xxx"</span>
+</pre></div></div>
+
+<p>ENIあたりはManagementConsole見ながらのほうが楽ですけどね。</p>

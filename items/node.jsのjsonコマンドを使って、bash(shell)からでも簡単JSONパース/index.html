@@ -1,0 +1,79 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><code>Infrastructure as code</code>の実践では意外とJSONの敷居が高いが、インフラ屋がもっとJSONと仲良くなるためのツールがある。<br>
+Shellから使いやすければ、他のツールとも連携がしやすくなる…はず。</p>
+
+<p>ちなみに<a href="http://joyent.com/technology/smartos" rel="nofollow noopener" target="_blank">JoyentのSmartOS(SmartMachine)</a>では仮想サーバ作成直後から<code>json</code>コマンドが使えてラク。</p>
+
+<h2>
+<span id="jsontoolのインストール" class="fragment"></span><a href="#jsontool%E3%81%AE%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>jsontoolのインストール</h2>
+
+<p><code>node.js</code>は好きなようにに導入して、npm。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">ShellOut</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>npm <span class="nb">install</span> <span class="nt">-g</span> jsontool
+<span class="nv">$ </span>json <span class="nt">--version</span>
+json 5.1.1
+</pre></div>
+</div>
+
+<p>ソースのリポジトリはこちら<a href="https://github.com/trentm/json" rel="nofollow noopener" target="_blank">https://github.com/trentm/json</a>。</p>
+
+<h2>
+<span id="サンプルjsonファイルを作る" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%ABjson%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E4%BD%9C%E3%82%8B"><i class="fa fa-link"></i></a>サンプルJsonファイルを作る</h2>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">metadata.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+    </span><span class="nl">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"user-script"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"credentials"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"root"</span><span class="p">:</span><span class="w"> </span><span class="s2">"root_password"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"admin"</span><span class="p">:</span><span class="w"> </span><span class="s2">"admin_password"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"mysql"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mysql_password"</span><span class="p">,</span><span class="w">
+            </span><span class="nl">"pgsql"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pgsql_password"</span><span class="w">
+        </span><span class="p">}</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<h2>
+<span id="パースして出力する" class="fragment"></span><a href="#%E3%83%91%E3%83%BC%E3%82%B9%E3%81%97%E3%81%A6%E5%87%BA%E5%8A%9B%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>パースして出力する</h2>
+
+<p><code>json</code>コマンドのオプションにキーを指定するとValueが取得できる、階層をつけるなら.(ピリオド)で区切る。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">ShellOut</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cat </span>metadata.json | json metadata.credentials      
+<span class="o">{</span>
+  <span class="s2">"root"</span>: <span class="s2">"root_password"</span>,
+  <span class="s2">"admin"</span>: <span class="s2">"admin_password"</span>,
+  <span class="s2">"mysql"</span>: <span class="s2">"mysql_password"</span>,
+  <span class="s2">"pgsql"</span>: <span class="s2">"pgsql_password"</span>
+<span class="o">}</span>
+
+<span class="nv">$ </span><span class="nb">cat </span>metadata.json | json metadata.credentials.mysql
+mysql_password
+</pre></div>
+</div>
+
+<p>テキスト処理を使って自力でパースするのとは雲泥の差！</p>
+
+<h2>
+<span id="スクリプトファイル内で扱う" class="fragment"></span><a href="#%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E5%86%85%E3%81%A7%E6%89%B1%E3%81%86"><i class="fa fa-link"></i></a>スクリプトファイル内で扱う</h2>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">sample.sh</span></div>
+<div class="highlight"><pre><span class="nv">MYSQL_PASS</span><span class="o">=</span><span class="sb">`</span><span class="nb">cat </span>metadata.json | json metadata.credentials.mysql<span class="sb">`</span>  
+<span class="nb">echo</span> <span class="k">${</span><span class="nv">MYSQL_PASS</span><span class="k">}</span>
+mysql_password
+</pre></div>
+</div>
+
+<p><code>cat</code>でやっているが、王道は<code>curl</code>で他所のAPIからの取得でしょう。</p>

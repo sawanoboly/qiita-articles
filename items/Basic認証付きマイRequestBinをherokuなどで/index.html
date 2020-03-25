@@ -1,0 +1,78 @@
+<p>WebHookの開発とかで、たまに<a href="https://github.com/Runscope/requestbin" rel="nofollow noopener" target="_blank">RequestBin</a>したくなります。</p>
+
+<p>今上がってるやつをそのまま使うのはなんだかなーというので、ざっくりとbasic認証だけ追加してherokuにpushして使ったのでメモ。</p>
+
+<p>変更済みのフォークはこちら。 <a href="https://github.com/sawanoboly/requestbin/tree/local/heroku/basicauth" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/sawanoboly/requestbin/tree/local/heroku/basicauth</a></p>
+
+<p>ユーザ名とパスワードを環境変数から取るようにして、全部のリクエストの前に差し込むHookで認証を必須にしたつもり。</p>
+
+<div class="code-frame" data-lang="diff">
+<div class="code-lang"><span class="bold">git_diff_master..local/heroku/basicauth</span></div>
+<div class="highlight"><pre><span class="gh">diff --git a/requestbin/__init__.py b/requestbin/__init__.py
+index b7e978a..f6af00e 100644
+</span><span class="gd">--- a/requestbin/__init__.py
+</span><span class="gi">+++ b/requestbin/__init__.py
+</span><span class="p">@@ -4,7 +4,7 @@</span> from cStringIO import StringIO
+
+ from flask import Flask
+ from flask_cors import CORS
+<span class="gd">-
+</span><span class="gi">+from flask_httpauth import HTTPBasicAuth
+</span>
+ class WSGIRawBody(object):
+     def __init__(self, application):
+<span class="p">@@ -35,6 +35,22 @@</span> class WSGIRawBody(object):
+
+
+ app = Flask(__name__)
+<span class="gi">+auth = HTTPBasicAuth()
++
++users = {
++    os.environ.get('USER'):os.environ.get('PASS')
++}
++
++@auth.get_password
++def get_pw(username):
++    if username in users:
++        return users.get(username)
++    return None
++
++@app.before_request
++@auth.login_required
++def before_request():
++    pass
+</span>
+ if os.environ.get('ENABLE_CORS', config.ENABLE_CORS):
+     cors = CORS(app, resources={r"*": {"origins": os.environ.get('CORS_ORIGINS', config.CORS_ORIGINS)}})
+<span class="gh">diff --git a/requirements.txt b/requirements.txt
+index 38f400f..8f74bb8 100644
+</span><span class="gd">--- a/requirements.txt
+</span><span class="gi">+++ b/requirements.txt
+</span><span class="p">@@ -14,3 +14,4 @@</span> python-dateutil==2.1
+ gunicorn
+ bugsnag
+ blinker
+<span class="gi">+flask-httpauth
+</span><span class="gh">diff --git a/runtime.txt b/runtime.txt
+index 4b38fc9..f27f1cc 100644
+</span><span class="gd">--- a/runtime.txt
+</span><span class="gi">+++ b/runtime.txt
+</span><span class="p">@@ -1 +1 @@</span>
+<span class="gd">-python-2.7.13
+</span><span class="gi">+python-2.7.15
+</span></pre></div>
+</div>
+
+<p>これを公式のガイド<a href="https://github.com/Runscope/requestbin#deploy-your-own-instance-using-heroku" rel="nofollow noopener" target="_blank">Deploy your own instance using Heroku</a>でherokuにpushします。</p>
+
+<p>あとは環境変数<code>USER</code>,<code>PASS</code>に値を入れておしまい。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ heroku config:set set USER=foo PASS=bar
+</pre></div></div>
+
+<p>まあ、アプリケーション名ランダムで十分長くしておく、とかでも構わんのですが。最後に用事が済んだら<code>heroku redis:cli</code>からDBをFLUSHALLしとくとなんか安心。</p>
+
+<p>補足</p>
+
+<p>SaaSが良ければ requestbin alternative で検索すれば色々出てきてフリープラン付きもあるのでそれを使えばよいでしょう。だいたい自分がRequestBinしか名前を覚えてないのでこんなことに。<br>
+ほか、ngrokでローカルになんか立てるのも良いですね。</p>

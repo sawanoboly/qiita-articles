@@ -1,0 +1,37 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>bashスクリプト間で関数を共通化したい時、ファイルならsourceやドットコマンドでやるところをGist等からcurlで取ってきたい時。</p>
+
+<h2>
+<span id="gistにサンプルのファンクション" class="fragment"></span><a href="#gist%E3%81%AB%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AE%E3%83%95%E3%82%A1%E3%83%B3%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3"><i class="fa fa-link"></i></a>Gistにサンプルのファンクション</h2>
+
+
+
+<h2>
+<span id="curlでgistのrawフォーマットを取り込むコード" class="fragment"></span><a href="#curl%E3%81%A7gist%E3%81%AEraw%E3%83%95%E3%82%A9%E3%83%BC%E3%83%9E%E3%83%83%E3%83%88%E3%82%92%E5%8F%96%E3%82%8A%E8%BE%BC%E3%82%80%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>curlでgistのrawフォーマットを取り込むコード</h2>
+
+<p>ダブルクォートでevalを実行。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">sample.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/bin/bash</span>
+
+<span class="nv">EXT</span><span class="o">=</span><span class="sb">`</span>curl <span class="nt">-f</span> <span class="nt">-k</span> <span class="nt">-s</span> https://raw.github.com/gist/3126623/35571a9e7ef8a7782368d5c39c2b0f03edf7b393/sample.func<span class="sb">`</span>
+<span class="nb">eval</span> <span class="s2">"</span><span class="nv">$EXT</span><span class="s2">"</span>
+
+pp
+</pre></div>
+</div>
+
+<h2>
+<span id="実行してみる" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>実行してみる</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./sample.sh 
+pretty
+</pre></div></div>
+
+<p>Curlが対応しているurlなら同様の手順でOKのはず、特定環境内のコードを適当なWEBサーバで共有するのもよいだろう。</p>

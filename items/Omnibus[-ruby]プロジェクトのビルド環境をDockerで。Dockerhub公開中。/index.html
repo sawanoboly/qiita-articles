@@ -1,0 +1,133 @@
+<p>以前、<a href="http://qiita.com/sawanoboly/items/a2c258a235824b91b70f" title="Omnibus-rubyプロジェクトでツールの周辺依存をまるごとrpm,debに固める - Qiita" id="reference-6fd37c1eda3624d6f9a3">Omnibus-rubyプロジェクトでツールの周辺依存をまるごとrpm,debに固める - Qiita</a>を書きました。<br>
+当時のOmnibus3.xから、この記事時点では4.xになって、書式は同じですが(デフォルトの)ビルド環境ツールチェーンがVagrantからTest-Kitchenに変わるなどしてます。</p>
+
+<p>うーん、要は<code>omnibus build $PROJECTNAME</code>が走ればいいんでしょー。じゃあDockerでいいやと言うわけで次のようにしました。</p>
+
+<ul>
+<li><a href="https://github.com/OpsRockin/omnibus_base_ubuntu14" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/omnibus_base_ubuntu14</a></li>
+<li><a href="https://github.com/OpsRockin/omnibus_base_centos6" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/omnibus_base_centos6</a></li>
+</ul>
+
+<p>使い方はOmnibusプロジェクトのルートで、次のように<code>ほぼカラッポのDockerfile</code>をつくって、</p>
+
+<div class="code-frame" data-lang="Dockerfile"><div class="highlight"><pre><span class="k">FROM</span><span class="s"> opsrock/omnibus_base_centos6</span>
+<span class="k">MAINTAINER</span><span class="s"> you</span>
+</pre></div></div>
+
+<p>buildしてrunすれば<code>./pkg/</code>の下にdeb,rpmをポイッと吐いておわり。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>docker build <span class="nt">-t</span> omnibus_myproject-centos6 <span class="nt">-f</span> Dockerfile.centos6 <span class="nb">.</span>
+<span class="nv">$ </span>docker run <span class="nt">-e</span> <span class="nv">OMNIBUS_PROJECT</span><span class="o">=</span>serverspec <span class="nt">-v</span> pkg:/home/omnibus/omnibus-project/pkg omnibus_myproject-centos6
+</pre></div></div>
+
+<p>以下はしくみやきっかけなどの話、読みたい人だけ。</p>
+
+<h2>
+<span id="omnibusの一生-イニシャルからパッケージをつくるまで" class="fragment"></span><a href="#omnibus%E3%81%AE%E4%B8%80%E7%94%9F-%E3%82%A4%E3%83%8B%E3%82%B7%E3%83%A3%E3%83%AB%E3%81%8B%E3%82%89%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92%E3%81%A4%E3%81%8F%E3%82%8B%E3%81%BE%E3%81%A7"><i class="fa fa-link"></i></a>Omnibusの一生 (イニシャルから、パッケージをつくるまで)</h2>
+
+<ol>
+<li>VMを作成する</li>
+<li>Chef(Test-Kitchenなど)でVM内に<code>omnibus</code>コマンド用の環境を構築</li>
+<li>Omnibusプロジェクトの設定に従い、パッケージ用の各種プロダクトをビルドする</li>
+<li>パッケージに固める</li>
+</ol>
+
+<p>これ、一番安定する方法としては3を実行済、または開始できる状態にあるVMを保持しておくことです。<br>
+2までの処理はそれなりに時間がかかるし、3以降もライブラリがバージョンでキャッシュされるから変更がない部分は何度もビルドが走らなくておトク。</p>
+
+<p>ただ個人的にそういったビルドサーバの維持は好かないので、とりあえず2までをDockerイメージですぐ使えるようにすりゃイイやと。</p>
+
+<p>3以降も一工夫いるけど、キャッシュの使い回しもなんとかできそうです。CIでキャッシュ持ってリストアするかは、プロジェクトによって選びましょう。</p>
+
+<h2>
+<span id="dockerfile" class="fragment"></span><a href="#dockerfile"><i class="fa fa-link"></i></a>Dockerfile</h2>
+
+<p>大したことはしてないけどもDockerfileの説明。他所のイメージ使う時は、まずDockerfile見ないと気がすまないよね？</p>
+
+<div class="code-frame" data-lang="Dockerfile"><div class="highlight"><pre><span class="k">FROM</span><span class="s"> centos:6</span>
+<span class="k">MAINTAINER</span><span class="s"> sawanoboriyu@higanworks.com</span>
+
+<span class="k">RUN </span>yum <span class="nb">install </span>curl <span class="nb">tar</span> <span class="nt">-y</span>
+
+<span class="c">## cookbookのomnibusを実行(2のステップ)するための下準備</span>
+<span class="k">RUN </span><span class="nb">mkdir</span> /root/chefrepo
+<span class="k">ADD</span><span class="s"> files/Cheffile /root/chefrepo/Cheffile</span>
+<span class="k">WORKDIR</span><span class="s"> /root/chefrepo</span>
+
+<span class="c">## Chefでレシピ omnibus::default を適用する。</span>
+<span class="c">## Chef(Omnibus)およびsrcが残るとイメージのサイズがでかくなるので同じ行で消す</span>
+<span class="k">RUN </span><span class="nb">eval</span> <span class="s2">"</span><span class="si">$(</span>curl chef.sh<span class="si">)</span><span class="s2">"</span> <span class="o">&amp;&amp;</span> <span class="se">\
+</span>    /opt/chef/embedded/bin/gem <span class="nb">install </span>librarian-chef <span class="nt">--no-ri</span> <span class="nt">--no-rdoc</span> <span class="o">&amp;&amp;</span> <span class="se">\
+</span>    /opt/chef/embedded/bin/librarian-chef <span class="nb">install</span> <span class="o">&amp;&amp;</span> <span class="se">\
+</span>    chef-client <span class="nt">-z</span> <span class="nt">-o</span> <span class="s2">"omnibus::default"</span> <span class="o">&amp;&amp;</span> <span class="se">\
+</span>    <span class="nb">rm</span> <span class="nt">-rf</span> /opt/chef /root/chefrepo /root/.chef /root/.ccache /usr/local/src/<span class="k">*</span>
+
+<span class="c">## どうせomnibus(Gem)が入るので、一旦いれちゃう</span>
+<span class="k">WORKDIR</span><span class="s"> /root</span>
+<span class="k">ADD</span><span class="s"> files/Gemfile /root/Gemfile</span>
+<span class="k">ADD</span><span class="s"> files/prebundle.sh /root/prebundle.sh</span>
+<span class="k">RUN </span>./prebundle.sh
+
+<span class="k">ADD</span><span class="s"> files/bash_with_env.sh /home/omnibus/bash_with_env.sh</span>
+<span class="k">ADD</span><span class="s"> files/build.sh /home/omnibus/build.sh</span>
+
+<span class="k">ENV</span><span class="s"> HOME /home/omnibus</span>
+
+<span class="c">## docker build時にプロジェクトディレクトリを登録、差分bundle</span>
+<span class="k">ONBUILD</span><span class="w"> </span><span class="k">ADD</span><span class="s"> . /home/omnibus/omnibus-project</span>
+
+<span class="k">WORKDIR</span><span class="s"> /home/omnibus/omnibus-project</span>
+<span class="k">ONBUILD RUN </span>bash <span class="nt">-c</span> <span class="s1">'source /home/omnibus/load-omnibus-toolchain.sh ; bundle install --binstubs bundle_bin --without development test'</span>
+<span class="k">ONBUILD RUN </span><span class="nb">echo</span> <span class="s2">"Usage: docker run  -it -e OMNIBUS_PROJECT=</span><span class="k">${</span><span class="nv">PROJECT_NAME</span><span class="k">}</span><span class="s2"> -v pkg:/home/omnibus/omnibus-project/pkg builder-centos6"</span>
+
+<span class="k">CMD</span><span class="s"> ["/home/omnibus/build.sh"]</span>
+</pre></div></div>
+
+<p>cookbookのomnibusとbundlerのおかげで、OS毎に変更がほとんどいらないので楽だ。</p>
+
+<p>大元のomnibus(Gem)とomnibus-software(Gem)が更新されたらこれらのlatestも更新しておく方針です。ただ、omnibus-softwareとかタグ切らねーのでmaster追うしかなさげ。</p>
+
+<h2>
+<span id="omnibus-serverspecの継続リリース" class="fragment"></span><a href="#omnibus-serverspec%E3%81%AE%E7%B6%99%E7%B6%9A%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9"><i class="fa fa-link"></i></a>Omnibus-Serverspecの継続リリース</h2>
+
+<p>さて、このOmnibusをつかって個人的にomnibus-serverspecというパッケージを配っていたりします。クローズドなら他にも少し。</p>
+
+<p><a href="https://github.com/OpsRockin/omnibus-serverspec" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/omnibus-serverspec</a></p>
+
+<p>これまではCircleCIからDigitalOceanのDroplet(4コア)を2つ作ってパッケージを作っていたため、自分が用事のあるときだけ適当に更新していました。DOにかかっていた費用は月額1,000円もいかない程度。<br>
+『とりあえずServerspecでテストしたい、なんとかして！』みたいなお仕事で重宝したり。</p>
+
+<p>しかしこういう記事が登場。</p>
+
+<p><a href="http://udzura.hatenablog.jp/entry/2015/09/25/194640" title="packer-provisioner-serverspec というPackerプラグインを書いた - ローファイ日記" rel="nofollow noopener" target="_blank">packer-provisioner-serverspec というPackerプラグインを書いた - ローファイ日記</a></p>
+
+<blockquote>
+<p>Serverspec自体のインストールは omnibus を使っています。</p>
+</blockquote>
+
+<p>Omnibus-Serverspecが気まぐれ更新のままではマズイと思ったので、CircleCI内だけで完結させるべくDockerのみでパッケージを作るようにしたのが今回の発端です。</p>
+
+<p>で、<a href="https://github.com/mizzy" rel="nofollow noopener" target="_blank">mizzy</a>さんのご厚意でServerspecおよび、Specinfraのリリース時、ついでにbuildを叩くWebHookを追加していただきました。これで自動的にパッケージがリリースされ、古いやつからローテーションで消えていきます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9e78beb2-7a9e-e922-412a-ee679c8351f7.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c2a7eed9d091de796864ccb4b3a025af" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9e78beb2-7a9e-e922-412a-ee679c8351f7.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c2a7eed9d091de796864ccb4b3a025af" alt="ご依頼内容" title="webhook.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/9e78beb2-7a9e-e922-412a-ee679c8351f7.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9e78beb2-7a9e-e922-412a-ee679c8351f7.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=7c3402a86b48135cd25067bc0ce2a1e7 1x" loading="lazy"></a></p>
+
+<p>呼ばれるのはこれ： <a href="https://circleci.com/gh/OpsRockin/omnibus-serverspec" rel="nofollow noopener" target="_blank">https://circleci.com/gh/OpsRockin/omnibus-serverspec</a></p>
+
+<p>人様のプロダクトをビルドするようなキックは、自動にした所でプロダクトによってはまともに機能しませんが、リリース当初からインストール方法が変わらないことに定評があるServerspecならその点ほとんど心配いりません。</p>
+
+<blockquote>
+<p>注意：<br>
+Omnibus-Serverspecのパッケージ自体は非公式であり、動作保証も特にしていません。Omnibus-Serverspecで挙動がおかしいとか動かないとかで、<a href="https://github.com/mizzy" rel="nofollow noopener" target="_blank">mizzy</a>さんに問い合わせたりはしないでね。<br>
+リリースイベントをわりかし早く、ナイスなプルリクをした人の次(直後)に教えてもらっているだけという関係です。</p>
+
+<p>そのうち、パッケージのPush前に軽く結合テスト(これもDockerでOK)を入れとこうとは思います。</p>
+</blockquote>
+
+<p>ちなみに、GithubのリリースなどのURLって、<code>.atom</code>つければフィード形式で拾えるんですよ。</p>
+
+<ul>
+<li><a href="https://github.com/mizzy/serverspec/commits/master.atom" rel="nofollow noopener" target="_blank">https://github.com/mizzy/serverspec/commits/master.atom</a></li>
+<li><a href="https://github.com/mizzy/serverspec/releases.atom" rel="nofollow noopener" target="_blank">https://github.com/mizzy/serverspec/releases.atom</a></li>
+</ul>
+
+<p>omnibus本体などの更新は、このフィードからDockerhubのビルドをキックするようにしとけばいいかな。</p>

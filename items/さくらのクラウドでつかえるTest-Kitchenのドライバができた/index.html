@@ -1,0 +1,170 @@
+<p><a href="https://github.com/higanworks/kitchen-driver-sakuracloud" rel="nofollow noopener" target="_blank">Kitchen::Driver::Sakuracloud</a>がひっそりと公開されている。</p>
+
+<p><a href="http://kitchen.ci" rel="nofollow noopener" target="_blank">Test-Kitchen</a> のバージョン1.4以降ではVMの調達に関連する処理を、独立したモジュールとして扱えるようになりました。</p>
+
+<ul>
+<li>Test-Kitchenについては： <a href="http://qiita.com/sawanoboly/items/9f560bd63ad0712b17ba" id="reference-07865200c0a5395065b6">test-kitchenのつかいかた</a>
+</li>
+</ul>
+
+<p>先日、所用で作業用のDebianサーバがそこそこの性能で1つ必要になったので、さくらのクラウドに一瞬だけ上げようと思いました。<br>
+コンパネ開くのが面倒くさかったのでTest-Kitchenのドライバを書くことにしました。</p>
+
+<h2>
+<span id="test-kitchenのdrivervmの作成削除を担当" class="fragment"></span><a href="#test-kitchen%E3%81%AEdrivervm%E3%81%AE%E4%BD%9C%E6%88%90%E5%89%8A%E9%99%A4%E3%82%92%E6%8B%85%E5%BD%93"><i class="fa fa-link"></i></a>Test-KitchenのDriver(VMの作成・削除を担当)</h2>
+
+<p>v1.4以降のDriverは、(調達したサーバへの接続方法がSSH or WinRMに限れば)</p>
+
+<ul>
+<li>作る時: 作って、ID(クラウドベンダ側で発行)とSSH or WinRMで接続するためのアドレスをstateに入れる</li>
+<li>消す時: IDを控えてあるので、それに従って削除する</li>
+</ul>
+
+<p>今回作成したぶんで、該当するのはこの辺。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">lib/kitchen/driver/sakuracloud.rb</span></div>
+<div class="highlight"><pre><span class="o">...</span>
+
+      <span class="k">def</span> <span class="nf">create</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">server</span> <span class="o">=</span> <span class="n">create_server</span>
+        <span class="n">state</span><span class="p">[</span><span class="ss">:id</span><span class="p">]</span> <span class="o">=</span> <span class="n">server</span><span class="p">.</span><span class="nf">id</span>
+        <span class="n">state</span><span class="p">[</span><span class="ss">:hostname</span><span class="p">]</span> <span class="o">=</span> <span class="n">server</span><span class="p">.</span><span class="nf">interfaces</span><span class="p">.</span><span class="nf">first</span><span class="p">[</span><span class="s2">"IPAddress"</span><span class="p">]</span>
+      <span class="k">end</span>
+
+      <span class="k">def</span> <span class="nf">destroy</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">destroy_server</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="ss">:id</span><span class="p">])</span> <span class="k">if</span> <span class="n">state</span><span class="p">[</span><span class="ss">:id</span><span class="p">]</span>
+      <span class="k">end</span>
+
+<span class="o">...</span>
+
+</pre></div>
+</div>
+
+<p>Driverの役割ってこれだけです。<a href="https://github.com/fog/fog-sakuracloud" rel="nofollow noopener" target="_blank">fogにしてある</a>から、こういう時に楽ちん。</p>
+
+<h2>
+<span id="使う時" class="fragment"></span><a href="#%E4%BD%BF%E3%81%86%E6%99%82"><i class="fa fa-link"></i></a>使う時</h2>
+
+<p><code>SAKURACLOUD_API_TOKEN</code>と<code>SAKURACLOUD_API_TOKEN_SECRET</code>は環境変数にあれば勝手に使うので、このようにYAMLに書いてしまう。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">sakuracloud</span>
+  <span class="na">sshkey_id</span><span class="pi">:</span> <span class="s">&lt;%= ENV['SAKURA_SSHKEY_ID'] %&gt;</span>
+  <span class="na">api_zone</span><span class="pi">:</span> <span class="s">tk1a</span>
+
+<span class="na">transport</span><span class="pi">:</span>
+  <span class="na">username</span><span class="pi">:</span> <span class="s">root</span>
+  <span class="na">ssh_key</span><span class="pi">:</span> <span class="s">&lt;%= ENV['SAKURA_SSHKEY_PATH'] %&gt;</span>
+
+<span class="na">provisioner</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">shell</span>
+
+<span class="na">verifier</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">shell</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">debian8</span>
+    <span class="na">driver</span><span class="pi">:</span>
+      <span class="na">sourcearchive</span><span class="pi">:</span> <span class="m">112700890487</span>
+      <span class="na">serverplan</span><span class="pi">:</span> <span class="m">4004</span>
+      <span class="na">diskplan</span><span class="pi">:</span> <span class="m">4</span>
+      <span class="na">size_mb</span><span class="pi">:</span> <span class="m">20480</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">ubuntu14</span>
+    <span class="na">driver</span><span class="pi">:</span>
+      <span class="na">serverplan</span><span class="pi">:</span> <span class="m">4004</span>
+      <span class="na">diskplan</span><span class="pi">:</span> <span class="m">4</span>
+      <span class="na">size_mb</span><span class="pi">:</span> <span class="m">20480</span>
+    <span class="na">transport</span><span class="pi">:</span>
+      <span class="na">username</span><span class="pi">:</span> <span class="s">ubuntu</span>
+
+
+<span class="na">suites</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">default</span>
+    <span class="na">run_list</span><span class="pi">:</span>
+    <span class="na">attributes</span><span class="pi">:</span>
+</pre></div>
+</div>
+
+<p><code>provisioner=&gt;shell</code>、はカレントにあるbootstrap.shを転送して叩く。<br>
+<code>verifier =&gt;shell</code>、は省略するとローカルの<code>/bin/true</code>で終わる。<br>
+とりあえずログイン状態で対話的に試したい事があったので、これでOK。</p>
+
+<p>listをみれば、Driverに<code>Sakuracloud</code>となっているのがわかる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen list
+Instance          Driver       Provisioner  Verifier  Transport  Last Action
+default-debian8   Sakuracloud  Shell        Shell     Ssh        &lt;Not Created&gt;
+default-ubuntu14  Sakuracloud  Shell        Shell     Ssh        &lt;Not Created&gt;
+</pre></div></div>
+
+<h3>
+<span id="vmを起動" class="fragment"></span><a href="#vm%E3%82%92%E8%B5%B7%E5%8B%95"><i class="fa fa-link"></i></a>VMを起動</h3>
+
+<p>そうそう、このときはglibcのリビルドをオプション変えつつ試したかったのです。なのでとりあえず準備だけしてくれればよいので、convergeで実行するスクリプトを置きます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bootstrap.sh</span></div>
+<div class="highlight"><pre><span class="nb">sudo mkdir</span> <span class="nt">-p</span> /usr/local/deb/glibc
+<span class="nb">cd</span> /usr/local/deb/glibc
+
+<span class="nb">sudo </span>apt-get update <span class="o">&amp;&amp;</span> apt-get <span class="nb">install</span> <span class="nt">-y</span> <span class="se">\</span>
+cmake dpkg-dev bison libbison-dev ruby <span class="se">\</span>
+<span class="o">&amp;&amp;</span> apt-get build-dep <span class="nt">-y</span> glibc <span class="nt">--fix-missing</span> <span class="se">\</span>
+<span class="o">&amp;&amp;</span> apt-get <span class="nb">source</span> <span class="nt">-y</span> glibc
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen converge debian
+-----&gt; Starting Kitchen (v1.4.2)
+-----&gt; Creating &lt;default-debian8&gt;...
+[fog][WARNING] Create Server
+[fog][WARNING] Create Volume
+[fog][WARNING] Waiting disk until available
+.[fog][WARNING] Modifing disk
+       Finished creating &lt;default-debian8&gt; (1m31.15s).
+-----&gt; Converging &lt;default-debian8&gt;...
+       Preparing files for transfer
+       Preparing script
+       [SSH] connection failed, retrying in 1 seconds (#&lt;Timeout::Error: execution expired&gt;)
+       Transferring files to &lt;default-debian8&gt;
+Get:1 http://security.debian.org jessie/updates InRelease [63.1 kB]
+Get:2 http://security.debian.org jessie/updates/main Sources [109 kB]          
+Ign http://dennou-h.gfd-dennou.org jessie InRelease     
+
+....
+
+-----&gt; Kitchen is finished. (2m58.76s)
+</pre></div></div>
+
+<p>ではログインして色々と試す。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen login debian
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+...
+
+root@localhost:~#
+</pre></div></div>
+
+<h3>
+<span id="vmを廃棄" class="fragment"></span><a href="#vm%E3%82%92%E5%BB%83%E6%A3%84"><i class="fa fa-link"></i></a>VMを廃棄</h3>
+
+<p>じゃあ消そう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen destroy debian
+-----&gt; Starting Kitchen (v1.4.2)
+-----&gt; Destroying &lt;default-debian8&gt;...
+       Finished destroying &lt;default-debian8&gt; (0m19.32s).
+-----&gt; Kitchen is finished. (0m19.40s)
+</pre></div></div>
+
+<p>はい消えたー。</p>
+
+<p>普通に各種Provisionerも使えます。</p>

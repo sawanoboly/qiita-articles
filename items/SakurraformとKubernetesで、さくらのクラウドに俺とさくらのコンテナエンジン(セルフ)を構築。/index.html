@@ -1,0 +1,440 @@
+<p>どっかのイベントで<a href="https://twitter.com/wslash" rel="nofollow noopener" target="_blank">@wslash</a>さんにお会いした際、さくらのクラウドにCoreOSのイメージ入れてよ～、と言っったらいつの間にか入っており、さらに1年くらい経ちました。<br>
+ふと、Kubernetes環境が欲しくなったため、そのことを思い出して、ついでに<a href="https://github.com/higanworks/sakurraform" rel="nofollow noopener" target="_blank">Sakurraform</a>から構築できると楽そうだ、という過程ではじめてみました。</p>
+
+<p>なお、Sakurraformについてはこの辺を見ればわかると思います。</p>
+
+<ul>
+<li><a href="http://www.slideshare.net/YukihikoSawanobori/ssi-sakurraform" rel="nofollow noopener" target="_blank">スライド：さくらのインフラコード</a></li>
+<li><a href="http://knowledge.sakura.ad.jp/tech/2972/" rel="nofollow noopener" target="_blank">さくらのクラウド/オブジェクトストレージでInfrastructure as Codeを実現する「Sakurraform」レビュー - さくらのナレッジ</a></li>
+</ul>
+
+<h2>
+<span id="必要なもの" class="fragment"></span><a href="#%E5%BF%85%E8%A6%81%E3%81%AA%E3%82%82%E3%81%AE"><i class="fa fa-link"></i></a>必要なもの</h2>
+
+<ul>
+<li>さくらのクラウド
+
+<ul>
+<li>SSHキーの登録</li>
+<li>APIキー</li>
+<li>クーポン(Optional)</li>
+</ul>
+</li>
+<li>さくらのオブジェクトストレージ
+
+<ul>
+<li>バケット作成(Public)</li>
+<li>APIキー(R/W)</li>
+</ul>
+</li>
+<li>kubectl
+
+<ul>
+<li>homebrewで入れるか、<a href="https://github.com/kubernetes/kubernetes/tree/master/build" rel="nofollow noopener" target="_blank">release.sh</a>で。</li>
+</ul>
+</li>
+<li>Ruby &amp; Bundler</li>
+</ul>
+
+<p>この記事の真似をして見る場合のリポジトリはこちら =&gt; <a href="https://github.com/higanworks/sakura-container-engine" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/sakura-container-engine</a></p>
+
+<h3>
+<span id="sakurraform-initでcredentialsファイル作成とsshキーidの用意" class="fragment"></span><a href="#sakurraform-init%E3%81%A7credentials%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E4%BD%9C%E6%88%90%E3%81%A8ssh%E3%82%AD%E3%83%BCid%E3%81%AE%E7%94%A8%E6%84%8F"><i class="fa fa-link"></i></a>sakurraform initでcredentialsファイル作成とSSHキーIDの用意</h3>
+
+<p>以降、Gemなどを次のコマンドでインストールした前提で進めます。<br>
+<code>bundle install --binstubs --path vendor/bundle</code></p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform init
+      create  .sakuracloud
+Sakuracloud_api_token(required) ?  さくらのクラウドで発行したAPIのトークン
+Sakuracloud_api_token_secret(required) ?  さくらのクラウドで発行したAPIのトークンシークレット
+Sakura Object Storage buket name(optional) ?  オブジェクトストレージのアクセスキーID
+Sakura Object Storage token(optional) ?  オブジェクトストレージのR/Wトークン
+      create  .sakuracloud/credentials
+</pre></div></div>
+
+<p>SSHキーは環境変数<code>SAKURA_SSH_KEYID</code>から取得するようになっています。エクスポートします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>export SAKURA_SSH_KEYID="SSHキーのID"
+</pre></div></div>
+
+<p>direnvなどで設定しておくと良いでしょう。</p>
+
+<h2>
+<span id="ルータとcoreosのマシン群を作成する" class="fragment"></span><a href="#%E3%83%AB%E3%83%BC%E3%82%BF%E3%81%A8coreos%E3%81%AE%E3%83%9E%E3%82%B7%E3%83%B3%E7%BE%A4%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ルータとCoreOSのマシン群を作成する</h2>
+
+<p>ではKubernetesクラスタを組むため、マスターとノード(旧称Minion)を4台ほど調達しましょう。<br>
+statusを見ると、リソースがまだ作成されてない状態となっています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status
+  Nework resources
+  +---------------+------------------+-------------+-------------+-------------+
+  | name          | sakurraform_name | sakura_id   | subnet      | gateway     |
+  +---------------+------------------+-------------+-------------+-------------+
+  | defaultrouter | not created      | not created | not created | not created |
+  +---------------+------------------+-------------+-------------+-------------+
+
+  Server resources
+  +--------+------------------+-------------+-------------+-------------+--------------------+
+  | name   | sakurraform_name | sakura_id   | ipaddress   | status      | last_state_changed |
+  +--------+------------------+-------------+-------------+-------------+--------------------+
+  | master | not created      | not created | not created | not created | not created        |
+  +--------+------------------+-------------+-------------+-------------+--------------------+
+  | node-1 | not created      | not created | not created | not created | not created        |
+  +--------+------------------+-------------+-------------+-------------+--------------------+
+  | node-2 | not created      | not created | not created | not created | not created        |
+  +--------+------------------+-------------+-------------+-------------+--------------------+
+  | node-3 | not created      | not created | not created | not created | not created        |
+  +--------+------------------+-------------+-------------+-------------+--------------------+
+  | node-4 | not created      | not created | not created | not created | not created        |
+  +--------+------------------+-------------+-------------+-------------+--------------------+
+
+</pre></div></div>
+
+<p>サーバ群のプランはこの様に、masterと4台のnodeです。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">plan/server.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">server</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">master</span>
+    <span class="na">serverplan</span><span class="pi">:</span> <span class="m">2001</span>
+    <span class="na">sshkey</span><span class="pi">:</span> <span class="s">&lt;%= ENV['SAKURA_SSH_KEYID'] %&gt;</span>
+    <span class="na">volume</span><span class="pi">:</span>
+      <span class="na">diskplan</span><span class="pi">:</span> <span class="m">4</span>
+      <span class="na">sourcearchive</span><span class="pi">:</span> <span class="m">112600559854</span>
+    <span class="na">switch</span><span class="pi">:</span> <span class="s">network[defaultrouter]</span>
+    <span class="na">meta</span><span class="pi">:</span>
+      <span class="na">network_offset</span><span class="pi">:</span> <span class="m">3</span>
+<span class="s">&lt;% 1.upto(3) do |index| %&gt;</span>
+  <span class="s">- name</span><span class="pi">:</span> <span class="s">minion-&lt;%= index %&gt;</span>
+    <span class="s">serverplan</span><span class="pi">:</span> <span class="m">2001</span>
+    <span class="na">sshkey</span><span class="pi">:</span> <span class="s">&lt;%= ENV['SAKURA_SSH_KEYID'] %&gt;</span>
+    <span class="na">volume</span><span class="pi">:</span>
+      <span class="na">diskplan</span><span class="pi">:</span> <span class="m">4</span>
+      <span class="na">sourcearchive</span><span class="pi">:</span> <span class="m">112600559854</span>
+    <span class="na">switch</span><span class="pi">:</span> <span class="s">network[defaultrouter]</span>
+    <span class="na">meta</span><span class="pi">:</span>
+      <span class="na">network_offset</span><span class="pi">:</span> <span class="s">&lt;%= 3 + index %&gt;</span>
+<span class="s">&lt;% end %&gt;</span>
+</pre></div>
+</div>
+
+<p><code>plan apply</code>して、とりあえずPublicアクセスができるルータとCoreOS群を調達します。<br>
+ここで結構時間がかかります。Serverの調達は並行でできるようにするのがいいかもしれないと思いました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform plan apply
+Create new network defaultrouter
+[fog][WARNING] Create Router with public subnet
+[fog][WARNING] Waiting available new router...
+......      create  state/network/defaultrouter-02d99990-3838-0133-a639-38e8563c85ec.yml
+Create new server master
+[fog][WARNING] Create Server
+[fog][WARNING] Create Volume
+[fog][WARNING] Waiting disk until available
+.[fog][WARNING] Modifing disk
+Associate 133.xxx.xxx.137 to master
+      create  state/server/master-0e7083f0-3838-0133-a639-38e8563c85ec.yml
+Create new server node-1
+[fog][WARNING] Create Server
+[fog][WARNING] Create Volume
+[fog][WARNING] Waiting disk until available
+.[fog][WARNING] Modifing disk
+Associate 133.xxx.xxx.138 to node-1
+      create  state/server/node-1-84c92190-3838-0133-a639-38e8563c85ec.yml
+Create new server node-2
+[fog][WARNING] Create Server
+[fog][WARNING] Create Volume
+[fog][WARNING] Waiting disk until available
+.[fog][WARNING] Modifing disk
+Associate 133.xxx.xxx.139 to node-2
+      create  state/server/node-2-d63ba180-3838-0133-a639-38e8563c85ec.yml
+Create new server node-3
+[fog][WARNING] Create Server
+[fog][WARNING] Create Volume
+[fog][WARNING] Waiting disk until available
+.[fog][WARNING] Modifing disk
+Associate 133.xxx.xxx.140 to node-3
+      create  state/server/node-3-284b7560-3839-0133-a639-38e8563c85ec.yml
+Create new server node-4
+[fog][WARNING] Create Server
+[fog][WARNING] Create Volume
+[fog][WARNING] Waiting disk until available
+.[fog][WARNING] Modifing disk
+Associate 133.xxx.xxx.141 to node-4
+      create  state/server/node-4-7ab202c0-3839-0133-a639-38e8563c85ec.yml
+</pre></div></div>
+
+<p>待つことしばし、全リソース出揃いました！</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status
+  Nework resources
+  +---------------+----------------------------------------------------+--------------+--------------------+-----------------+
+  | name          | sakurraform_name                                   | sakura_id    | subnet             | gateway         |
+  +---------------+----------------------------------------------------+--------------+--------------------+-----------------+
+  | defaultrouter | defaultrouter-02d99990-3838-0133-a639-38e8563c85ec | 112700766519 | 133.xxx.xxx.137/28 | 133.xxx.xxx.137 |
+  +---------------+----------------------------------------------------+--------------+--------------------+-----------------+
+
+  Server resources
+  +--------+---------------------------------------------+--------------+-----------------+--------+---------------------------+
+  | name   | sakurraform_name                            | sakura_id    | ipaddress       | status | last_state_changed        |
+  +--------+---------------------------------------------+--------------+-----------------+--------+---------------------------+
+  | master | master-0e7083f0-3838-0133-a639-38e8563c85ec | 112700766524 | 133.xxx.xxx.137 | up     | 2015-09-08Txx:xx:40+09:00 |
+  +--------+---------------------------------------------+--------------+-----------------+--------+---------------------------+
+  | node-1 | node-1-84c92190-3838-0133-a639-38e8563c85ec | 112700766531 | 133.xxx.xxx.138 | up     | 2015-09-08Txx:xx:57+09:00 |
+  +--------+---------------------------------------------+--------------+-----------------+--------+---------------------------+
+  | node-2 | node-2-d63ba180-3838-0133-a639-38e8563c85ec | 112700766540 | 133.xxx.xxx.139 | up     | 2015-09-08Txx:xx:15+09:00 |
+  +--------+---------------------------------------------+--------------+-----------------+--------+---------------------------+
+  | node-3 | node-3-284b7560-3839-0133-a639-38e8563c85ec | 112700766546 | 133.xxx.xxx.140 | up     | 2015-09-08Txx:xx:33+09:00 |
+  +--------+---------------------------------------------+--------------+-----------------+--------+---------------------------+
+  | node-4 | node-4-7ab202c0-3839-0133-a639-38e8563c85ec | 112700766558 | 133.xxx.xxx.141 | up     | 2015-09-08Txx:xx:51+09:00 |
+  +--------+---------------------------------------------+--------------+-----------------+--------+---------------------------+
+
+</pre></div></div>
+
+<h3>
+<span id="coreosの更新" class="fragment"></span><a href="#coreos%E3%81%AE%E6%9B%B4%E6%96%B0"><i class="fa fa-link"></i></a>CoreOSの更新</h3>
+
+<p>さて、用意されているアーカイブからCoreOSを起動すると、少々古めです。<br>
+このあとkubernetesのインストールでチャンネルはalphaに設定されますが、ひとまず最新のstableまで更新しておきたい所です。</p>
+
+<p>stableの最新にする方針は、次の２通り。</p>
+
+<ol>
+<li>しばらく放置する(たしかCoreOSが自ら更新する)</li>
+<li>
+<code>update_engine_client</code>を手動で実行する。</li>
+</ol>
+
+<p>ここは2の方式でいきます。とりあえず現状を確認してみましょう。<br>
+<code>sakurraform status</code>は<code>--json</code>オプションをつけるとJSONで出力するようにしたので、とりいそぎSSHでOSバージョンを取ってきます。</p>
+
+<p>※ これ以降の<code>xargs</code>はOSXでのオプション(BSD)を使っているので、使っている端末によって適当に変えてください。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status --json | jq .Servers[].ipaddress | xargs -I {} ssh core@{} cat /etc/os-release | grep VERSION
+VERSION=367.1.0
+VERSION_ID=367.1.0
+VERSION=367.1.0
+VERSION_ID=367.1.0
+VERSION=367.1.0
+...
+</pre></div></div>
+
+<p>あらリリース<code>367</code>ですね。では同様にSSHで<code>update_engine_client</code>を気が済むまで叩きます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status --json | jq -r .Servers[].ipaddress | xargs -I {} ssh -t core@{} sudo update_engine_client -update
+
+...
+...
+
+</pre></div></div>
+
+<p>それぞれ時間も取られるので、GNU parallelでやるほうがいいかもしれない。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status --json | jq -r .Servers[].ipaddress | parallel -j 5 ssh -t core@{} sudo update_engine_client -update
+</pre></div></div>
+
+<p>そのうち全部stableの最新版になっています。 (etcdが2になるので、リブートも)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status --json | jq -r .Servers[].ipaddress | xargs -I {} ssh core@{} cat /etc/os-release | grep VERSION
+VERSION=723.3.0
+VERSION_ID=723.3.0
+VERSION=723.3.0
+VERSION_ID=723.3.0
+...
+</pre></div></div>
+
+<h2>
+<span id="coreos-cloudinit用のファイルを作成してオブジェクトストレージにアップする" class="fragment"></span><a href="#coreos-cloudinit%E7%94%A8%E3%81%AE%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E4%BD%9C%E6%88%90%E3%81%97%E3%81%A6%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%82%B9%E3%83%88%E3%83%AC%E3%83%BC%E3%82%B8%E3%81%AB%E3%82%A2%E3%83%83%E3%83%97%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>coreos-cloudinit用のファイルを作成して、オブジェクトストレージにアップする</h2>
+
+<p>さくらのクラウドではOSの構成に、<a href="http://cloud-news.sakura.ad.jp/startup-script/" rel="nofollow noopener" target="_blank">スタートアップスクリプト</a>が使える... と見せかけてCoreOSには対応してません。</p>
+
+<blockquote>
+<p>実はこれで使おうと思って先日<a href="https://github.com/fog/fog-sakuracloud" rel="nofollow noopener" target="_blank">fog-sakuracloud</a>をスタートアップスクリプトに対応した。まあ仕方ないね。<br>
+一応、Sakurraformでもyamlに<code>startup_sctipt</code>キーを追加すれば対応OSで使えます。</p>
+</blockquote>
+
+<p>まあ、CoreOS相手で何するにしても、coreos-cloudinitを叩くだけになると思う。スクリプトよりだいぶ楽だし。</p>
+
+<ul>
+<li><a href="https://coreos.com/os/docs/latest/cloud-config.html" rel="nofollow noopener" target="_blank">Using Cloud-Config</a></li>
+</ul>
+
+<p>折角なのでオブジェクトストレージにアップして、Public URLからを渡してみましょう。</p>
+
+<p>とりあえずのKubernetes構築用に、<a href="https://github.com/kubernetes/kubernetes/tree/master/docs/getting-started-guides/coreos" rel="nofollow noopener" target="_blank">getting-started-guides/coreos</a> からmasterとnodeのymlを拝借します。</p>
+
+<p>Sakurraformを複数スイッチ構成に対応させていないため、今回は少々大胆にも全部のコンポーネントをPublicIPでやりますわ。</p>
+
+<p>次の２つのファイルがあるので、それぞれにMasterのIPアドレスを入れていきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ls cloud-configs
+master.yaml node.yaml
+</pre></div></div>
+
+<ul>
+<li>master.ymlは<code>$private_ipv4</code>の記述を差し替えます。</li>
+<li>node.ymlは <code>&lt;master-private-ip&gt;</code>の部分を書き換えます。</li>
+</ul>
+
+<p>編集が済んだら、<code>sakurraform storage put</code>でさくらのオブジェクトストレージにアップしましょう。<code>mput</code>も作ればよかったかな。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform storage put cloud-configs/master.yaml 
+File cloud-configs/master.yaml was put to cloud-configs/master.yaml.
+
+$ ./bin/sakurraform storage put cloud-configs/node.yaml 
+File cloud-configs/node.yaml was put to cloud-configs/node.yaml.
+</pre></div></div>
+
+<p><code>sakurraform storage ls</code>でPublic_URLを確認します、アップできてますね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform storage ls
+  +---------------------------+----------------+---------------------+---------------------------+------------------------------------------------------------------+
+  | key                       | content_length | content_type        | last_modified             | public_url                                                       |
+  +---------------------------+----------------+---------------------+---------------------------+------------------------------------------------------------------+
+  | cloud-configs/master.yaml | 5562           | binary/octet-stream | 2015-09-08 xx:xx:25 +0900 | https://xxxxxx-test.b.sakurastorage.jp/cloud-configs/master.yaml |
+  +---------------------------+----------------+---------------------+---------------------------+------------------------------------------------------------------+
+  | cloud-configs/node.yaml   | 3755           | binary/octet-stream | 2015-09-08 xx:xx:31 +0900 | https://xxxxxx-test.b.sakurastorage.jp/cloud-configs/node.yaml   |
+  +---------------------------+----------------+---------------------+---------------------------+------------------------------------------------------------------+
+</pre></div></div>
+
+<h2>
+<span id="kubernetesのmasterを構築" class="fragment"></span><a href="#kubernetes%E3%81%AEmaster%E3%82%92%E6%A7%8B%E7%AF%89"><i class="fa fa-link"></i></a>KubernetesのMasterを構築</h2>
+
+<p>マスターのIPは手抜きしてこんな感じでとりましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status --json | jq -r .Servers[0].ipaddress
+133.xxx.xxx.137 (MasterのIPアドレス)
+</pre></div></div>
+
+<p>では<code>coreos-cloudinit</code>に渡します。何かと連携させようかと思いましたが、これもsshでいいか。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ssh core@133.xxx.xxx.137 sudo coreos-cloudinit --from-url https://xxxxxx-test.b.sakurastorage.jp/cloud-configs/master.yaml 
+
+Checking availability of "url"
+Fetching user-data from datasource of type "url"
+2015/09/08 xx:xx:24 Fetching data from https://xxxxxx-test.b.sakurastorage.jp/cloud-configs/master.yaml. Attempt #1
+Fetching meta-data from datasource of type "url"
+Merging cloud-config from meta-data and user-data
+
+-- 中略
+
+2015/09/08 xx:xx:43 Result of "start" on "kube-scheduler.service": done
+2015/09/08 xx:xx:43 Calling unit command "stop" on "locksmithd.service"'
+2015/09/08 xx:xx:43 Result of "stop" on "locksmithd.service": done
+2015/09/08 xx:xx:43 Calling unit command "restart" on "update-engine.service"'
+2015/09/08 xx:xx:43 Result of "restart" on "update-engine.service": done
+</pre></div></div>
+
+<p>終わったら、ひとまず<code>kubectl</code>でAPIと通信してみます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./k8bin/kubectl -s http://133.xxx.xxx.137:8080 version
+Client Version: version.Info{Major:"1", Minor:"1+", GitVersion:"v1.1.0-alpha.1.388+bb3e20e361764c", GitCommit:"bb3e20e361764cf0af8d23671b7fe00f0951b0f3", GitTreeState:"clean"}
+Server Version: version.Info{Major:"1", Minor:"0", GitVersion:"v1.0.3", GitCommit:"61c6ac5f350253a4dc002aee97b7db7ff01ee4ca", GitTreeState:"clean"}
+</pre></div></div>
+
+<p>Serverの情報とれてますねー。APIが動きました。</p>
+
+<h2>
+<span id="kubernetesのnodeを構築" class="fragment"></span><a href="#kubernetes%E3%81%AEnode%E3%82%92%E6%A7%8B%E7%AF%89"><i class="fa fa-link"></i></a>KubernetesのNodeを構築</h2>
+
+<p>NodeたちのIPは並びが丁度いいので、これでよしとします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status --json | jq -r .Servers[1:][].ipaddress
+133.xxx.xxx.138
+133.xxx.xxx.139
+133.xxx.xxx.140
+133.xxx.xxx.141
+</pre></div></div>
+
+<p>いっぺんにやりましょうか。今度は<code>node.yml</code>を渡します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/sakurraform status --json | jq -r .Servers[1:][].ipaddress | parallel -j 4 ssh core@{} sudo coreos-cloudinit --from-url https://xxxxxx-test.b.sakurastorage.jp/cloud-configs/node.yaml
+
+
+-- 省略。。。
+
+</pre></div></div>
+
+<p>終わったら、<code>kubectl get nodes</code>をしてみます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./k8bin/kubectl -s http://133.xxx.xxx.137:8080 get nodes
+NAME              LABELS                                   STATUS    AGE
+133.xxx.xxx.138   kubernetes.io/hostname=133.xxx.xxx.138   Ready     5m
+133.xxx.xxx.139   kubernetes.io/hostname=133.xxx.xxx.139   Ready     5m
+133.xxx.xxx.140   kubernetes.io/hostname=133.xxx.xxx.140   Ready     5m
+133.xxx.xxx.141   kubernetes.io/hostname=133.xxx.xxx.141   Ready     5m
+</pre></div></div>
+
+<p>うん、Nodeがぶら下がりましたね。</p>
+
+<h2>
+<span id="exampleから動作確認" class="fragment"></span><a href="#example%E3%81%8B%E3%82%89%E5%8B%95%E4%BD%9C%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>Exampleから動作確認</h2>
+
+<p>では動作の様子をみるため、<code>examples/simple-nginx</code>からコマンドを実行してみよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./k8bin/kubectl -s http://133.xxx.xxx.137:8080 run my-nginx --image=nginx --replicas=2 --port=80
+replicationcontroller "my-nginx" created
+</pre></div></div>
+
+<p>podsが作られた。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./k8bin/kubectl -s http://133.xxx.xxx.137:8080 get pods
+NAME             READY     STATUS    RESTARTS   AGE
+my-nginx-uabgm   1/1       Running   0          1m
+my-nginx-vt40g   1/1       Running   0          1m
+</pre></div></div>
+
+<p>replicationcontrollerも動いているね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./k8bin/kubectl -s http://133.xxx.xxx.137:8080 get rc
+CONTROLLER   CONTAINER(S)   IMAGE(S)   SELECTOR       REPLICAS   AGE
+my-nginx     my-nginx       nginx      run=my-nginx   2          1m
+</pre></div></div>
+
+<p>サービス用のIPについてノープランだったので、次のexposeは無理な気がします。とりあえずスケールでもしてみましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./k8bin/kubectl -s http://133.xxx.xxx.137:8080 scale --replicas=20  rc my-nginx
+replicationcontroller "my-nginx" scaled
+
+
+$ ./k8bin/kubectl -s http://133.xxx.xxx.137:8080 get pods
+NAME             READY     STATUS    RESTARTS   AGE
+my-nginx-0hs7n   1/1       Running   0          1m
+my-nginx-3uoi8   1/1       Running   0          1m
+my-nginx-50tal   1/1       Running   0          1m
+my-nginx-7v1in   1/1       Running   0          1m
+my-nginx-8uwhd   1/1       Running   0          1m
+my-nginx-adkk5   1/1       Running   0          1m
+my-nginx-blje1   1/1       Running   0          1m
+my-nginx-coent   1/1       Running   0          1m
+my-nginx-hs3wq   1/1       Running   0          1m
+my-nginx-hy3rk   1/1       Running   0          1m
+my-nginx-i5h4x   1/1       Running   0          1m
+my-nginx-jcbkl   1/1       Running   0          1m
+my-nginx-m0xd9   1/1       Running   0          1m
+my-nginx-monyg   1/1       Running   0          1m
+my-nginx-oqy92   1/1       Running   0          1m
+my-nginx-p22xa   1/1       Running   0          1m
+my-nginx-t8z8r   1/1       Running   0          1m
+my-nginx-uad1i   1/1       Running   0          7m
+my-nginx-uk2q5   1/1       Running   0          1m
+my-nginx-w089w   1/1       Running   0          7m
+</pre></div></div>
+
+<p>やった、増えたね。</p>
+
+<p>まあまあ楽にKubernetesの環境を作れました、さくらのコンテナエンジン(セルフタイプ)は8割がた出来たと言えましょう。</p>
+
+<h2>
+<span id="次と課題" class="fragment"></span><a href="#%E6%AC%A1%E3%81%A8%E8%AA%B2%E9%A1%8C"><i class="fa fa-link"></i></a>次と課題</h2>
+
+<p>認証とか管理系のIPアドレスとか常識的な範囲はおいといて、Public(Service)IPの戦略が必要だ。</p>
+
+<ul>
+<li>GCEでは特に気にしなくてよかったことなので、まだよく調べていない。</li>
+<li>Local系や、他のクラウド向け構築のドキュメントを参考によしなに設定したい。</li>
+</ul>
+
+<p>さくらのクラウドはスイッチを作ってバーチャルサーバにプスプスできる、割と変態仕様なので結構好きな様にサービスIPを組めるかもしれない(LBは組み込めるかわからないけど)。<br>
+その辺を踏まえてKubernetesの知見をお持ちの方から意見など伺えるといいなあ。</p>

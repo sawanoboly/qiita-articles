@@ -1,0 +1,424 @@
+<p>Serverspecで実施するテストを適当に書いていたら、Rakefileとspec_helperが度重なる継ぎ足し建築で大きくなったので晒す。</p>
+
+<p>この記事に出てくるファイルのリポジトリはこちら。 <a href="https://github.com/OpsRockin/serverspec_helper_example" rel="nofollow noopener" target="_blank">OpsRockin/serverspec_helper_example</a></p>
+
+<h2>
+<span id="テスト対象のはなし" class="fragment"></span><a href="#%E3%83%86%E3%82%B9%E3%83%88%E5%AF%BE%E8%B1%A1%E3%81%AE%E3%81%AF%E3%81%AA%E3%81%97"><i class="fa fa-link"></i></a>テスト対象のはなし</h2>
+
+<p>相手はだいたいこんな感じ。</p>
+
+<ul>
+<li>ほぼ同じ構成で、staging, productionほか複数の環境がある</li>
+<li>環境はプロビジョニングツールの管理下である
+
+<ul>
+<li>ツールではミドルウェア構成に対応する形のroleとして定義が作られている</li>
+<li>各ホストは大分類名(webとか)がついていて、roleの組み合わせで構築される</li>
+</ul>
+</li>
+</ul>
+
+<p>構築側のことはあまり気にせず、『仕様を探ってspecだけ書いてちょー』という条件の下でやってます。</p>
+
+<h3>
+<span id="rake--spec_helperで吸収したかったこと" class="fragment"></span><a href="#rake--spec_helper%E3%81%A7%E5%90%B8%E5%8F%8E%E3%81%97%E3%81%9F%E3%81%8B%E3%81%A3%E3%81%9F%E3%81%93%E3%81%A8"><i class="fa fa-link"></i></a>Rake &amp; spec_helperで吸収したかったこと</h3>
+
+<ul>
+<li>大分類が同じホストが環境別に複数あったり無かったり</li>
+<li>共通のroleもある</li>
+<li>たまにホスト特有の値がある</li>
+<li>任意に対象を絞りたい
+
+<ul>
+<li>環境の全ホスト</li>
+<li>大分類別に全ホスト</li>
+<li>特定のホスト</li>
+</ul>
+</li>
+<li>たまにローカルのDockerで試したい。</li>
+</ul>
+
+<p>ということで、roleに相当するspecを作って流せるようにしていった。 </p>
+
+<p><a href="http://www.oreilly.co.jp/books/9784873117096/" title="O'Reilly Japan - Serverspec" rel="nofollow noopener" target="_blank">O'Reilly Japan - Serverspec</a> から、 <strong>3.7 specファイルを複数のホストで共有</strong> と <strong>3.8 ホスト固有情報の利用</strong> の応用・合わせ技ですね。</p>
+
+<h2>
+<span id="関連ファイルの構成" class="fragment"></span><a href="#%E9%96%A2%E9%80%A3%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AE%E6%A7%8B%E6%88%90"><i class="fa fa-link"></i></a>関連ファイルの構成</h2>
+
+<p>そのまま紹介とはいかないので、説明用に軽めにアレンジしてます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>２階層までのツリー。(※)はファイルで、印がないのはディレクトリ。
+
+├── Gemfile(※)
+├── Gemfile.lock(※)
+├── Rakefile(※)
+├── common_spec     # 他プロジェクトとも共有するspec、gitのサブモジュールだったりする。
+│   ├── common
+│   ├── group
+│   ├── mackerel-agent
+│   └── user
+├── ferture_spec    # プロジェクト特有のspec、別に分けなくてもいい。
+│   ├── fluentd
+│   ├── nagios
+│   ├── nginx
+│   ├── postgresql
+│   └── user
+├── host_vars       # ホスト特有の値をロードしたいときなどに使うなど。
+│   ├── 10.48.1.31.yml(※)
+│   └── 10.48.2.31.yml(※)
+├── hosts_production(※)   # production環境のホストとrole一覧
+├── hosts_staging(※)      # staging環境のホストとrole一覧
+└── spec                  # helper他。これもサブモジュールなどでもいい。
+    └── spec_helper.rb(※) 
+</pre></div></div>
+
+<h2>
+<span id="rakefile" class="fragment"></span><a href="#rakefile"><i class="fa fa-link"></i></a>Rakefile</h2>
+
+<p>早速なんかデカイ。多分余計な部分もある。<br>
+要は対象をyamlから抽出して、タスクを生成しています。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'rake'</span>
+<span class="nb">require</span> <span class="s1">'yaml'</span>
+<span class="nb">require</span> <span class="s1">'rspec/core/rake_task'</span>
+
+<span class="c1">## 環境変数 SPEC_ENV で環境名を指定。RackやRailsのパクリ。</span>
+<span class="n">spec_env</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'SPEC_ENV'</span><span class="p">]</span>
+<span class="k">if</span> <span class="n">spec_env</span>
+  <span class="n">path_candidate</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../hosts_</span><span class="si">#{</span><span class="n">spec_env</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+  <span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="n">path_candidate</span><span class="p">)</span>
+    <span class="n">hosts_defined</span> <span class="o">=</span> <span class="n">path_candidate</span>
+  <span class="k">else</span>
+    <span class="k">raise</span> <span class="no">RuntimeError</span><span class="p">,</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">======</span><span class="se">\n</span><span class="s2">ERROR: No hosts defined for </span><span class="si">#{</span><span class="n">spec_env</span><span class="si">}</span><span class="s2">.</span><span class="se">\n</span><span class="s2">======"</span>
+  <span class="k">end</span>
+<span class="k">else</span>
+  <span class="c1">## SPEC_ENV が省略されたらとりあえずstagingとしてあつかう。</span>
+  <span class="n">spec_env</span> <span class="o">=</span> <span class="s1">'staging'</span>
+  <span class="n">hosts_defined</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../hosts_staging"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+<span class="k">end</span>
+
+
+<span class="c1">## 環境名に対応する定義ファイルを読む</span>
+<span class="n">properties</span> <span class="o">=</span> <span class="no">YAML</span><span class="p">.</span><span class="nf">load_file</span><span class="p">(</span><span class="n">hosts_defined</span><span class="p">)</span>
+
+<span class="n">task</span> <span class="ss">:spec</span>    <span class="o">=&gt;</span> <span class="s1">'spec:all'</span>
+<span class="n">task</span> <span class="ss">:default</span> <span class="o">=&gt;</span> <span class="ss">:spec</span>
+
+<span class="n">namespace</span> <span class="ss">:spec</span> <span class="k">do</span>
+  <span class="c1">## 定義ファイルから spec:大分類:ホスト名を全部作成する。spec:all 用</span>
+  <span class="n">all_tasks</span> <span class="o">=</span> <span class="n">properties</span><span class="p">.</span><span class="nf">each_pair</span><span class="p">.</span><span class="nf">map</span> <span class="p">{</span> <span class="o">|</span><span class="n">key</span><span class="p">,</span> <span class="n">values</span><span class="o">|</span>
+    <span class="c1">## 共通設定はホスト扱いしない。</span>
+    <span class="k">next</span> <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s1">'shared_settings'</span>
+    <span class="n">values</span><span class="p">[</span><span class="ss">:hosts</span><span class="p">].</span><span class="nf">map</span> <span class="p">{</span><span class="o">|</span><span class="n">host</span><span class="o">|</span> <span class="s1">'spec:'</span> <span class="o">+</span> <span class="n">key</span> <span class="o">+</span> <span class="s1">':'</span> <span class="o">+</span> <span class="n">host</span> <span class="p">}</span>
+  <span class="p">}.</span><span class="nf">flatten</span><span class="p">.</span><span class="nf">compact</span>
+
+  <span class="c1">## 全部実行するタスク (spec:all)</span>
+  <span class="n">desc</span> <span class="s2">"all target for </span><span class="si">#{</span><span class="n">spec_env</span><span class="si">}</span><span class="s2">"</span>
+  <span class="n">task</span> <span class="ss">:all</span> <span class="o">=&gt;</span> <span class="n">all_tasks</span>
+
+  <span class="c1">## ホスト定義をまわす、大分類はmaster_rollって名前で扱う</span>
+  <span class="n">properties</span><span class="p">.</span><span class="nf">each_pair</span> <span class="k">do</span> <span class="o">|</span><span class="n">master_roll</span><span class="p">,</span> <span class="n">entries</span><span class="o">|</span>
+    <span class="c1">## 共通設定は大分類扱いしない(spec_helperで使う)</span>
+    <span class="k">next</span> <span class="k">if</span> <span class="n">master_roll</span> <span class="o">==</span> <span class="s1">'shared_settings'</span>
+
+    <span class="c1">## 大分類に割り当てられているroleを抽出する</span>
+    <span class="n">role_pattern</span> <span class="o">=</span> <span class="n">entries</span><span class="p">[</span><span class="ss">:roles</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">','</span><span class="p">)</span>
+
+    <span class="n">namespace</span> <span class="n">master_roll</span><span class="p">.</span><span class="nf">to_sym</span> <span class="k">do</span>
+      <span class="n">hosts</span> <span class="o">=</span> <span class="n">entries</span><span class="p">[</span><span class="ss">:hosts</span><span class="p">]</span>
+
+      <span class="c1">## 大分類別に全ホスト実行するタスク (spec:大分類:all)</span>
+      <span class="n">desc</span> <span class="s2">"all target of </span><span class="si">#{</span><span class="n">master_roll</span><span class="si">}</span><span class="s2"> for </span><span class="si">#{</span><span class="n">role_pattern</span><span class="si">}</span><span class="s2">"</span>
+      <span class="n">task</span> <span class="ss">:all</span> <span class="o">=&gt;</span> <span class="n">hosts</span><span class="p">.</span><span class="nf">map</span> <span class="p">{</span><span class="o">|</span><span class="n">h</span><span class="o">|</span> <span class="s1">'spec:'</span> <span class="o">+</span> <span class="n">master_roll</span> <span class="o">+</span> <span class="s1">':'</span> <span class="o">+</span> <span class="n">h</span> <span class="p">}</span>
+
+      <span class="c1">## 大分類別に個別ホスト実行するタスクを定義する (spec:大分類:ホスト名)</span>
+      <span class="n">hosts</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">host</span><span class="o">|</span>
+        <span class="n">desc</span> <span class="s2">"Run serverspec tests to </span><span class="si">#{</span><span class="n">master_roll</span><span class="si">}</span><span class="s2">: </span><span class="si">#{</span><span class="n">host</span><span class="si">}</span><span class="s2"> for </span><span class="si">#{</span><span class="n">role_pattern</span><span class="si">}</span><span class="s2">"</span>
+        <span class="no">RSpec</span><span class="o">::</span><span class="no">Core</span><span class="o">::</span><span class="no">RakeTask</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">host</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">t</span><span class="o">|</span>
+          <span class="c1">## どれかがこけても途中でやめない。</span>
+          <span class="n">t</span><span class="p">.</span><span class="nf">fail_on_error</span> <span class="o">=</span> <span class="kp">false</span>
+          <span class="no">ENV</span><span class="p">[</span><span class="s1">'TARGET_HOST'</span><span class="p">]</span> <span class="o">=</span> <span class="n">host</span>
+          <span class="no">ENV</span><span class="p">[</span><span class="s1">'SPEC_ENV'</span><span class="p">]</span> <span class="o">=</span> <span class="n">spec_env</span>
+
+          <span class="c1">## specとcommon_specとferture_specをざっくり取って、定義ファイル上のロールに対応するspecを読み込ませる。</span>
+          <span class="n">t</span><span class="p">.</span><span class="nf">pattern</span> <span class="o">=</span> <span class="s2">"{spec,common_spec,ferture_spec}/{</span><span class="si">#{</span><span class="n">role_pattern</span><span class="si">}</span><span class="s2">}/**/*_spec.rb"</span>
+        <span class="k">end</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>spec:大分類:all</code>のあたりがややこしいです。あると便利なので少々強引に。<br>
+ちなみに定義ファイル側のroleに対応するspecのディレクトリは無くてもスルーされます。ある分だけテスト実施。</p>
+
+<h3>
+<span id="yamlに大分類と所属ホストを書いた" class="fragment"></span><a href="#yaml%E3%81%AB%E5%A4%A7%E5%88%86%E9%A1%9E%E3%81%A8%E6%89%80%E5%B1%9E%E3%83%9B%E3%82%B9%E3%83%88%E3%82%92%E6%9B%B8%E3%81%84%E3%81%9F"><i class="fa fa-link"></i></a>yamlに大分類と所属ホストを書いた</h3>
+
+<p>じゃあ大分類が<code>web</code>, <code>db</code>, <code>press</code>の3つあるとします。</p>
+
+<p>hosts_stagingとhosts_productionというファイルをそれぞれ書いてみるとこんな感じ。</p>
+
+<p>大分類と所属ホスト、ロードするspec(roleにおおまかに対応)という構成です。 SSHの環境別接続設定に継ぎ足し感あります。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">hosts_staging</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">shared_settings</span><span class="pi">:</span>
+  <span class="s">:ssh_opts:</span>
+    <span class="s">:user: operator</span>
+    <span class="s">:keys: /Users/sawanoboriyu/.ssh/my_staging_key</span>
+    <span class="s">:port: </span><span class="m">22</span>
+    <span class="s">:paranoid: </span><span class="no">false</span>
+<span class="na">web</span><span class="pi">:</span>
+  <span class="s">:hosts:</span>
+    <span class="s">- 192.168.1.11</span>
+    <span class="s">- 192.168.1.12</span>
+  <span class="s">:roles:</span>
+    <span class="s">- common</span>
+    <span class="s">- group</span>
+    <span class="s">- user/system</span>
+    <span class="s">- user/web</span>
+    <span class="s">- fluentd</span>
+    <span class="s">- mackerel-agent</span>
+    <span class="s">- nagios/nrpe</span>
+    <span class="s">- nginx</span>
+<span class="na">db</span><span class="pi">:</span>
+  <span class="s">:hosts:</span>
+    <span class="s">- 192.168.1.31</span>
+  <span class="s">:roles:</span>
+    <span class="s">- common</span>
+    <span class="s">- group</span>
+    <span class="s">- user/system</span>
+    <span class="s">- user/db</span>
+    <span class="s">- fluentd</span>
+    <span class="s">- mackerel-agent</span>
+    <span class="s">- nagios/nrpe</span>
+<span class="na">press</span><span class="pi">:</span>
+  <span class="s">:hosts:</span>
+    <span class="s">- 192.168.1.21</span>
+  <span class="s">:roles:</span>
+    <span class="s">- common</span>
+    <span class="s">- group</span>
+    <span class="s">- user/system</span>
+    <span class="s">- user/press</span>
+    <span class="s">- mackerel-agent</span>
+    <span class="s">- nagios/nrpe</span>
+    <span class="s">- nagios/server</span>
+</pre></div>
+</div>
+
+<p>productionはsshの設定が違ったり、ちょっとホストが多かったり。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">hosts_production</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">shared_settings</span><span class="pi">:</span>
+  <span class="s">:ssh_opts:</span>
+    <span class="s">:user: opera_singer</span>
+    <span class="s">:keys: /Users/sawanoboriyu/.ssh/my_production_key</span>
+    <span class="s">:port: </span><span class="m">9022</span>
+    <span class="s">:paranoid: </span><span class="no">false</span>
+<span class="na">web</span><span class="pi">:</span>
+  <span class="s">:hosts:</span>
+    <span class="s">- 10.48.1.11</span>
+    <span class="s">- 10.48.1.12</span>
+    <span class="s">- 10.48.2.11</span>
+    <span class="s">- 10.48.2.12</span>
+  <span class="s">:roles:</span>
+    <span class="s">- common</span>
+    <span class="s">- group</span>
+    <span class="s">- user/system</span>
+    <span class="s">- user/web</span>
+    <span class="s">- fluentd</span>
+    <span class="s">- mackerel-agent</span>
+    <span class="s">- nagios/nrpe</span>
+    <span class="s">- nginx</span>
+<span class="na">db</span><span class="pi">:</span>
+  <span class="s">:hosts:</span>
+    <span class="s">- 10.48.1.31</span>
+    <span class="s">- 10.48.2.31</span>
+  <span class="s">:roles:</span>
+    <span class="s">- common</span>
+    <span class="s">- group</span>
+    <span class="s">- user/system</span>
+    <span class="s">- user/db</span>
+    <span class="s">- fluentd</span>
+    <span class="s">- mackerel-agent</span>
+    <span class="s">- nagios/nrpe</span>
+<span class="na">press</span><span class="pi">:</span>
+  <span class="s">:hosts:</span>
+    <span class="s">- 10.48.1.21</span>
+    <span class="s">- 10.48.2.21</span>
+  <span class="s">:roles:</span>
+    <span class="s">- common</span>
+    <span class="s">- group</span>
+    <span class="s">- user/system</span>
+    <span class="s">- user/press</span>
+    <span class="s">- mackerel-agent</span>
+    <span class="s">- nagios/nrpe</span>
+    <span class="s">- nagios/server</span>
+</pre></div>
+</div>
+
+<p>こういう定義一覧をプロビジョニングツールと連動するかは時と場合によります。<br>
+両方修正が面倒な場合や、１つの修正ミスがプロビジョニングとテストの両方の結果に影響するのを避けたいか。ケースによって変えましょう。<br>
+今回のはテスト側にあるていど独立性を確保した感じですね。</p>
+
+<h3>
+<span id="rakeで対象を確認する" class="fragment"></span><a href="#rake%E3%81%A7%E5%AF%BE%E8%B1%A1%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>rakeで対象を確認する</h3>
+
+<p>前項のyaml達をRakeに通すとどうなるか、タスク一覧を表示してみます。</p>
+
+<p>SPEC_ENVを省略した場合はstatingが対象です。<br>
+全ホストを対象にする <code>spec:all</code>, webの全ホストを対象の<code>spec:web:all</code>や任意ホストの<code>spec:web:192.168.1.11</code>をそれぞれ実行できるようになりました。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>./bin/rake <span class="nt">-vT</span>
+rake spec:all                 <span class="c"># all target for staging</span>
+rake spec:db:192.168.1.31     <span class="c"># Run serverspec tests to db: 192.168.1.31 for common,group,user/system,user/db,fluentd,mackerel-agent,nagios/nrpe</span>
+rake spec:db:all              <span class="c"># all target of db for common,group,user/system,user/db,fluentd,mackerel-agent,nagios/nrpe</span>
+rake spec:press:192.168.1.21  <span class="c"># Run serverspec tests to press: 192.168.1.21 for common,group,user/system,user/press,mackerel-agent,nagios/nrpe,nagios/server</span>
+rake spec:press:all           <span class="c"># all target of press for common,group,user/system,user/press,mackerel-agent,nagios/nrpe,nagios/server</span>
+rake spec:web:192.168.1.11    <span class="c"># Run serverspec tests to web: 192.168.1.11 for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+rake spec:web:192.168.1.12    <span class="c"># Run serverspec tests to web: 192.168.1.12 for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+rake spec:web:all             <span class="c"># all target of web for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+</pre></div></div>
+
+<p><code>SPEC_ENV=production</code>で一覧を出すと、<code>hosts_production</code>からタスクを生成します。ロードするspecも表示するようになってます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ SPEC_ENV</span><span class="o">=</span>production ./bin/rake <span class="nt">-vT</span>
+rake spec:all               <span class="c"># all target for production</span>
+rake spec:db:10.48.1.31     <span class="c"># Run serverspec tests to db: 10.48.1.31 for common,group,user/system,user/db,fluentd,mackerel-agent,nagios/nrpe</span>
+rake spec:db:10.48.2.31     <span class="c"># Run serverspec tests to db: 10.48.2.31 for common,group,user/system,user/db,fluentd,mackerel-agent,nagios/nrpe</span>
+rake spec:db:all            <span class="c"># all target of db for common,group,user/system,user/db,fluentd,mackerel-agent,nagios/nrpe</span>
+rake spec:press:10.48.1.21  <span class="c"># Run serverspec tests to press: 10.48.1.21 for common,group,user/system,user/press,mackerel-agent,nagios/nrpe,nagios/server</span>
+rake spec:press:10.48.2.21  <span class="c"># Run serverspec tests to press: 10.48.2.21 for common,group,user/system,user/press,mackerel-agent,nagios/nrpe,nagios/server</span>
+rake spec:press:all         <span class="c"># all target of press for common,group,user/system,user/press,mackerel-agent,nagios/nrpe,nagios/server</span>
+rake spec:web:10.48.1.11    <span class="c"># Run serverspec tests to web: 10.48.1.11 for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+rake spec:web:10.48.1.12    <span class="c"># Run serverspec tests to web: 10.48.1.12 for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+rake spec:web:10.48.2.11    <span class="c"># Run serverspec tests to web: 10.48.2.11 for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+rake spec:web:10.48.2.12    <span class="c"># Run serverspec tests to web: 10.48.2.12 for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+rake spec:web:all           <span class="c"># all target of web for common,group,user/system,user/web,fluentd,mackerel-agent,nagios/nrpe,nginx</span>
+</pre></div></div>
+
+<h2>
+<span id="spec_helper" class="fragment"></span><a href="#spec_helper"><i class="fa fa-link"></i></a>spec_helper</h2>
+
+<p>spec_helperも肥大。</p>
+
+<p>バックエンドのdocker or ssh(および環境別オプション)を選択可能にしたり、ホスト特有の値をロードという機能を継ぎ足したりしていったのでこんな感じ。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">spec_helper.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'serverspec'</span>
+<span class="nb">require</span> <span class="s2">"docker"</span>
+<span class="nb">require</span> <span class="s1">'net/ssh'</span>
+<span class="nb">require</span> <span class="s1">'yaml'</span>
+
+<span class="k">case</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'SPEC_BACKEND'</span><span class="p">]</span>
+<span class="c1">## 環境変数 SPEC_BACKEND がdocker|DOCKERだったらSSHじゃなくてDockerバックエンドを使う。</span>
+<span class="k">when</span> <span class="s2">"DOCKER"</span><span class="p">,</span> <span class="s1">'docker'</span>
+  <span class="n">set</span> <span class="ss">:backend</span><span class="p">,</span> <span class="ss">:docker</span>
+  <span class="n">set</span> <span class="ss">:docker_url</span><span class="p">,</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'DOCKER_HOST'</span><span class="p">]</span> <span class="o">||</span> <span class="s1">'unix:///var/run/docker.sock'</span>
+  <span class="c1">## Dockerでためす場合、DOCKER_IMAGEを指定する。</span>
+  <span class="n">set</span> <span class="ss">:docker_image</span><span class="p">,</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'DOCKER_IMAGE'</span><span class="p">]</span>
+  <span class="n">set</span> <span class="ss">:docker_container_create_options</span><span class="p">,</span> <span class="p">{</span><span class="s1">'Cmd'</span> <span class="o">=&gt;</span> <span class="p">[</span><span class="s1">'/bin/sh'</span><span class="p">]}</span>
+  <span class="no">Excon</span><span class="p">.</span><span class="nf">defaults</span><span class="p">[</span><span class="ss">:ssl_verify_peer</span><span class="p">]</span> <span class="o">=</span> <span class="kp">false</span>
+<span class="k">else</span>
+  <span class="c1">## デフォルトのバックエンドはSSH</span>
+  <span class="n">set</span> <span class="ss">:backend</span><span class="p">,</span> <span class="ss">:ssh</span>
+  <span class="n">set</span> <span class="ss">:request_pty</span><span class="p">,</span> <span class="kp">true</span>
+
+  <span class="c1">## このへんはRakeと一緒、定義ファイルを決定</span>
+  <span class="n">spec_env</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'SPEC_ENV'</span><span class="p">]</span>
+  <span class="k">if</span> <span class="n">spec_env</span>
+    <span class="n">path_candidate</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../../hosts_</span><span class="si">#{</span><span class="n">spec_env</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+    <span class="nb">puts</span> <span class="n">path_candidate</span>
+    <span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="n">path_candidate</span><span class="p">)</span>
+      <span class="n">hosts_defined</span> <span class="o">=</span> <span class="n">path_candidate</span>
+    <span class="k">else</span>
+      <span class="k">raise</span> <span class="no">RuntimeError</span><span class="p">,</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">======</span><span class="se">\n</span><span class="s2">ERROR: No hosts defined for </span><span class="si">#{</span><span class="n">spec_env</span><span class="si">}</span><span class="s2">.</span><span class="se">\n</span><span class="s2">======"</span>
+    <span class="k">end</span>
+  <span class="k">else</span>
+    <span class="n">hosts_defined</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../../hosts_staging"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+  <span class="k">end</span>
+
+
+  <span class="c1">## spec_helperでもRakefile同様にホスト定義を読み込む</span>
+  <span class="n">properties</span> <span class="o">=</span> <span class="no">YAML</span><span class="p">.</span><span class="nf">load_file</span><span class="p">(</span><span class="n">hosts_defined</span><span class="p">)</span>
+
+  <span class="n">host</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'TARGET_HOST'</span><span class="p">]</span>
+  <span class="n">mainrole</span> <span class="o">=</span> <span class="n">properties</span><span class="p">.</span><span class="nf">select</span> <span class="p">{</span><span class="o">|</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="o">|</span> <span class="n">v</span><span class="p">[</span><span class="ss">:hosts</span><span class="p">].</span><span class="nf">include?</span><span class="p">(</span><span class="n">host</span><span class="p">)</span> <span class="k">if</span> <span class="n">v</span><span class="p">[</span><span class="ss">:hosts</span><span class="p">]</span> <span class="p">}.</span><span class="nf">keys</span><span class="p">.</span><span class="nf">first</span>
+
+  <span class="c1">## ホスト固有の値を書いたファイルがあればつかう。</span>
+  <span class="n">host_vars</span> <span class="o">=</span> <span class="no">YAML</span><span class="p">.</span><span class="nf">load_file</span><span class="p">(</span>
+    <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../../host_vars/</span><span class="si">#{</span><span class="n">host</span><span class="si">}</span><span class="s2">.yml"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+  <span class="p">)</span> <span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../../host_vars/</span><span class="si">#{</span><span class="n">host</span><span class="si">}</span><span class="s2">.yml"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">))</span>
+
+  <span class="n">spec_property</span> <span class="o">=</span>  <span class="n">properties</span><span class="p">[</span><span class="n">mainrole</span><span class="p">]</span>
+  <span class="n">spec_property</span><span class="p">[</span><span class="ss">:host_vars</span><span class="p">]</span> <span class="o">=</span>  <span class="n">host_vars</span> <span class="o">||=</span> <span class="p">{}</span>
+
+  <span class="c1">## 環境変数DEBUGがあったらset_propertyに渡される値を表示する</span>
+  <span class="nb">puts</span> <span class="n">spec_property</span><span class="p">.</span><span class="nf">to_yaml</span> <span class="k">if</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'DEBUG'</span><span class="p">]</span>
+
+  <span class="n">set_property</span> <span class="n">spec_property</span>
+
+  <span class="c1">## specの中で大分類を使うかもしれないと思ってとりあえず環境変数に突っ込んである。</span>
+  <span class="no">ENV</span><span class="p">[</span><span class="s1">'SPEC_MAINROLE'</span><span class="p">]</span> <span class="o">=</span> <span class="n">mainrole</span>
+
+  <span class="c1">## 環境別SSH接続設定をマージしていく</span>
+  <span class="n">options</span> <span class="o">=</span> <span class="no">Net</span><span class="o">::</span><span class="no">SSH</span><span class="o">::</span><span class="no">Config</span><span class="p">.</span><span class="nf">for</span><span class="p">(</span><span class="n">host</span><span class="p">).</span><span class="nf">merge</span><span class="p">(</span><span class="n">properties</span><span class="p">[</span><span class="s1">'shared_settings'</span><span class="p">][</span><span class="ss">:ssh_opts</span><span class="p">])</span>
+
+  <span class="c1">### 大分類の下にもssh_optsがあったらそっちを優先で上書き</span>
+  <span class="n">options</span><span class="p">.</span><span class="nf">merge!</span><span class="p">(</span><span class="n">properties</span><span class="p">[</span><span class="n">mainrole</span><span class="p">][</span><span class="ss">:ssh_opts</span><span class="p">])</span> <span class="k">if</span> <span class="n">properties</span><span class="p">[</span><span class="n">mainrole</span><span class="p">][</span><span class="ss">:ssh_opts</span><span class="p">]</span>
+  <span class="n">options</span><span class="p">[</span><span class="ss">:user</span><span class="p">]</span> <span class="o">||=</span> <span class="s1">'root'</span>
+  <span class="n">options</span><span class="p">[</span><span class="ss">:keys</span><span class="p">]</span> <span class="o">||=</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"</span><span class="si">#{</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'HOME'</span><span class="p">]</span><span class="si">}</span><span class="s2">/.ssh/my_staging_key"</span> <span class="p">,</span><span class="kp">__FILE__</span><span class="p">)</span>
+
+  <span class="n">set</span> <span class="ss">:host</span><span class="p">,</span>        <span class="n">options</span><span class="p">[</span><span class="ss">:host_name</span><span class="p">]</span> <span class="o">||</span> <span class="n">host</span>
+  <span class="n">set</span> <span class="ss">:ssh_options</span><span class="p">,</span> <span class="n">options</span>
+
+  <span class="c1"># Disable sudo</span>
+  <span class="c1"># set :disable_sudo, true</span>
+
+  <span class="no">RSpec</span><span class="p">.</span><span class="nf">configure</span> <span class="k">do</span> <span class="o">|</span><span class="n">config</span><span class="o">|</span>
+    <span class="n">config</span><span class="p">.</span><span class="nf">color</span> <span class="o">=</span> <span class="kp">true</span>
+    <span class="n">config</span><span class="p">.</span><span class="nf">tty</span> <span class="o">=</span> <span class="kp">true</span>
+  <span class="k">end</span>
+
+  <span class="c1"># Set environment variables</span>
+  <span class="n">set</span> <span class="ss">:env</span><span class="p">,</span> <span class="ss">:LANG</span> <span class="o">=&gt;</span> <span class="s1">'C'</span><span class="p">,</span> <span class="ss">:LC_MESSAGES</span> <span class="o">=&gt;</span> <span class="s1">'C'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>いくらか冗長だったり、initの分が残ってたりです。やってることは単純。</p>
+
+<h3>
+<span id="とりあえずdockerで" class="fragment"></span><a href="#%E3%81%A8%E3%82%8A%E3%81%82%E3%81%88%E3%81%9Adocker%E3%81%A7"><i class="fa fa-link"></i></a>とりあえずDockerで</h3>
+
+<p>大分類<code>db</code>相当のイメージをビルドしたら、該当する<code>spec:db:all</code>なりでspecを実行してきてもらったり。<br>
+テスト内容はダミーです。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ SPEC_BACKEND</span><span class="o">=</span>docker <span class="nv">DOCKER_IMAGE</span><span class="o">=</span>db ./bin/rake spec:db:all
+<span class="o">(</span>省略<span class="o">)</span> rspec <span class="nt">--pattern</span> <span class="se">\{</span>spec,common_spec,ferture_spec<span class="se">\}</span>/<span class="se">\{</span>common,group,user/system,user/db,fluentd,mackerel-agent,nagios/nrpe<span class="se">\}</span>/<span class="se">\*\*</span>/<span class="se">\*</span>_spec.rb
+
+Command <span class="s2">"id"</span>
+  exit_status
+    should eq 0
+
+File <span class="s2">"/etc"</span>
+  should be directory
+
+Finished <span class="k">in </span>4.18 seconds <span class="o">(</span>files took 0.54121 seconds to load<span class="o">)</span>
+2 examples, 0 failures
+</pre></div></div>
+
+<p>実際使っているspec内ではいくつかの箇所でSPEC_BACKENDがDockerなら実施しないテストなどを分岐しました。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>Serverspec(ここはRSpecとしてもいいけど)は最終的に個々のタスクを別々にこなすようになっているので、好きなようにタスクを生成して乱雑にわたしてもきっちり動いてくれますね。</p>

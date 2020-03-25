@@ -1,0 +1,295 @@
+<p>specinfraは汎用コマンド実行フレームワーク。RubyGemsとしてで配布されています。</p>
+
+<blockquote>
+<p>追記：これは１の頃の話なので全体的に古いです。<br>
+この書籍が一番詳しい。 =&gt; <a href="http://www.oreilly.co.jp/books/9784873117096/" title="O'Reilly Japan - Serverspec" rel="nofollow noopener" target="_blank">O'Reilly Japan - Serverspec</a></p>
+</blockquote>
+
+<p>ソースはこちら <a href="https://github.com/serverspec/specinfra" rel="nofollow noopener" target="_blank">https://github.com/serverspec/specinfra</a></p>
+
+<p>specinfraが目指す所は、情報処理学会研究報告の <strong>serverspec: 宣言的記述でサーバの状態をテスト可能な 汎用性の高いテストフレームワーク</strong> という論文を見ると良いでしょう。</p>
+
+<p>論文もソースコードと同様にGithubに公開されています。</p>
+
+<p><a href="https://github.com/mizzy/serverspec-thesis" rel="nofollow noopener" target="_blank">https://github.com/mizzy/serverspec-thesis</a></p>
+
+<h2>
+<span id="概要" class="fragment"></span><a href="#%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>概要</h2>
+
+<p>同じメソッドで任意のOS用のコマンド実行文字列を取得したり実行して結果をとったりします。</p>
+
+<p>さわった感じこんな挙動</p>
+
+<ul>
+<li>バックエンドの形式を選ぶ</li>
+<li>バックエンドを元にインスタンスを作成したら、あとは同じメソッドでどこでもOK</li>
+</ul>
+
+<h2>
+<span id="ローカルホストを対象に実行する" class="fragment"></span><a href="#%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%83%9B%E3%82%B9%E3%83%88%E3%82%92%E5%AF%BE%E8%B1%A1%E3%81%AB%E5%AE%9F%E8%A1%8C%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ローカルホストを対象に実行する</h2>
+
+<p>チュートリアルはありませんが、serverspecのソースといつもの<code>spec_helper.rb</code>を見れば大体つかめます。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="nb">require</span> <span class="s1">'specinfra'</span>
+
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">DetectOS</span>
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">Exec</span>
+
+<span class="c1">## exec(ローカル実行)をバックエンドにインスタンスを生成する</span>
+<span class="n">i</span> <span class="o">=</span> <span class="no">Backend</span><span class="p">.</span><span class="nf">backend_for</span><span class="p">(</span><span class="s1">'exec'</span><span class="p">)</span>
+
+<span class="c1">## こんな感じで共通コマンドが実行できる</span>
+<span class="n">i</span><span class="p">.</span><span class="nf">check_os</span>
+</pre></div></div>
+
+<hr>
+
+<p><code>&gt;&gt; 追記１</code></p>
+
+<p>specinfra開発<a href="https://twitter.com/gosukenator" rel="nofollow noopener" target="_blank">mizzy/@gosukenator</a>さんによると、単純に使う場合はインスタンス作るまでもなかったようです。</p>
+
+<blockquote class="twitter-tweet">
+<p><a href="https://twitter.com/sawanoboly" rel="nofollow noopener" target="_blank">@sawanoboly</a> include SpecInfra::Helper::Exec してる場合は、バックエンドインスタンスを明示的に生成しなくても、<a href="https://t.co/HMFVbb2ehY" rel="nofollow noopener" target="_blank">https://t.co/HMFVbb2ehY</a> こんな感じでいけますね。（serverspec はこのやりかたです。）</p>— Gosuke Miyashita (@gosukenator) <a href="https://twitter.com/gosukenator/statuses/443966832882368512" rel="nofollow noopener" target="_blank">2014, 3月 13</a>
+</blockquote>
+
+
+
+<p><a href="https://gist.github.com/mizzy/9521892" rel="nofollow noopener" target="_blank">こういう事</a>、との事。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">gist.github.com/mizzy/9521892</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'specinfra'</span>
+
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">DetectOS</span>
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">Exec</span>
+
+<span class="n">backend</span><span class="p">.</span><span class="nf">check_os</span>
+</pre></div>
+</div>
+
+<p>あらほんとだ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; backend.check_os
+=&gt; {:family=&gt;"Darwin", :release=&gt;nil}
+</pre></div></div>
+
+<p><a href="https://github.com/serverspec/specinfra/blob/master/lib/specinfra/helper/backend.rb" rel="nofollow noopener" target="_blank">lib/specinfra/helper/backend.rb</a>の動的なメソッド定義はそういうことだったのね。</p>
+
+<p><code>&lt;&lt; 追記1</code></p>
+
+<hr>
+
+<h3>
+<span id="実行の様子" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%AE%E6%A7%98%E5%AD%90"><i class="fa fa-link"></i></a>実行の様子</h3>
+
+<p>Pryから叩いてみます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.check_os
+=&gt; {:family=&gt;"Darwin", :release=&gt;nil}
+</pre></div></div>
+
+<p>メソッドで成否判定をする場合はこんな感じ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.check_resolvable('www.google.com', 'dns')
+=&gt; true
+</pre></div></div>
+
+<p>実行されるコマンドを取得する時は<code>#commands</code>から同じことをすると良いみたいです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.commands.check_resolvable('www.google.com', 'dns')
+=&gt; "nslookup -timeout=1 www.google.com"
+</pre></div></div>
+
+<p>確認しつつ実行とか。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.commands.check_file('/tmp')
+=&gt; "test -f /tmp"
+
+&gt; i.check_file('/tmp')
+=&gt; false
+</pre></div></div>
+
+<h4>
+<span id="run_command" class="fragment"></span><a href="#run_command"><i class="fa fa-link"></i></a>run_command</h4>
+
+<p><code>#run_command</code>で任意のコマンドを実行してくる事も可能。<br>
+これもバックエンドをちゃんと選択してくれます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.run_command('ls')
+=&gt; #&lt;SpecInfra::CommandResult:0x007fdd634b3640
+ @exit_signal=nil,
+ @exit_status=0,
+ @stderr="",
+ @stdout=
+  "Gemfile\nGemfile.lock\nGuardfile\nLICENSE.txt\nREADME.md\nRakefile\nci\nconfig\nenv.sh\nfeatures\njackalope\nlib\npast_features\nrake\nslayer_kitchen\nspec\ntmp\n"&gt;
+</pre></div></div>
+
+<p>メソッドの中には直接実行すると、次のように結果が期待しているのではなかったりします。</p>
+
+<p>※これはUbuntuで実行してます</p>
+
+<blockquote>
+<p>追記: ここのくだりは修正されています。</p>
+</blockquote>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.get_package_version('tmux')
+=&gt; true
+</pre></div></div>
+
+<p>いやバージョン欲しいねんけど、って時にも<code>#run_command</code>をかますといいのかもしれない？</p>
+
+<blockquote>
+<p>追記: <code>check_*</code>以外は<code>CommandResult</code>をそのまま返してくれるように変更されたので、<code>get_package_version</code>の戻りがこの次のサンプルとおなじになります。</p>
+</blockquote>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.commands.get_package_version('tmux')
+=&gt; "dpkg-query -f '${Status} ${Version}' -W tmux | sed -n 's/^install ok installed //p'"
+
+
+&gt; i.run_command(i.commands.get_package_version('tmux'))
+=&gt; #&lt;SpecInfra::CommandResult:0x007fa0a2283cd8
+ @exit_signal=nil,
+ @exit_status=0,
+ @stderr="",
+ @stdout="1.6-1ubuntu1"&gt;
+</pre></div></div>
+
+<h3>
+<span id="実行できるメソッド達" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%A7%E3%81%8D%E3%82%8B%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89%E9%81%94"><i class="fa fa-link"></i></a>実行できるメソッド達</h3>
+
+<p><a href="https://github.com/serverspec/specinfra/tree/master/lib/specinfra/command" rel="nofollow noopener" target="_blank">lib/specinfra/command</a>を参考にします。</p>
+
+<p>たいていはBaseに定義されているので、ざっと眺めることも出来ます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; SpecInfra::Command::Base.instance_methods(false)
+=&gt; [:escape,
+ :check_enabled,
+ :check_yumrepo,
+ :check_yumrepo_enabled,
+ :check_mounted,
+ :check_routing_table,
+ :check_reachable,
+ :check_resolvable,
+ :check_file,
+ :check_socket,
+ :check_directory,
+ :check_user,
+ :check_group,
+ :check_installed,
+ :check_service_installed,
+ :check_service_start_mode,
+ :check_listening,
+ :check_listening_with_protocol,
+ :check_running,
+ :check_running_under_supervisor,
+ :check_running_under_upstart,
+ :check_monitored_by_monit,
+ :check_monitored_by_god,
+ :check_process,
+ :get_process,
+ :check_file_contain,
+ :check_file_contain_with_regexp,
+ :check_file_contain_with_fixed_strings,
+ :check_file_checksum,
+ :check_file_md5checksum,
+ :check_file_sha256checksum,
+ :check_file_contain_within,
+ :check_mode,
+ :check_owner,
+ :check_grouped,
+ :check_cron_entry,
+ :check_link,
+ :check_installed_by_gem,
+ :check_installed_by_npm,
+ :check_installed_by_pecl,
+ :check_installed_by_pear,
+ :check_installed_by_pip,
+ :check_installed_by_cpan,
+ :check_belonging_group,
+ :check_gid,
+ :check_uid,
+ :check_login_shell,
+ :check_home_directory,
+ :check_authorized_key,
+ :check_iptables_rule,
+ :check_zfs,
+ :get_mode,
+ :check_ipfilter_rule,
+ :check_ipnat_rule,
+ :check_svcprop,
+ :check_svcprops,
+ :check_selinux,
+ :check_access_by_user,
+ :check_kernel_module_loaded,
+ :check_ipv4_address,
+ :check_mail_alias,
+ :get_file_content,
+ :check_container,
+ :check_cotainer_running,
+ :get_package_version]
+</pre></div></div>
+
+<h2>
+<span id="ssh越しのホストを対象に実行する" class="fragment"></span><a href="#ssh%E8%B6%8A%E3%81%97%E3%81%AE%E3%83%9B%E3%82%B9%E3%83%88%E3%82%92%E5%AF%BE%E8%B1%A1%E3%81%AB%E5%AE%9F%E8%A1%8C%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>SSH越しのホストを対象に実行する</h2>
+
+<p>コマンドをSSH越しに実行してくるには、<code>SpecInfra.configuration.ssh</code>に<code>Net::SSH.start</code>で作成されるインスタンスを入れておけば良いみたいです。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="nb">require</span> <span class="s1">'specinfra'</span>
+<span class="nb">require</span> <span class="s1">'net/ssh'</span>
+
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">DetectOS</span>
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">Ssh</span>
+
+<span class="c1">## コンフィグにNet::SSHのインスタンスを設定</span>
+<span class="c1"># optionsの指定等はserverspecが作るspec_helperを参考にしましょう</span>
+<span class="no">SpecInfra</span><span class="p">.</span><span class="nf">configuration</span><span class="p">.</span><span class="nf">ssh</span> <span class="o">=</span> <span class="no">Net</span><span class="o">::</span><span class="no">SSH</span><span class="p">.</span><span class="nf">start</span><span class="p">(</span><span class="s1">'example.com'</span><span class="p">,</span> <span class="s1">'root'</span><span class="p">,</span> <span class="p">{})</span>
+
+
+<span class="c1">## sshをバックエンドにインスタンスを生成する</span>
+<span class="n">i</span> <span class="o">=</span> <span class="no">Backend</span><span class="p">.</span><span class="nf">backend_for</span><span class="p">(</span><span class="s1">'ssh'</span><span class="p">)</span>
+
+<span class="c1">## こんな感じで共通コマンドが実行できる</span>
+<span class="n">i</span><span class="p">.</span><span class="nf">check_os</span>
+</pre></div></div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.class
+=&gt; SpecInfra::Backend::Ssh
+
+
+&gt; i.check_os
+=&gt; {:family=&gt;"Ubuntu", :release=&gt;nil}
+</pre></div></div>
+
+<p>あとはもはやローカルと同じです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>i.commands.check_resolvable('www.google.com', 'dns')
+=&gt; "nslookup -timeout=1 www.google.com"
+
+&gt; i.commands.check_resolvable('www.google.com', nil)
+=&gt; "getent hosts www.google.com"
+</pre></div></div>
+
+<p>OSに合わせてメソッドの内容も調整されています。<br>
+この様子も<a href="https://github.com/serverspec/specinfra/tree/master/lib/specinfra/command" rel="nofollow noopener" target="_blank">lib/specinfra/command</a>で確認できます。</p>
+
+<p>パッケージやサービスの確認をしてみました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; i.commands.check_installed('nagios3')
+=&gt; "dpkg-query -f '${Status}' -W nagios3 | grep '^install ok installed$'"
+
+&gt; i.check_installed('nagios3')
+=&gt; true
+
+
+&gt; i.check_running('nagios3')
+=&gt; true
+
+&gt; i.commands.check_running('nagios3')
+=&gt; "service nagios3 status &amp;&amp; service nagios3 status | grep 'running'"
+</pre></div></div>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>今回はRSpecではなく、他のテストフレームワークから似たようなことをするためにspecinfraをさわってみました。<br>
+目的がテストだと、結局serverspecみたいになりますね。</p>

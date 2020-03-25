@@ -1,0 +1,63 @@
+<p>walterはこちら。 <a href="http://qiita.com/sawanoboly/items/0b2afedd7949cd045e82" title="シンプルなパイプラインツールwalterを少しだけ試してみた - Qiita" id="reference-4694e540ab77be80a673">シンプルなパイプラインツールwalterを少しだけ試してみた - Qiita</a></p>
+
+<h2>
+<span id="testやdeploymentにwalterだけ書けばいいようにできるかな" class="fragment"></span><a href="#test%E3%82%84deployment%E3%81%ABwalter%E3%81%A0%E3%81%91%E6%9B%B8%E3%81%91%E3%81%B0%E3%81%84%E3%81%84%E3%82%88%E3%81%86%E3%81%AB%E3%81%A7%E3%81%8D%E3%82%8B%E3%81%8B%E3%81%AA"><i class="fa fa-link"></i></a>testやdeploymentにwalterだけ書けばいいようにできるかな</h2>
+
+<p>CircleCIヘルプののcustom softwareを参考に。</p>
+
+<p><a href="https://circleci.com/docs/installing-custom-software" title="Install custom software - CircleCI" rel="nofollow noopener" target="_blank">Install custom software - CircleCI</a></p>
+
+<p>全容はこちら。</p>
+
+<p><a href="https://github.com/OpsRockin/the_walter_visits_with_circleci" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/the_walter_visits_with_circleci</a></p>
+
+<h2>
+<span id="circleyml" class="fragment"></span><a href="#circleyml"><i class="fa fa-link"></i></a>circle.yml</h2>
+
+<p>インストールしたらキャッシュしよう。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">circle.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">dependencies</span><span class="pi">:</span>
+  <span class="na">pre</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">bash ./ci/install-walter-0.1.0.sh</span>
+  <span class="na">cache_directories</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s2">"</span><span class="s">~/walter"</span>
+<span class="na">test</span><span class="pi">:</span>
+  <span class="na">override</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">walter</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="dependencies-preの中身" class="fragment"></span><a href="#dependencies-pre%E3%81%AE%E4%B8%AD%E8%BA%AB"><i class="fa fa-link"></i></a>dependencies-preの中身</h2>
+
+<p><code>~/bin/</code>にリンクを張ればパスが通るのでそうしてみた。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">ci/install-walter-0.1.0.sh</span></div>
+<div class="highlight"><pre><span class="nb">set</span> <span class="nt">-x</span>
+<span class="nb">set</span> <span class="nt">-e</span>
+<span class="nv">W_VERS</span><span class="o">=</span>0.1.0
+<span class="nv">W_DIR</span><span class="o">=</span>walter_linux_amd64
+
+<span class="nb">mkdir</span> <span class="nt">-p</span> ~/walter/<span class="k">${</span><span class="nv">W_VERS</span><span class="k">}</span>
+
+<span class="k">if</span> <span class="o">[</span> <span class="o">!</span> <span class="nt">-e</span> ~/walter/<span class="k">${</span><span class="nv">W_VERS</span><span class="k">}</span>/<span class="k">${</span><span class="nv">W_DIR</span><span class="k">}</span>/walter <span class="o">]</span><span class="p">;</span> <span class="k">then
+  </span>wget https://github.com/walter-cd/walter/releases/download/v<span class="k">${</span><span class="nv">W_VERS</span><span class="k">}</span>/walter_linux_amd64.tar.gz
+  <span class="nb">tar </span>xvzf walter_linux_amd64.tar.gz <span class="nt">-C</span> ~/walter/<span class="k">${</span><span class="nv">W_VERS</span><span class="k">}</span>
+<span class="k">fi
+
+</span><span class="nb">sudo ln</span> <span class="nt">-sf</span> <span class="k">${</span><span class="nv">HOME</span><span class="k">}</span>/walter/<span class="k">${</span><span class="nv">W_VERS</span><span class="k">}</span>/<span class="k">${</span><span class="nv">W_DIR</span><span class="k">}</span>/walter <span class="k">${</span><span class="nv">HOME</span><span class="k">}</span>/bin/walter
+</pre></div>
+</div>
+
+<h2>
+<span id="walter動くかな" class="fragment"></span><a href="#walter%E5%8B%95%E3%81%8F%E3%81%8B%E3%81%AA"><i class="fa fa-link"></i></a>walter動くかな</h2>
+
+<p>動いた。Golangめ。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd0953112-2b62-8eec-dfa3-8f29670fc760.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9d72bfc87e51af99e4af2d0d1ffe9759" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd0953112-2b62-8eec-dfa3-8f29670fc760.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9d72bfc87e51af99e4af2d0d1ffe9759" alt="OpsRockin_the_walter_visits_with_circleci__7_-_CircleCI.png" title="OpsRockin_the_walter_visits_with_circleci__7_-_CircleCI.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d0953112-2b62-8eec-dfa3-8f29670fc760.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd0953112-2b62-8eec-dfa3-8f29670fc760.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=5fb1ad1ae94e801724dab808c5c75e2e 1x" loading="lazy"></a></p>
+
+<p>今のところShellを並べるのと使い勝手や取り回しやすさは変わらないけど、少しだけおしゃれだ。</p>

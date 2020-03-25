@@ -1,0 +1,168 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>名前ベースのSSLを。</p>
+
+<h2>
+<span id="nginxでsniが有効になっているか確認" class="fragment"></span><a href="#nginx%E3%81%A7sni%E3%81%8C%E6%9C%89%E5%8A%B9%E3%81%AB%E3%81%AA%E3%81%A3%E3%81%A6%E3%81%84%E3%82%8B%E3%81%8B%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>nginxでsniが有効になっているか確認</h2>
+
+<p>コンパイル時に<code>--with-http_ssl_module</code> をつけつつ、OpenSSLのライブラリが対応していればよい。<br>
+パッケージ版でも有効なので大体の環境では問題ないでしょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">CLI_output</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>nginx <span class="nt">-V</span>
+nginx version: nginx/1.2.1
+TLS SNI support enabled
+</pre></div>
+</div>
+
+<p><code>TLS SNI support enabled</code>となってればOK。</p>
+
+<p>これでSSLのClientHelloにくっついてきたサーバ名を拾ってくれる。</p>
+
+<h2>
+<span id="nginxの設定" class="fragment"></span><a href="#nginx%E3%81%AE%E8%A8%AD%E5%AE%9A"><i class="fa fa-link"></i></a>nginxの設定</h2>
+
+<p>nginxにインクルードするコンフィグの例、<a href="http://nginx.org/en/docs/http/configuring_https_servers.html" rel="nofollow noopener" target="_blank">本家ドキュメント</a>案内通り、普通に設定してよい。<br>
+ファイルを用意するのが面倒なので<a href="http://wiki.nginx.org/HttpLuaModule" rel="nofollow noopener" target="_blank">HttpLuaModule</a>でコンテンツを返却しています。</p>
+
+<div class="code-frame" data-lang="nginx">
+<div class="code-lang"><span class="bold">nginx_sni.conf</span></div>
+<div class="highlight"><pre><span class="k">server</span> <span class="p">{</span>
+        <span class="kn">listen</span> <span class="mi">443</span><span class="p">;</span>
+        <span class="kn">server_name</span> <span class="s">cert1.example.com</span><span class="p">;</span>
+
+        <span class="kn">root</span> <span class="s">html</span><span class="p">;</span>
+        <span class="kn">index</span> <span class="s">index.html</span> <span class="s">index.htm</span><span class="p">;</span>
+
+        <span class="kn">ssl</span> <span class="no">on</span><span class="p">;</span>
+        <span class="kn">ssl_certificate</span> <span class="nc">certs/cert</span><span class="mi">1</span><span class="s">.example.com.cert</span><span class="p">;</span>
+        <span class="kn">ssl_certificate_key</span> <span class="nc">certs/cert</span><span class="mi">1</span><span class="s">.example.com.key</span><span class="p">;</span>
+
+        <span class="kn">location</span> <span class="n">/</span> <span class="p">{</span>
+                <span class="kn">default_type</span> <span class="s">'text/plain'</span><span class="p">;</span>
+                <span class="kn">content_by_lua</span> <span class="s">'ngx.say(ngx.var.server_name)'</span><span class="p">;</span>
+        <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">server</span> <span class="p">{</span>
+        <span class="kn">listen</span> <span class="mi">443</span><span class="p">;</span>
+        <span class="kn">server_name</span> <span class="s">cert2.example.com</span><span class="p">;</span>
+
+        <span class="kn">root</span> <span class="s">html</span><span class="p">;</span>
+        <span class="kn">index</span> <span class="s">index.html</span> <span class="s">index.htm</span><span class="p">;</span>
+
+        <span class="kn">ssl</span> <span class="no">on</span><span class="p">;</span>
+        <span class="kn">ssl_certificate</span> <span class="nc">certs/cert</span><span class="mi">2</span><span class="s">.example.com.cert</span><span class="p">;</span>
+        <span class="kn">ssl_certificate_key</span> <span class="nc">certs/cert</span><span class="mi">2</span><span class="s">.example.com.key</span><span class="p">;</span>
+
+        <span class="kn">location</span> <span class="n">/</span> <span class="p">{</span>
+                <span class="kn">default_type</span> <span class="s">'text/plain'</span><span class="p">;</span>
+                <span class="kn">content_by_lua</span> <span class="s">'ngx.say(ngx.var.server_name)'</span><span class="p">;</span>
+        <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">server</span> <span class="p">{</span>
+        <span class="kn">listen</span> <span class="mi">443</span> <span class="s">default</span><span class="p">;</span>
+        <span class="kn">server_name</span> <span class="s">cert3.example.com</span><span class="p">;</span>
+
+        <span class="kn">root</span> <span class="s">html</span><span class="p">;</span>
+        <span class="kn">index</span> <span class="s">index.html</span> <span class="s">index.htm</span><span class="p">;</span>
+
+        <span class="kn">ssl</span> <span class="no">on</span><span class="p">;</span>
+        <span class="kn">ssl_certificate</span> <span class="nc">certs/cert</span><span class="mi">3</span><span class="s">.example.com.cert</span><span class="p">;</span>
+        <span class="kn">ssl_certificate_key</span> <span class="nc">certs/cert</span><span class="mi">3</span><span class="s">.example.com.key</span><span class="p">;</span>
+
+        <span class="kn">location</span> <span class="n">/</span> <span class="p">{</span>
+                <span class="kn">default_type</span> <span class="s">'text/plain'</span><span class="p">;</span>
+                <span class="kn">content_by_lua</span> <span class="s">'ngx.say(ngx.var.server_name)'</span><span class="p">;</span>
+        <span class="p">}</span>
+<span class="p">}</span>
+
+</pre></div>
+</div>
+
+<h3>
+<span id="opensslのクライアントでテスト" class="fragment"></span><a href="#openssl%E3%81%AE%E3%82%AF%E3%83%A9%E3%82%A4%E3%82%A2%E3%83%B3%E3%83%88%E3%81%A7%E3%83%86%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>OpenSSLのクライアントでテスト</h3>
+
+<p><code>-servername cert*.example.com</code> を渡して証明書の使い分けをテスト。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">CLI_output</span></div>
+<div class="highlight"><pre><span class="c"># cert1 が使われている</span>
+<span class="nv">$ </span>openssl s_client <span class="nt">-quiet</span> <span class="nt">-connect</span> localhost:443 <span class="nt">-servername</span> cert1.example.com
+<span class="nv">depth</span><span class="o">=</span>0 /C<span class="o">=</span>JP/ST<span class="o">=</span>Osaka/L<span class="o">=</span>Osaka-shi/O<span class="o">=</span>HiganWorks LLC./CN<span class="o">=</span>cert1.example.com
+
+<span class="c"># cert2 が使われている</span>
+<span class="nv">$ </span>openssl s_client <span class="nt">-quiet</span> <span class="nt">-connect</span> localhost:443 <span class="nt">-servername</span> cert2.example.com
+<span class="nv">depth</span><span class="o">=</span>0 /C<span class="o">=</span>JP/ST<span class="o">=</span>Osaka/L<span class="o">=</span>Osaka-shi/O<span class="o">=</span>HiganWorks LLC./CN<span class="o">=</span>cert2.example.com
+
+<span class="c"># cert3 が使われている</span>
+<span class="nv">$ </span>openssl s_client <span class="nt">-quiet</span> <span class="nt">-connect</span> localhost:443 <span class="nt">-servername</span> cert3.example.com
+<span class="nv">depth</span><span class="o">=</span>0 /C<span class="o">=</span>JP/ST<span class="o">=</span>Osaka/L<span class="o">=</span>Osaka-shi/O<span class="o">=</span>HiganWorks LLC./CN<span class="o">=</span>cert3.example.com
+
+<span class="c"># 未設定ならデフォルトが使われる</span>
+<span class="nv">$ </span>openssl s_client <span class="nt">-quiet</span> <span class="nt">-connect</span> localhost:443 <span class="nt">-servername</span> cert4.example.com
+<span class="nv">depth</span><span class="o">=</span>0 /C<span class="o">=</span>JP/ST<span class="o">=</span>Osaka/L<span class="o">=</span>Osaka-shi/O<span class="o">=</span>HiganWorks LLC./CN<span class="o">=</span>cert3.example.com
+</pre></div>
+</div>
+
+<p>それぞれのリクエストに対して、期待通りのサーバ証明書が選択されている。</p>
+
+<h3>
+<span id="hostを渡してコンテンツのチェック" class="fragment"></span><a href="#host%E3%82%92%E6%B8%A1%E3%81%97%E3%81%A6%E3%82%B3%E3%83%B3%E3%83%86%E3%83%B3%E3%83%84%E3%81%AE%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>Hostを渡してコンテンツのチェック</h3>
+
+<p>名前ベースで別コンテンツを返している。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">CLI_output</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>curl <span class="nt">-k</span> https://localhost:443/ <span class="nt">-H</span> <span class="s1">'Host: cert1.example.com'</span>
+cert1.example.com
+
+<span class="nv">$ </span>curl <span class="nt">-k</span> https://localhost:443/ <span class="nt">-H</span> <span class="s1">'Host: cert2.example.com'</span>
+cert2.example.com
+
+<span class="nv">$ </span>curl <span class="nt">-k</span> https://localhost:443/ <span class="nt">-H</span> <span class="s1">'Host: cert3.example.com'</span>
+cert3.example.com
+</pre></div>
+</div>
+
+<p>※これらcurlで使われているサーバ証明書はすべてデフォルトの<code>CN: cert3.example.com</code>のものになる、理由は後述。</p>
+
+<h2>
+<span id="clienthello中サーバ名の確認" class="fragment"></span><a href="#clienthello%E4%B8%AD%E3%82%B5%E3%83%BC%E3%83%90%E5%90%8D%E3%81%AE%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>ClientHello中サーバ名の確認</h2>
+
+<p>SNIではTCPセッション確立後の1発目、ClientHelloにサーバ名を混ぜることで暗号化前にサーバ名を設定できるようにしている。<br>
+というよりこのタイミングしか無いので仕方ない。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ openssl s_client -connect localhost:443 -servername cert3.example.com -debug
+CONNECTED(00000003)
+write to 0x1461ff0 [0x1463700] (121 bytes =&gt; 121 (0x79))
+-- snip --
+0060 - 14 00 00 11 63 65 72 74-33 2e 65 78 61 6d 70 6c   ....cert3.exampl
+0070 - 65 2e 63 6f 6d 00 23                              e.com.#
+-- snip --
+</pre></div></div>
+
+<p>デバッグ出力から一つ目のWrite(ClientHello)のダンプを見るとサーバ名が含まれていた。</p>
+
+<h3>
+<span id="curlのsni対応" class="fragment"></span><a href="#curl%E3%81%AEsni%E5%AF%BE%E5%BF%9C"><i class="fa fa-link"></i></a>curlのSNI対応</h3>
+
+<p>curlもsniに対応しているが、ClientHelloで渡す文字列が、</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>curl https://{server_name}/
+</pre></div></div>
+
+<p>の<code>{server_name}</code>部分になっていた。</p>
+
+<p>とういことで、下記のパターンでは<code>localhost</code>が使われるのでコンテンツは名前ベースのものが返ってくるけど証明書はデフォルトで指定しているものだけが使われてしまう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>curl https://localhost/ -H "Host: cert1.example.com"
+</pre></div></div>
+
+<p>curlで動作確認するならhostsに書いてコモンネームをURL部分に含めます。</p>

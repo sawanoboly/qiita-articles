@@ -1,0 +1,31 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Redmineを好みのRackupを使いたい、プラグインで使うgemを追加したい。</p>
+
+<p>Gemfileに直接書いたらマージが発生するので、ローカル用・プラグイン用のGemfileをインクルード出来るようにしてくれている。</p>
+
+<div class="code-frame" data-lang="Ruby">
+<div class="code-lang"><span class="bold">Gemfile(redmine)</span></div>
+<div class="highlight"><pre><span class="o">--</span> <span class="n">snip</span> <span class="o">--</span>
+<span class="n">local_gemfile</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">),</span> <span class="s2">"Gemfile.local"</span><span class="p">)</span>
+<span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="n">local_gemfile</span><span class="p">)</span>
+  <span class="nb">puts</span> <span class="s2">"Loading Gemfile.local ..."</span> <span class="k">if</span> <span class="vg">$DEBUG</span> <span class="c1"># `ruby -d` or `bundle -v`</span>
+  <span class="nb">instance_eval</span> <span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="n">local_gemfile</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="c1"># Load plugins' Gemfiles</span>
+<span class="no">Dir</span><span class="p">.</span><span class="nf">glob</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../plugins/*/Gemfile"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">file</span><span class="o">|</span>
+  <span class="nb">puts</span> <span class="s2">"Loading </span><span class="si">#{</span><span class="n">file</span><span class="si">}</span><span class="s2"> ..."</span> <span class="k">if</span> <span class="vg">$DEBUG</span> <span class="c1"># `ruby -d` or `bundle -v`</span>
+  <span class="nb">instance_eval</span> <span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>rack関係や、適当に追加したいユーティリティは<code>Gemfile.local</code>に記述。<br>
+プラグイン独自のgemは<code>plugins/{pluginname}/Gemfile</code>に記述。</p>
+
+<p>という管理をしてbundle。</p>

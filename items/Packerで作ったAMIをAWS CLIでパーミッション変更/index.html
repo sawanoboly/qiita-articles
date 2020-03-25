@@ -1,0 +1,100 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>まあPacker限定ではないんですがメモ書き程度で。<br>
+作ったAMIを他所に使わせる場合に使う、例えばAWS MarketPlaceとか。</p>
+
+<p>とりあえずpackerでAMIのIDができたとします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>==&gt; amazon-ebs: Stopping the source instance...
+==&gt; amazon-ebs: Waiting for the instance to stop...
+==&gt; amazon-ebs: Creating the AMI: Example AMI
+    amazon-ebs: AMI: ami-xxxxxxxx
+==&gt; amazon-ebs: Waiting for AMI to become ready..
+</pre></div></div>
+
+<p><code>ec2 describe-images</code>でSnapShotのIDをいただきます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>aws ec2 describe-images <span class="nt">--image-ids</span> <span class="s1">'ami-xxxxxxxx'</span> <span class="o">[</span><span class="nt">--profile</span> name]
+
+<span class="o">{</span>
+    <span class="s2">"Images"</span>: <span class="o">[</span>
+        <span class="o">{</span>
+            <span class="s2">"VirtualizationType"</span>: <span class="s2">"hvm"</span>, 
+            <span class="s2">"Name"</span>: <span class="s2">"Example AMI"</span>, 
+            <span class="s2">"Hypervisor"</span>: <span class="s2">"xen"</span>, 
+            <span class="s2">"ImageId"</span>: <span class="s2">"ami-xxxxxxxx"</span>, 
+            <span class="s2">"State"</span>: <span class="s2">"available"</span>, 
+            <span class="s2">"BlockDeviceMappings"</span>: <span class="o">[</span>
+                <span class="o">{</span>
+                    <span class="s2">"DeviceName"</span>: <span class="s2">"/dev/sda1"</span>, 
+                    <span class="s2">"Ebs"</span>: <span class="o">{</span>
+                        <span class="s2">"DeleteOnTermination"</span>: <span class="nb">true</span>, 
+                        <span class="s2">"SnapshotId"</span>: <span class="s2">"snap-xxxxxxxx"</span>,    <span class="c">## SnapshotのID</span>
+                        <span class="s2">"VolumeSize"</span>: 8, 
+                        <span class="s2">"VolumeType"</span>: <span class="s2">"gp2"</span>, 
+                        <span class="s2">"Iops"</span>: 24
+                    <span class="o">}</span>
+                <span class="o">}</span>, 
+                <span class="o">{</span>
+                    <span class="s2">"DeviceName"</span>: <span class="s2">"/dev/sdb"</span>, 
+                    <span class="s2">"VirtualName"</span>: <span class="s2">"ephemeral0"</span>
+                <span class="o">}</span>, 
+                <span class="o">{</span>
+                    <span class="s2">"DeviceName"</span>: <span class="s2">"/dev/sdc"</span>, 
+                    <span class="s2">"VirtualName"</span>: <span class="s2">"ephemeral1"</span>
+                <span class="o">}</span>
+            <span class="o">]</span>, 
+            <span class="s2">"Architecture"</span>: <span class="s2">"x86_64"</span>, 
+            <span class="s2">"ImageLocation"</span>: <span class="s2">"6xxxxxxxx/Example AMI"</span>, 
+            <span class="s2">"RootDeviceType"</span>: <span class="s2">"ebs"</span>, 
+            <span class="s2">"OwnerId"</span>: <span class="s2">"6xxxxxxx"</span>, 
+            <span class="s2">"RootDeviceName"</span>: <span class="s2">"/dev/sda1"</span>, 
+            <span class="s2">"Public"</span>: <span class="nb">false</span>, 
+            <span class="s2">"ImageType"</span>: <span class="s2">"machine"</span>
+        <span class="o">}</span>
+    <span class="o">]</span>
+<span class="o">}</span>
+
+</pre></div></div>
+
+<p>jqでフィルタの例、スクリプトに組み込むなら。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>aws ec2 describe-images <span class="nt">--image-ids</span> <span class="s1">'ami-xxxxxxxx'</span>  <span class="nt">--profile</span> mp  | jq <span class="s1">'.Images[0].BlockDeviceMappings[0].Ebs.SnapshotId'</span>
+<span class="s2">"snap-cxxxxxxx"</span>
+
+</pre></div></div>
+
+<h2>
+<span id="オーナー変更" class="fragment"></span><a href="#%E3%82%AA%E3%83%BC%E3%83%8A%E3%83%BC%E5%A4%89%E6%9B%B4"><i class="fa fa-link"></i></a>オーナー変更</h2>
+
+<p>AMIとSnapshotにAWS MarketPlaceさん向けのパーミッションを付けます。</p>
+
+<p>AMIは<code>ec2 modify-image-attribute</code>で<code>--launch-permission</code>にAddします。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>aws ec2 modify-image-attribute <span class="nt">--image-id</span> ami-xxxxxxxx <span class="nt">--launch-permission</span> <span class="s2">"{</span><span class="se">\"</span><span class="s2">Add</span><span class="se">\"</span><span class="s2">: [{</span><span class="se">\"</span><span class="s2">UserId</span><span class="se">\"</span><span class="s2">:</span><span class="se">\"</span><span class="s2">67xxxxxxxxxx</span><span class="se">\"</span><span class="s2">}]}"</span> <span class="o">[</span><span class="nt">--profile</span> name]
+<span class="o">{</span>
+    <span class="s2">"return"</span>: <span class="s2">"true"</span>
+<span class="o">}</span>
+</pre></div></div>
+
+<p>Snapshotは<code>ec2 modify-snapshot-attribute</code>で<code>--create-volume-permission</code>にAddします。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>aws ec2 modify-snapshot-attribute <span class="nt">--snapshot-id</span> snap-xxxxxxxx <span class="nt">--create-volume-permission</span> <span class="s2">"{</span><span class="se">\"</span><span class="s2">Add</span><span class="se">\"</span><span class="s2">: [{</span><span class="se">\"</span><span class="s2">UserId</span><span class="se">\"</span><span class="s2">:</span><span class="se">\"</span><span class="s2">67xxxxxxxxxx</span><span class="se">\"</span><span class="s2">}]}"</span>  <span class="o">[</span><span class="nt">--profile</span> name]
+<span class="o">{</span>
+    <span class="s2">"return"</span>: <span class="s2">"true"</span>
+<span class="o">}</span>
+</pre></div></div>
+
+<p>これでOK。</p>
+
+<hr>
+
+<p>追記：これを応用したBashスクリプトをGistにおきました。</p>
+
+<p><a href="https://gist.github.com/sawanoboly/b0a6d7289ad5e88177d7" class="autolink" rel="nofollow noopener" target="_blank">https://gist.github.com/sawanoboly/b0a6d7289ad5e88177d7</a></p>
+
+

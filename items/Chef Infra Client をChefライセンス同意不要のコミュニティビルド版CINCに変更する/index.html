@@ -1,0 +1,142 @@
+<p>Chef Infra Client(※)のバージョン15くらいから、ライセンス同意を促されてますよね。(※他との区別のためchef-clientについた名前)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>+---------------------------------------------+
+            Chef License Acceptance
+
+...
+</pre></div></div>
+
+<p><strong>ライセンスApache2ちゃうの</strong>、と思うでしょうがそれはソースコードのお話とのこと。<br>
+Chef Software社がビルドした実行ファイル(※)とそれを含むrpm,debの利用に対してはこちらのChef Licenseに同意してね、と。</p>
+
+<blockquote>
+<p>※ 実行ファイルだけ別のRubyGemになってたりする =&gt; <a href="https://github.com/chef/chef/tree/master/chef-bin" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/chef/chef/tree/master/chef-bin</a></p>
+</blockquote>
+
+<h2>
+<span id="cinc-project" class="fragment"></span><a href="#cinc-project"><i class="fa fa-link"></i></a>CINC Project</h2>
+
+<p>で、あのライセンス同意をしなくてよいバージョンをコミュニティビルドという体で出しましょう、というCINC Projectが発足。</p>
+
+<p><a href="https://gitlab.com/cinc-project" class="autolink" rel="nofollow noopener" target="_blank">https://gitlab.com/cinc-project</a></p>
+
+<p>で、ちょっと名前違いの中身おんなじというパッケージが配布されだしたようです。<br>
+よくわからない？ 私もですから気にしないでいこうな。</p>
+
+<p>Chef Infra Clientの範囲で、CINCとの違いは、、</p>
+
+<ul>
+<li>実行関係のファイル<code>chef-*</code>が<code>cinc-*</code>に
+
+<ul>
+<li> でもsymlinkがあるよ</li>
+</ul>
+</li>
+<li>Chef License Acceptance不要</li>
+<li>
+<del>デフォルトの<code>/etc/chef</code>が<code>/etc/cinc</code>に</del> =&gt; <del><code>/etc/chef</code>に変わりました。</del> =&gt; やっぱり<code>/etc/cinc</code> だよ！(また変わるかもね。。)
+
+<ul>
+<li>(ただしohaiは多分ずっと<code>/etc/chef</code>のまま)</li>
+</ul>
+</li>
+</ul>
+
+<p>これだけ。この先変わってしまうこともあるかもですが。</p>
+
+<p>で、コミュニティビルドパッケージの配布は今の所こちらから。</p>
+
+<p><a href="http://downloads.cinc.sh" class="autolink" rel="nofollow noopener" target="_blank">http://downloads.cinc.sh</a></p>
+
+<blockquote>
+<p>追記: Projectのサイトが出来ていた。 <a href="https://cinc-project.gitlab.io/" rel="nofollow noopener" target="_blank">CINC</a> omnibus-installerもここにあるよ。</p>
+</blockquote>
+
+<h2>
+<span id="chef-infra-client--cinc-clientに差し替える" class="fragment"></span><a href="#chef-infra-client--cinc-client%E3%81%AB%E5%B7%AE%E3%81%97%E6%9B%BF%E3%81%88%E3%82%8B"><i class="fa fa-link"></i></a>Chef Infra Client =&gt; CINC Clientに差し替える</h2>
+
+<p>せっかくなのでchef-clientからcinc-clientに差し替えてみよう。違いはさっき挙げただけなので、まるまる差し替えてしまっても大丈夫です。</p>
+
+<p>まずChef Softwareビルド版のchefパッケージを消しますね。(例はUbuntu16)</p>
+
+<div class="code-frame" data-lang="shelll"><div class="highlight"><pre>$ sudo dpkg -r chef
+(Reading database ... 72883 files and directories currently installed.)
+Removing chef (15.3.14-1) ..
+</pre></div></div>
+
+<p><a href="https://cinc-project.gitlab.io/download/" rel="nofollow noopener" target="_blank">Download • CINC</a> から、インストーラのシェルを実行すればよいです。</p>
+
+<p>以下、互換性維持のためのいくつかのお世話がされています。</p>
+
+<ul>
+<li>
+<code>cinc-client</code>ほか<code>cinc-*</code> =&gt; <code>cher-client</code>ほか<code>cher-*</code>へのsymlinkはCINCパッケージインストール時に作られます
+-- uninstall時に消さないけど</li>
+<li><del>設定ディレクトリは <code>/etc/chef</code> を使う</del></li>
+<li>=&gt; デフォルトの設定ディレクトリはやっぱり<code>/etc/cinc</code>に戻った。</li>
+</ul>
+
+<p>差し替えの場合、<code>/etc/cinc</code>と<code>/etc/chef</code>はリンクしておくのが無難。 普段から<code>--config</code>オプション付きで実行してもよいです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo ln -s /etc/chef /etc/cinc
+</pre></div></div>
+
+<p>見た目何も変わらないので、適当に入れ替えてしまっても構わない感じです。</p>
+
+<hr>
+
+<blockquote>
+<p>追記: 以下は古い情報です。</p>
+</blockquote>
+
+<p>差し替えの場合、<code>/etc/cinc</code>と<code>/etc/chef</code>はリンクしておくのが無難。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo ln -s /etc/chef /etc/cinc
+</pre></div></div>
+
+<p><a href="http://downloads.cinc.sh" class="autolink" rel="nofollow noopener" target="_blank">http://downloads.cinc.sh</a> から適当なdebを入れればok.</p>
+
+<div class="code-frame" data-lang="shelll"><div class="highlight"><pre>$ wget http://downloads.cinc.sh/files/stable/cinc/ubuntu/16.04/cinc_15.3.14-1_amd64.deb
+$ sudo dpkg -i cinc_15.3.14-1_amd64.deb
+
+...
+Thank you for installing cinc, the community build based on Chef!
+
+$ cinc-client -v
+Cinc Client: 15.3.14
+</pre></div></div>
+
+<p>ついでに主要な実行ファイルをSymlinkにしてしまえば、互換性の面で安心ですかね。</p>
+
+<div class="code-frame" data-lang="shelll"><div class="highlight"><pre>$ for x in apply client shell solo ; do sudo ln -sfv /usr/bin/cinc-$x /usr/bin/chef-$x ; done
+'/usr/bin/chef-apply' -&gt; '/usr/bin/cinc-apply'
+'/usr/bin/chef-client' -&gt; '/usr/bin/cinc-client'
+'/usr/bin/chef-shell' -&gt; '/usr/bin/cinc-shell'
+'/usr/bin/chef-solo' -&gt; '/usr/bin/cinc-solo'
+
+$ chef-client -v
+Cinc Client: 15.3.14
+</pre></div></div>
+
+<p>Chef License Acceptanceをなかったことにして、CINC Clientを実行してみました。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo rm</span> <span class="nt">-rfv</span> /etc/chef/accepted_licenses/
+removed <span class="s1">'/etc/chef/accepted_licenses/inspec'</span>
+removed <span class="s1">'/etc/chef/accepted_licenses/chef_infra_client'</span>
+removed directory <span class="s1">'/etc/chef/accepted_licenses/'</span>
+
+
+<span class="nv">$ </span><span class="nb">sudo </span>chef-client <span class="nt">-z</span> <span class="nt">-l</span> fatal
+Starting Cinc Client, version 15.3.14
+resolving cookbooks <span class="k">for </span>run list: <span class="o">[]</span>
+Synchronizing Cookbooks:
+Installing Cookbook Gems:
+Compiling Cookbooks...
+Converging 0 resources
+
+Running handlers:
+Running handlers <span class="nb">complete
+</span>Cinc Client finished, 0/0 resources updated <span class="k">in </span>01 seconds
+</pre></div></div>
+
+<p>止まらずに走りますね。</p>

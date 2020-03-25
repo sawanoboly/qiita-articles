@@ -1,0 +1,129 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>ウェブのコンテンツをGitで管理している際に、Webサーバ上でGitリポジトリをチェックしつつ、同期して何かスクリプトを実行する。という手順をChefのレシピで実行してみます。</p>
+
+<h2>
+<span id="手順におこす" class="fragment"></span><a href="#%E6%89%8B%E9%A0%86%E3%81%AB%E3%81%8A%E3%81%93%E3%81%99"><i class="fa fa-link"></i></a>手順におこす</h2>
+
+<p>まずやりたいことをスクリプト(台本)にしましょう。</p>
+
+<ol>
+<li>初回はgit clone してシェルスクリプトを流す</li>
+<li>定期的にgit ls-remoteして新しいものをチェックする</li>
+<li>ls-remote の結果、最新がローカルのリポジトリと違ったらpull</li>
+<li>pull があったらシェルスクリプト実行</li>
+</ol>
+
+<p>まあ<code>bash</code>で十分な内容です。４なんかは gitのhookを使うやり方もありますね。<br>
+ただ従来bashや他のスクリプト型言語で作られている実行手順はレシピにして<code>chef-apply</code>で実行すると読みやすい内容で十分な結果を得ることができます。</p>
+
+<h2>
+<span id="chef-apply用のレシピ" class="fragment"></span><a href="#chef-apply%E7%94%A8%E3%81%AE%E3%83%AC%E3%82%B7%E3%83%94"><i class="fa fa-link"></i></a>chef-apply用のレシピ</h2>
+
+<p>Chef11からCookbook形式にまとめること無くレシピを実行できる<code>chef-apply</code>というユーティリティが追加されました。<br>
+先程の台本をレシピにするとこうなります。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">apply.rb</span></div>
+<div class="highlight"><pre><span class="n">bash</span> <span class="s1">'after_sync_script'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:nothing</span>
+  <span class="n">flags</span> <span class="s1">'-x'</span>
+  <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">__EOL__</span><span class="sh">
+  install -o www -g www -m 0600 /usr/local/project/index.html /usr/local/www/index.html
+  install -o www -g www -m 0600 /usr/local/project/title.jpg /usr/local/www/title.jpg
+</span><span class="no">  __EOL__</span>
+<span class="k">end</span>
+
+<span class="n">git</span> <span class="s1">'/usr/local/project'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:sync</span>
+  <span class="n">repository</span> <span class="s1">'file:///root/git_work'</span>
+  <span class="n">notifies</span> <span class="ss">:run</span><span class="p">,</span> <span class="s1">'bash[after_sync_script]'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="リソースbash-after_sync_script" class="fragment"></span><a href="#%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9bash-after_sync_script"><i class="fa fa-link"></i></a>リソース：<code>bash 'after_sync_script'</code>
+</h3>
+
+<p><code>action :nothing</code> がポイントです、通常何もしませんが他から呼べるようにリソースとして定義だけしておきます。<br>
+中身はgitを同期したあとに実行したい、インストールスクリプトのサンプルですね。</p>
+
+<h3>
+<span id="リソースgit-usrlocalproject" class="fragment"></span><a href="#%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9git-usrlocalproject"><i class="fa fa-link"></i></a>リソース：<code>git '/usr/local/project'</code>
+</h3>
+
+<p>gitのリモートリポジトリを<code>/usr/local/project</code> にも置きましょうというリソースです。<br>
+<code>action :sync</code>なので同期ですね、リモート側に更新があったらpull(fetch&amp;checkouy)してくれます。<br>
+最後にある<code>notifies :run, 'bash[after_sync_script]'</code>で、この<strong>リソースに更新があった場合</strong> 先程のbashを<code>:run</code>してくれということを記述しています。</p>
+
+<h2>
+<span id="実行の様子" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%AE%E6%A7%98%E5%AD%90"><i class="fa fa-link"></i></a>実行の様子</h2>
+
+<h3>
+<span id="初回" class="fragment"></span><a href="#%E5%88%9D%E5%9B%9E"><i class="fa fa-link"></i></a>初回</h3>
+
+<p>最初の実行なのでローカルのリポジトリ、<code>/usr/local/project</code>ディレクトリはありません。<br>
+gitのcloneとcheckoutが実行されて、 <code>bash[after_sync_script] action run</code> が呼び出されているのがわかります。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">ShellOut(chef-apply)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply apply.rb 
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> bash[after_sync_script] action nothing <span class="o">(</span>skipped due to action :nothing<span class="o">)</span>
+  <span class="k">*</span> git[/usr/local/project] action <span class="nb">sync</span>
+    - clone from file:///root/git_work into /usr/local/project
+    - checkout ref 4518501d9787c68a94150be5065ed62a7db103d3 branch HEAD
+  <span class="k">*</span> bash[after_sync_script] action run
+    - execute <span class="s2">"bash"</span> <span class="nt">-x</span> <span class="s2">"/tmp/chef-script20130729-67139-2jdojy"</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="git更新なしの2回目以降" class="fragment"></span><a href="#git%E6%9B%B4%E6%96%B0%E3%81%AA%E3%81%97%E3%81%AE2%E5%9B%9E%E7%9B%AE%E4%BB%A5%E9%99%8D"><i class="fa fa-link"></i></a>git更新なしの2回目以降</h3>
+
+<p>リモートリポジトリに変更がないので、なにも起こりません。<br>
+リソース<code>git[/usr/local/project]</code> が <strong>up to date</strong> と判断されていますね。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">ShellOut(chef-apply)</span></div>
+<div class="highlight"><pre><span class="c"># chef-apply apply.rb </span>
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> bash[after_sync_script] action nothing <span class="o">(</span>skipped due to action :nothing<span class="o">)</span>
+  <span class="k">*</span> git[/usr/local/project] action <span class="nb">sync</span> <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="gitに更新があった場合" class="fragment"></span><a href="#git%E3%81%AB%E6%9B%B4%E6%96%B0%E3%81%8C%E3%81%82%E3%81%A3%E3%81%9F%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>gitに更新があった場合</h3>
+
+<p>gitの更新分をsyncして、bashのリソースが呼ばれているのがわかります。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">ShellOut(chef-apply)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply apply.rb 
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> bash[after_sync_script] action nothing <span class="o">(</span>skipped due to action :nothing<span class="o">)</span>
+  <span class="k">*</span> git[/usr/local/project] action <span class="nb">sync</span>
+    - <span class="nb">set </span>up remote tracking branches <span class="k">for </span>file:///root/git_work at origin
+    - fetch updates <span class="k">for </span>origin
+  <span class="k">*</span> bash[after_sync_script] action run
+    - execute <span class="s2">"bash"</span> <span class="nt">-x</span> <span class="s2">"/tmp/chef-script20130729-76349-1yi7vfw"</span>
+</pre></div>
+</div>
+
+<p>あとはchef-applyをcronにでも放り込んでおけばOKですね。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>bashのややこしいシェルスクリプトをchef-applyで置き換えるとスッキリするケースは結構あるんじゃないでしょうか。メンテする行数が少なくなれば品質の低下も抑えられるのでお奨めです。</p>
+
+<p>なお今回紹介したgit リソースには沢山のオプションがあり、単純にsyncするほか.gitを除去したり、ブランチを指定したりとそこそこ色々なノウハウをそのままレシピにすることができるよう工夫がされています。</p>
+
+<p><strong>Git: Opscode Docs</strong><br>
+<a href="http://docs.opscode.com/resource_git.html" rel="nofollow noopener" target="_blank">http://docs.opscode.com/resource_git.html</a></p>

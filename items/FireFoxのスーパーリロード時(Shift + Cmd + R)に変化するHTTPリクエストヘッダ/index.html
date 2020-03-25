@@ -1,0 +1,46 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>ふと気になったのでブラウザのスーパーリロード時にブラウザが投げるヘッダをチェックしてみた、FireFoxでは<code>Shift + Cmd + R</code>だ。</p>
+
+<p>ああ、<code>Pragma: no-cache</code>が付いて、<code>Cache-Control:</code>が <code>no-cache</code>になると。httpサーバの設定でよく見るね。</p>
+
+<h3>
+<span id="ただのcmdr" class="fragment"></span><a href="#%E3%81%9F%E3%81%A0%E3%81%AEcmdr"><i class="fa fa-link"></i></a>ただの<code>Cmd+R</code>
+</h3>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Cmd+R</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">echo </span>hoge | nc <span class="nt">-l</span> 8080
+GET / HTTP/1.1
+Host: xxx.xxx.xxx.xxx:8080
+User-Agent: Mozilla/5.0 <span class="o">(</span>Macintosh<span class="p">;</span> Intel Mac OS X 10.8<span class="p">;</span> rv:22.0<span class="o">)</span> Gecko/20100101 Firefox/22.0
+Accept: text/html,application/xhtml+xml,application/xml<span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.9,<span class="k">*</span>/<span class="k">*</span><span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.8
+Accept-Language: ja,en-us<span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.7,en<span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.3
+Accept-Encoding: <span class="nb">gzip</span>, deflate
+Connection: keep-alive
+Cache-Control: max-age<span class="o">=</span>0
+</pre></div>
+</div>
+
+<h3>
+<span id="shiftcmdr" class="fragment"></span><a href="#shiftcmdr"><i class="fa fa-link"></i></a><code>Shift+Cmd+R</code>
+</h3>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shift+Cmd+R</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">echo </span>hoge | nc <span class="nt">-l</span> 8080
+GET / HTTP/1.1
+Host: xxx.xxx.xxx.xxx:8080
+User-Agent: Mozilla/5.0 <span class="o">(</span>Macintosh<span class="p">;</span> Intel Mac OS X 10.8<span class="p">;</span> rv:22.0<span class="o">)</span> Gecko/20100101 Firefox/22.0
+Accept: text/html,application/xhtml+xml,application/xml<span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.9,<span class="k">*</span>/<span class="k">*</span><span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.8
+Accept-Language: ja,en-us<span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.7,en<span class="p">;</span><span class="nv">q</span><span class="o">=</span>0.3
+Accept-Encoding: <span class="nb">gzip</span>, deflate
+Connection: keep-alive
+Pragma: no-cache
+Cache-Control: no-cache
+</pre></div>
+</div>

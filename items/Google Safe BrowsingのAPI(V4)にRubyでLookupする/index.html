@@ -1,0 +1,80 @@
+<p><a href="https://developers.google.com/safe-browsing/" rel="nofollow noopener" target="_blank">Google Safe Browsing</a>ってありまして。<br>
+APIがあるのでRubyからきゃつらのルールで不正と判断しているドメイン(または実行ファイル)をチェックしてみようとしました。</p>
+
+<h2>
+<span id="事前準備" class="fragment"></span><a href="#%E4%BA%8B%E5%89%8D%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>事前準備</h2>
+
+<ul>
+<li>rubygems <code>google-api-client</code> をインストール</li>
+<li>APIKEYを環境変数にいれておく</li>
+</ul>
+
+<h2>
+<span id="lookupのサンプルコード" class="fragment"></span><a href="#lookup%E3%81%AE%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>Lookupのサンプルコード</h2>
+
+<p>google-api-clientってほとんど動的生成なので、普通に使い方をソースから見ようとするとサッパリわかりません。</p>
+
+<p>動的に生成されたらこうなるよというコードがリポジトリに一緒に上がっているので、そちらをドキュメント代わりにチェックします。</p>
+
+<ul>
+<li><a href="https://github.com/google/google-api-ruby-client/tree/master/generated/google/apis" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/google/google-api-ruby-client/tree/master/generated/google/apis</a></li>
+</ul>
+
+<p><a href="https://github.com/google/google-api-ruby-client/tree/master/generated/google/apis/safebrowsing_v4" rel="nofollow noopener" target="_blank">safebrowsing_v4はこのへん</a>ですね。</p>
+
+<p>Lookupする場合、<code>find_threat_matches</code>メソッドに<code>Google::Apis::SafebrowsingV4::FindThreatMatchesRequest</code>のオブジェクトを渡すだけです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">safebrowsing_lookup.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'google/apis/safebrowsing_v4'</span>
+<span class="n">sb_service</span> <span class="o">=</span> <span class="no">Google</span><span class="o">::</span><span class="no">Apis</span><span class="o">::</span><span class="no">SafebrowsingV4</span><span class="o">::</span><span class="no">SafebrowsingService</span><span class="p">.</span><span class="nf">new</span>
+<span class="n">sb_service</span><span class="p">.</span><span class="nf">key</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'APIKEY'</span><span class="p">]</span>
+
+<span class="c1"># タイプの詳細は https://developers.google.com/safe-browsing/v4/reference/rest/ で</span>
+<span class="n">tr</span> <span class="o">=</span> <span class="no">Google</span><span class="o">::</span><span class="no">Apis</span><span class="o">::</span><span class="no">SafebrowsingV4</span><span class="o">::</span><span class="no">ThreatInfo</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+  <span class="ss">threat_types: </span><span class="p">[</span><span class="s2">"MALWARE"</span><span class="p">,</span> <span class="s2">"SOCIAL_ENGINEERING"</span><span class="p">],</span>
+  <span class="ss">platform_types:    </span><span class="p">[</span><span class="s2">"ANY_PLATFORM"</span><span class="p">],</span>
+  <span class="ss">threat_entry_types: </span><span class="p">[</span><span class="s2">"URL"</span><span class="p">],</span>
+  <span class="ss">threat_entries: </span><span class="p">[</span>
+    <span class="p">{</span><span class="s2">"url"</span><span class="p">:</span> <span class="s2">"http://testsafebrowsing.appspot.com/apiv4/ANY_PLATFORM/MALWARE/URL/"</span><span class="p">}</span>
+  <span class="p">]</span>
+<span class="p">)</span>
+
+<span class="c1"># client_idはなるべく一意にしてねとのことですが、サンプルコードなので適当に</span>
+<span class="n">opts</span> <span class="o">=</span> <span class="no">Google</span><span class="o">::</span><span class="no">Apis</span><span class="o">::</span><span class="no">SafebrowsingV4</span><span class="o">::</span><span class="no">FindThreatMatchesRequest</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+  <span class="ss">client: </span><span class="no">Google</span><span class="o">::</span><span class="no">Apis</span><span class="o">::</span><span class="no">SafebrowsingV4</span><span class="o">::</span><span class="no">ClientInfo</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+    <span class="ss">client_id: </span><span class="s2">"google-api-client"</span><span class="p">,</span>
+    <span class="ss">client_version: </span><span class="s2">"0.19.8"</span>
+  <span class="p">),</span>
+  <span class="ss">threat_info: </span><span class="n">tr</span>
+<span class="p">)</span>
+
+<span class="n">res</span> <span class="o">=</span> <span class="n">sb_service</span><span class="p">.</span><span class="nf">find_threat_matches</span><span class="p">(</span><span class="n">opts</span><span class="p">)</span>
+
+<span class="nb">puts</span> <span class="n">res</span><span class="p">.</span><span class="nf">to_json</span>
+</pre></div>
+</div>
+
+<p>レスポンスのmatchesに何かしら入っていれば引っかかったということです。<br>
+ちなみに<code>threat_entries</code>の<code>url</code>は<code>http://〜</code>のようにスキーマを含めなくてもマッチします。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>ruby safebrowsing_lookup.rb
+<span class="o">{</span>
+  <span class="s2">"matches"</span>: <span class="o">[</span>
+    <span class="o">{</span>
+      <span class="s2">"cacheDuration"</span>: <span class="s2">"300s"</span>,
+      <span class="s2">"platformType"</span>: <span class="s2">"ANY_PLATFORM"</span>,
+      <span class="s2">"threat"</span>: <span class="o">{</span>
+        <span class="s2">"url"</span>: <span class="s2">"http://testsafebrowsing.appspot.com/apiv4/ANY_PLATFORM/MALWARE/URL/"</span>
+      <span class="o">}</span>,
+      <span class="s2">"threatEntryType"</span>: <span class="s2">"URL"</span>,
+      <span class="s2">"threatType"</span>: <span class="s2">"MALWARE"</span>
+    <span class="o">}</span>
+  <span class="o">]</span>
+<span class="o">}</span>
+</pre></div></div>
+
+<h2>
+<span id="余談" class="fragment"></span><a href="#%E4%BD%99%E8%AB%87"><i class="fa fa-link"></i></a>余談</h2>
+
+<p>Google Safe Browsingの影響として身近なところでは、Let's Encryptでドメインの申請をする際、このAPIでマッチしたら所有確認の時点でお断りされるんですよ。</p>

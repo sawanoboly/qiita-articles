@@ -1,0 +1,146 @@
+<p>Docker for AWS(Azure)は<code>Moby Linux</code>と名付けられたbusyboxベースのOSに...<br>
+まあ詳しくはこれを見てくれ。 <a href="http://qiita.com/pottava/items/06aa817e581debd150bd" id="reference-4f21ee952fb330cc9730">Docker for AWS 試してみた その1 - Qiita</a></p>
+
+<p>以下、DockerForなんとかは <code>D4x</code>と呼称します。イメージの名前とかがそうなってるし。</p>
+
+<h2>
+<span id="docker-apiへの標準的なアクセスについて" class="fragment"></span><a href="#docker-api%E3%81%B8%E3%81%AE%E6%A8%99%E6%BA%96%E7%9A%84%E3%81%AA%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B9%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6"><i class="fa fa-link"></i></a>Docker APIへの標準的なアクセスについて。</h2>
+
+<p>さて、D4xの操作はドキュメントによるとマネージャノードの専用コンテナにSSHでログインするか、トンネルを貼るという案内だ。</p>
+
+<ul>
+<li>参考: <a href="https://beta.docker.com/docs/deploy/" rel="nofollow noopener" target="_blank">Deploying Apps on AWS/Azure</a>
+</li>
+</ul>
+
+<p>D4xはベータ申込者(AWSならアカウントID)に対してDocker社からShareされたAMIをCloudFormation(以下CFn)で起動する。<br>
+この特性上、テンプレートを操作してしまえばいかようにでもカスタマイズは可能のように思えるけど、そもそもbusyboxベースからカスタマイズするのはかったるい。</p>
+
+<p>もちろん、コントロール用のDockerコンテナはホストのDockerデーモンをソケット経由で操作できるので、通常の利用ならまったく困らないという感じである。<br>
+なるべく仕組みに乗っかるためには、今回のようにAPIを外部公開してーなーという要件に対してはサービスを作ってしまうのが良さそう。</p>
+
+<h2>
+<span id="サービス用nginx" class="fragment"></span><a href="#%E3%82%B5%E3%83%BC%E3%83%93%E3%82%B9%E7%94%A8nginx"><i class="fa fa-link"></i></a>サービス用Nginx</h2>
+
+<p>要は一点、<code>/var/run/docker.sock</code>をマウントしたNginxのコンテナにプロキシさせればよいのだった。</p>
+
+<p>コード: <a href="https://github.com/sawanoboly/docker-socket-proxy-for-docker-for-aws_azure/tree/master" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/sawanoboly/docker-socket-proxy-for-docker-for-aws_azure/tree/master</a><br>
+イメージ: <a href="https://hub.docker.com/r/sawanoboly/nginx-dsp/" class="autolink" rel="nofollow noopener" target="_blank">https://hub.docker.com/r/sawanoboly/nginx-dsp/</a></p>
+
+<p>とりあえずシンプルに<code>proxy_pass http://unix:/var/run/docker.sock;</code>でOK。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>user  root;
+worker_processes  1;
+
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    # include /etc/nginx/conf.d/*.conf;
+
+    server {
+      listen       80;
+      server_name  _;
+
+      location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        proxy_pass http://unix:/var/run/docker.sock;
+      }
+
+      error_page   500 502 503 504  /50x.html;
+      location = /50x.html {
+          root   /usr/share/nginx/html;
+      }
+    }
+}
+</pre></div></div>
+
+<h2>
+<span id="docker-service" class="fragment"></span><a href="#docker-service"><i class="fa fa-link"></i></a>Docker Service</h2>
+
+<p>イメージをDockerhubなりどこかにpushした後、bindマウントをつけながら起動しましょう。<br>
+特別なことは一点だけ。デプロイする対象の絞込を<code>node.role == manager</code>にするとmanager担当のノードでだけDockerコンテナが起動します。<br>
+Worker側に立ってしまうとSwarm系のAPIが使えないのよね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>docker service create \
+  --name nginx-dsp \
+  -p 80:80 \
+  --replicas 3 \
+  --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+  --mount type=bind,source=/usr/bin/docker,target=/usr/bin/docker \
+  --constraint 'node.role == manager' \
+  sawanoboly/nginx-dsp:latest
+</pre></div></div>
+
+<p><code>docker</code>コマンドはデバッグ用なので外してもOK。<code>/var/log/nginx</code>のあたりもお好みで。</p>
+
+<h3>
+<span id="curlでテスト" class="fragment"></span><a href="#curl%E3%81%A7%E3%83%86%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>Curlでテスト</h3>
+
+<p>さて、サービスが作れたらば、Dockerサービス用のELBにリクエストしてみよう。<code>docker service ls</code>相当のAPIをコール。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -s http://xxxxxx-elb-xxxxxxxx.us-east-1.elb.amazonaws.com/services | jq .
+[
+  {
+    "ID": "68tcz6xvcj9iw1yvy77gcajx5",
+    "Version": {
+      "Index": 148
+    },
+    "CreatedAt": "2016-08-16T05:08:26.089395158Z",
+    "UpdatedAt": "2016-08-16T05:08:26.100058581Z",
+    "Spec": {
+      "Name": "nginx-dsp",
+      "TaskTemplate": {
+        "ContainerSpec": {
+          "Image": "sawanoboly/nginx-dsp:latest",
+          "Mounts": [
+            {
+              "Type": "bind",
+              "Source": "/var/run/docker.sock",
+              "Target": "/var/run/docker.sock"
+            },
+            {
+              "Type": "bind",
+              "Source": "/var/log/nginx",
+              "Target": "/var/log/nginx"
+
+...
+</pre></div></div>
+
+<p>できました。 ※認証はNginxでやろうね。。。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>今回はrootでnginxを起動しちゃったが、CFnテンプレートを参考にして<code>/etc/passwd</code>などをマウントしてからdockerユーザーで起動するように変えておこう。</p>
+
+<p>D4xはカスタマイズするより、k8sのように専用のサービスを追加する形がよいですね。スケジュールジョブとかもイメージを作ってサービスにしましょ。</p>
+
+<hr>
+
+<p>追記： Basic認証の追加とユーザーをDockerに変更する処理をいれました。</p>
+
+<p>使い方はこちら。 <a href="https://github.com/sawanoboly/docker-socket-proxy-for-docker-for-aws_azure" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/sawanoboly/docker-socket-proxy-for-docker-for-aws_azure</a></p>

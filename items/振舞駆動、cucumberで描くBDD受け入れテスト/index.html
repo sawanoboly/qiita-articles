@@ -1,0 +1,70 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://cukes.info/" rel="nofollow noopener" target="_blank">cucumber</a>は受け入れテストにいい。<br>
+開発者が書くのはまったくもってよろしくないが、承認側としては読めないプロダクション用のコードをレビューするより実用的だ。</p>
+
+<h2>
+<span id="受け入れ側の書くシナリオ" class="fragment"></span><a href="#%E5%8F%97%E3%81%91%E5%85%A5%E3%82%8C%E5%81%B4%E3%81%AE%E6%9B%B8%E3%81%8F%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA"><i class="fa fa-link"></i></a>受け入れ側の書くシナリオ</h2>
+
+<p>冗談のようだが日本語でいい。<br>
+<code>ssl_check.feature</code>というファイルには正にこのように書いてある。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">ssl_check.feature</span></div>
+<div class="highlight"><pre><span class="c"># language: ja</span>
+<span class="kd">機能</span><span class="p">:</span> 証明書期限のテスト
+  証明書の更新漏れを確かめるために
+  利用者の立場から
+  期限を確かめたい
+
+<span class="kn">シナリオ</span><span class="p">:</span> 証明書期限について
+  <span class="nf">前提</span> my.z-cloud.jp にアクセスして
+  <span class="nf">もし</span> 証明書の情報がとれた
+  <span class="nf">ならば</span> 期限が 360 日より長いか確認する
+
+<span class="kn">シナリオ</span><span class="p">:</span> 証明書期限について
+  <span class="nf">前提</span> my.z-cloud.jp にアクセスして
+  <span class="nf">もし</span> 証明書の情報がとれた
+  <span class="nf">ならば</span> 期限が 30 日より長いか確認する
+</pre></div>
+</div>
+
+<h2>
+<span id="受け入れテストを実施する" class="fragment"></span><a href="#%E5%8F%97%E3%81%91%E5%85%A5%E3%82%8C%E3%83%86%E3%82%B9%E3%83%88%E3%82%92%E5%AE%9F%E6%96%BD%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>受け入れテストを実施する</h2>
+
+<p>先ほどのシナリオを実行する。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cucumber 
+# language: ja
+機能: 証明書期限のテスト
+  証明書の更新漏れを確かめるために
+  利用者の立場から
+  期限を確かめたい
+
+  シナリオ: 証明書期限について           # features/ssl_check.feature:7
+    前提my.z-cloud.jp にアクセスして # features/step_definitons/steps.rb:2
+    もし証明書の情報がとれた            # features/step_definitons/steps.rb:17
+    ならば期限が 360 日より長いか確認する   # features/step_definitons/steps.rb:21
+      証明書の残り期限は 34日 のようです (RuntimeError)
+      ./features/step_definitons/steps.rb:23:in `/^期限が (\d+) 日より長いか確認する$/'
+      features/ssl_check.feature:10:in `ならば期限が 360 日より長いか確認する'
+
+  シナリオ: 証明書期限について           # features/ssl_check.feature:12
+    前提my.z-cloud.jp にアクセスして # features/step_definitons/steps.rb:2
+    もし証明書の情報がとれた            # features/step_definitons/steps.rb:17
+    ならば期限が 30 日より長いか確認する    # features/step_definitons/steps.rb:21
+      証明書の残り期限は 34日 あります
+
+Failing Scenarios:
+cucumber features/ssl_check.feature:7 # Scenario: 証明書期限について
+
+2 scenarios (1 failed, 1 passed)
+6 steps (1 failed, 5 passed)
+0m0.206s
+</pre></div></div>
+
+<p>想定したシナリオ通りになっていないものをFailさせる。</p>

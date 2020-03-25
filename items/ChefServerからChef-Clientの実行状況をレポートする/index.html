@@ -1,0 +1,25 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>chef-clientのエラーを逐一拾うのが面倒な時。</p>
+
+<p><code>knife status</code>を実行すれば各クライアントの最終正常終了時間がとれるので、ChefServer上で備え付けのクライアント<code>chef-webui</code>を使ってみる。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="c"># /usr/bin/knife status -k /etc/chef/webui.pem -u chef-webui</span>
+33 minutes ago, mmonit.example.com, mmonit.example.com, xxx.xxx.xxx.xxx, smartos 5.11.
+20 minutes ago, mongodb08.example.jp, mongodb08.example.jp, xxx.xxx.xxx.xxx, ubuntu 12.04.
+11 minutes ago, mongodb07.example.jp, mongodb07.example.jp, xxx.xxx.xxx.xxx, ubuntu 12.04.
+9 minutes ago, rabbitmq01.example.jp, rabbitmq01.example.jp, xxx.xxx.xxx.xxx, smartos 5.11.
+9 minutes ago, giraffi-chef.example.jp, giraffi-chef.example.jp, xxx.xxx.xxx.xxx, ubuntu 12.04.
+3 minutes ago, mongodb06.example.jp, mongodb06.example.jp, xxx.xxx.xxx.xxx, ubuntu 12.04.
+2 minutes ago, rabbitmq03.example.jp, rabbitmq03.example.jp, xxx.xxx.xxx.xxx, smartos 5.11.
+1 minute  ago, rabbitmq02.example.jp, rabbitmq02.example.jp, xxx.xxx.xxx.xxx, smartos 5.11.
+</pre></div>
+</div>
+
+<p><code>status</code>に<code>-F Format</code>オプションは利かないので、出力が得られたらメールするなりパースして引っ掛けるなりします。<code>node attribtes</code>に対してならQUERYも可。</p>

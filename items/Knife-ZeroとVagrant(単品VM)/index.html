@@ -1,0 +1,118 @@
+<p>Knife-Zeroを試してみようとして、Vagrantでconverge(chef_client)を挫折するのをよく見るので、手順を追ってみた。</p>
+
+<blockquote>
+<p>追記: knife-zero 1.8でbootstrap時のattributeを自動追加するように変更した。</p>
+</blockquote>
+
+<h2>
+<span id="素のvagrant-vmvboxを作成する" class="fragment"></span><a href="#%E7%B4%A0%E3%81%AEvagrant-vmvbox%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>素のVagrant VM(VBox)を作成する。</h2>
+
+<p>とりあえず何も設定しないでVMを起動してみることにする。</p>
+
+<div class="code-frame" data-lang="Vagrantfile"><div class="highlight"><pre>Vagrant.configure(2) do |config|
+  config.vm.box = "opscode-ubuntu-14.04"
+end
+</pre></div></div>
+
+<p>up。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ vagrant up
+Bringing machine 'default' up with 'virtualbox' provider...
+==&gt; default: Importing base box 'opscode-ubuntu-14.04'...
+....
+
+
+ SSH address: 127.0.0.1:2201
+
+...
+
+</pre></div></div>
+
+<p>途中でSSHの接続情報出てくるよね。後でも取れるけど。</p>
+
+<h2>
+<span id="knife-zero-bootstrapする" class="fragment"></span><a href="#knife-zero-bootstrap%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>knife zero bootstrapする。</h2>
+
+<p>さっきのSSH情報でBootstrapはできる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife zero bootstrap 127.0.0.1 --ssh-port 2201 --ssh-user vagrant --node-name test -i ./.vagrant/machines/default/virtualbox/private_key --sudo
+
+Doing old-style registration with the validation key at ...
+Delete your validation key in order to use your user credentials instead
+
+Connecting to 127.0.0.1
+127.0.0.1 Installing Chef Client...
+127.0.0.1 --2015-06-18 09:25:51--  https://www.opscode.com/chef/install.sh
+127.0.0.1 Resolving www.opscode.com (www.opscode.com)... 166.78.227.233
+127.0.0.1 Connecting to www.opscode.com (www.opscode.com)|166.78.227.233|:443... connected.
+127.0.0.1 HTTP request sent, awaiting response... 200 OK
+127.0.0.1 Length: 18736 (18K) [application/x-sh]
+127.0.0.1 Saving to: ‘STDOUT’
+127.0.0.1 
+100%[======================================&gt;] 18,736      --.-K/s   in 0.003s  
+127.0.0.1 
+127.0.0.1 2015-06-18 09:25:58 (6.14 MB/s) - written to stdout [18736/18736]
+127.0.0.1 
+127.0.0.1 Downloading Chef 12 for ubuntu...
+
+...
+
+127.0.0.1 Converging 0 resources
+127.0.0.1 
+127.0.0.1 Running handlers:
+127.0.0.1 Running handlers complete
+127.0.0.1 Chef Client finished, 0/0 resources updated in 6.751803888 seconds
+</pre></div></div>
+
+<p>うむ、<code>nodes/test.json</code>がつくられる。</p>
+
+<h2>
+<span id="nodeで自動取得したipアドレス100とかとbootstrapで使用ssh接続できる先したipアドレス127001が違う" class="fragment"></span><a href="#node%E3%81%A7%E8%87%AA%E5%8B%95%E5%8F%96%E5%BE%97%E3%81%97%E3%81%9Fip%E3%82%A2%E3%83%89%E3%83%AC%E3%82%B9100%E3%81%A8%E3%81%8B%E3%81%A8bootstrap%E3%81%A7%E4%BD%BF%E7%94%A8ssh%E6%8E%A5%E7%B6%9A%E3%81%A7%E3%81%8D%E3%82%8B%E5%85%88%E3%81%97%E3%81%9Fip%E3%82%A2%E3%83%89%E3%83%AC%E3%82%B9127001%E3%81%8C%E9%81%95%E3%81%86"><i class="fa fa-link"></i></a>Nodeで自動取得したIPアドレス(10.0.〜とか)とBootstrapで使用(SSH接続できる先)したIPアドレス(127.0.0.1)が違う</h2>
+
+<p>たいていここで詰まる。<br>
+NWが少し入り組んだ環境ではゲートウェイに繋がるNICとSSHの接続に使うIPアドレスが異なることもあるので、knife-zeroではbootstrap時に仕込みを入れることにした。</p>
+
+<p><code>nodes/test.json</code>を見ると、Bootstrap時に使用した接続名がnodeのattributeとして保持されている。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">nodes/test.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"test"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"normal"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"knife_zero"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"host"</span><span class="p">:</span><span class="w"> </span><span class="s2">"127.0.0.1"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"tags"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+
+    </span><span class="p">]</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"automatic"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+
+</span><span class="err">--</span><span class="w"> </span><span class="err">以下省略</span><span class="w">
+</span></pre></div>
+</div>
+
+<h2>
+<span id="接続用のipを--attributeで渡してconverge" class="fragment"></span><a href="#%E6%8E%A5%E7%B6%9A%E7%94%A8%E3%81%AEip%E3%82%92--attribute%E3%81%A7%E6%B8%A1%E3%81%97%E3%81%A6converge"><i class="fa fa-link"></i></a>接続用のIPを<code>--attribute</code>で渡してconverge</h2>
+
+<p>保持された接続先を指定するには、<code>--attribute knife_zero.host</code>を渡してconverge(chef_client)でOK。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife zero converge name:test --attribute knife_zero.host --ssh-port 2201 --ssh-user vagrant  -i ./.vagrant/machines/default/virtualbox/private_key
+127.0.0.1 Starting Chef Client, version 12.3.0
+127.0.0.1 resolving cookbooks for run list: []
+127.0.0.1 Synchronizing Cookbooks:
+127.0.0.1 Compiling Cookbooks...
+127.0.0.1 [2015-06-18T09:33:49+00:00] WARN: Node test has an empty run list.
+127.0.0.1 Converging 0 resources
+127.0.0.1 
+127.0.0.1 Running handlers:
+127.0.0.1 Running handlers complete
+127.0.0.1 Chef Client finished, 0/0 resources updated in 6.403417422 seconds
+</pre></div></div>
+
+<p>これは<code>knife.rb</code>に<code>knife[:ssh_attribute] = 'knife_zero.host'</code>として省略もできます。<br>
+Vagrantでknife-zeroを"試してみるだけ"ならこれで十分。</p>
+
+<hr>
+
+<p>複数のVMをつかう場合や、private_network/hostonly_networkを使うならREADMEに説明を書いています。</p>

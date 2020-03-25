@@ -1,0 +1,258 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>前回 <a href="http://qiita.com/sawanoboly/items/a8f9357f0f6044e7d7ff" title="OhaiのデータをElasticsearchに入れてKibanaで見る構成管理 - Qiita" id="reference-00bbc7bf1ca5884ccd45">OhaiのデータをElasticsearchに入れてKibanaで見る構成管理 - Qiita</a> に続いて、Chefの活動レポートをlogstashよろしく時系列で可視化してみます。</p>
+
+<h2>
+<span id="ログでなくレポート" class="fragment"></span><a href="#%E3%83%AD%E3%82%B0%E3%81%A7%E3%81%AA%E3%81%8F%E3%83%AC%E3%83%9D%E3%83%BC%E3%83%88"><i class="fa fa-link"></i></a>ログでなくレポート？</h2>
+
+<p>Chefもログファイルを出すんだから、そもそもfluentdやlogstashにtailで拾わせればいいんじゃないかと思うかも。<br>
+しかし、Chefのログはだら流し系で、apache httpd アクセスログなどのように一行ごとに完結しないため、そのまま投げても役立てるのは難しいです。<br>
+その点レポートはイベント単位でひとまとまりなので、収集する意味は十分にあるでしょう。</p>
+
+<h2>
+<span id="chefhandlerelasticsearch" class="fragment"></span><a href="#chefhandlerelasticsearch"><i class="fa fa-link"></i></a>Chef::Handler::Elasticsearch</h2>
+
+<p>Cookbookはこちら。</p>
+
+<p><a href="https://github.com/higanworks-cookbooks/chef_handler_elasticsearch" title="higanworks-cookbooks/chef_handler_elasticsearch" rel="nofollow noopener" target="_blank">higanworks-cookbooks/chef_handler_elasticsearch</a></p>
+
+<p>以下デフォルトの挙動。</p>
+
+<ul>
+<li>index template <code>chef_handler_template</code>が無かったら作成する、対象は<code>chef_handler-*</code>
+</li>
+<li>logstash風にするため<code>@timestamp</code>を付与</li>
+<li>Chefの成功レポートは<code>/chef_handler-YYYY.MM.DD/success/ID</code> にPUT</li>
+<li>Chefの例外レポートは<code>/chef_handler-YYYY.MM.DD/failure/ID</code> にPUT</li>
+<li>PUTのタイムアウトは3秒</li>
+</ul>
+
+<p>IDはEnterprise Chefのため用意されているっぽい、Chef実行毎に生成されるユニークIDを使っています(DEBUGログで確認可能)。<br>
+このハンドラでは通常のログにも出力しているので、イベントと紐付けて参照できます。</p>
+
+<p>ハンドラ部分のソース(v1.0.0時点)はこんな感じです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">libraries/default.rb</span></div>
+<div class="highlight"><pre><span class="c1"># Cookbook Name:: chef_handler_elasticsearch</span>
+<span class="c1"># Library:: default</span>
+<span class="c1">#</span>
+<span class="c1"># Copyright 2014, HiganWorks LLC.</span>
+<span class="c1">#</span>
+
+<span class="k">class</span> <span class="nc">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">Elasticsearch</span> <span class="o">&lt;</span> <span class="o">::</span><span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span>
+  <span class="nb">require</span> <span class="s1">'timeout'</span>
+  <span class="nb">attr_reader</span> <span class="ss">:opts</span><span class="p">,</span> <span class="ss">:config</span>
+
+  <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="n">opts</span> <span class="o">=</span> <span class="p">{})</span>
+    <span class="vi">@config</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="vi">@default</span> <span class="o">=</span> <span class="p">{</span>
+      <span class="ss">url: </span><span class="s1">'http://localhost:9200'</span><span class="p">,</span>
+      <span class="ss">timeout: </span><span class="mi">3</span><span class="p">,</span>
+      <span class="ss">prefix: </span><span class="s1">'chef_handler'</span><span class="p">,</span>
+      <span class="ss">prepare_template: </span><span class="kp">true</span><span class="p">,</span>
+      <span class="ss">template_order: </span><span class="mi">10</span><span class="p">,</span>
+      <span class="ss">index_use_utc: </span><span class="kp">true</span><span class="p">,</span>
+      <span class="ss">index_date_format: </span><span class="s2">"%Y.%m.%d"</span><span class="p">,</span>
+      <span class="ss">mappings: </span><span class="n">default_mapping</span>
+    <span class="p">}</span>
+    <span class="vi">@opts</span> <span class="o">=</span> <span class="n">opts</span>
+    <span class="vi">@opts</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">default_mapping</span>
+<span class="s1">'{
+"_default_" : {
+"numeric_detection" : true,
+"dynamic_date_formats" : ["yyyy-MM-dd HH:mm:ss Z", "date_optional_time"]
+}
+}'</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">report</span>
+    <span class="vi">@default</span><span class="p">.</span><span class="nf">merge!</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:chef_handler_elasticsearch</span><span class="p">].</span><span class="nf">symbolize_keys</span><span class="p">)</span> <span class="k">if</span> <span class="n">node</span><span class="p">[</span><span class="ss">:chef_handler_elasticsearch</span><span class="p">]</span>
+    <span class="vi">@config</span><span class="o">=</span> <span class="vi">@default</span><span class="p">.</span><span class="nf">merge</span><span class="p">(</span><span class="vi">@opts</span><span class="p">)</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">debug</span> <span class="vi">@config</span><span class="p">.</span><span class="nf">to_s</span>
+
+    <span class="n">client</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">HTTP</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:url</span><span class="p">])</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="s2">"/</span><span class="si">#{</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:prefix</span><span class="p">]</span><span class="si">}</span><span class="s2">-</span><span class="si">#{</span><span class="n">build_logstash_date</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+
+    <span class="k">if</span> <span class="n">exception</span>
+      <span class="n">type</span> <span class="o">=</span> <span class="s1">'failure'</span>
+    <span class="k">else</span>
+      <span class="n">type</span> <span class="o">=</span> <span class="s1">'success'</span>
+    <span class="k">end</span>
+
+    <span class="n">prepare_template</span><span class="p">(</span><span class="n">client</span><span class="p">)</span> <span class="k">if</span> <span class="vi">@config</span><span class="p">[</span><span class="ss">:prepare_template</span><span class="p">]</span>
+
+    <span class="n">body</span> <span class="o">=</span> <span class="n">data</span><span class="p">.</span><span class="nf">merge</span><span class="p">({</span><span class="s1">'@timestamp'</span> <span class="o">=&gt;</span> <span class="no">Time</span><span class="p">.</span><span class="nf">at</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="ss">:end_time</span><span class="p">]).</span><span class="nf">to_datetime</span><span class="p">.</span><span class="nf">to_s</span><span class="p">})</span>
+
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">debug</span> <span class="s2">"===== Puts to es following..."</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">debug</span> <span class="n">body</span><span class="p">.</span><span class="nf">to_s</span>
+
+    <span class="k">begin</span>
+      <span class="n">res</span> <span class="o">=</span> <span class="n">timeout</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:timeout</span><span class="p">])</span> <span class="p">{</span>
+        <span class="n">client</span><span class="p">.</span><span class="nf">put</span><span class="p">([</span><span class="n">index</span><span class="p">,</span> <span class="n">type</span><span class="p">,</span> <span class="no">Chef</span><span class="o">::</span><span class="no">RequestID</span><span class="p">.</span><span class="nf">instance</span><span class="p">.</span><span class="nf">request_id</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">'/'</span><span class="p">),</span> <span class="n">body</span><span class="p">.</span><span class="nf">to_json</span><span class="p">)</span>
+      <span class="p">}</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">debug</span> <span class="s2">"===== Response from es following..."</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">debug</span> <span class="n">res</span><span class="p">.</span><span class="nf">to_s</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">info</span> <span class="s2">"== Chef::Handler::Elasticsearch request_id: </span><span class="si">#{</span><span class="no">JSON</span><span class="p">.</span><span class="nf">parse</span><span class="p">(</span><span class="n">res</span><span class="p">)[</span><span class="s1">'_id'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">error</span> <span class="s2">"== </span><span class="si">#{</span><span class="n">e</span><span class="p">.</span><span class="nf">class</span><span class="si">}</span><span class="s2">: Status report could not put to Elasticsearch."</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">build_logstash_date</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">config</span><span class="p">[</span><span class="ss">:index_use_utc</span><span class="p">]</span>
+      <span class="no">Time</span><span class="p">.</span><span class="nf">at</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="ss">:end_time</span><span class="p">]).</span><span class="nf">getutc</span><span class="p">.</span><span class="nf">strftime</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:index_date_format</span><span class="p">])</span>
+    <span class="k">else</span>
+      <span class="no">Time</span><span class="p">.</span><span class="nf">at</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="ss">:end_time</span><span class="p">]).</span><span class="nf">strftime</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:index_date_format</span><span class="p">])</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">prepare_template</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+    <span class="k">begin</span>
+      <span class="n">res</span> <span class="o">=</span> <span class="n">timeout</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:timeout</span><span class="p">])</span> <span class="p">{</span>
+        <span class="n">client</span><span class="p">.</span><span class="nf">get</span><span class="p">(</span><span class="s2">"/_template/</span><span class="si">#{</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:prefix</span><span class="p">]</span><span class="si">}</span><span class="s2">_template"</span><span class="p">)</span>
+      <span class="p">}</span>
+    <span class="k">rescue</span> <span class="no">Net</span><span class="o">::</span><span class="no">HTTPServerException</span>
+      <span class="n">put_template</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+      <span class="k">return</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">error</span> <span class="s2">"== </span><span class="si">#{</span><span class="n">e</span><span class="p">.</span><span class="nf">class</span><span class="si">}</span><span class="s2">: Status report could not put to Elasticsearch."</span>
+      <span class="k">raise</span> <span class="n">e</span><span class="p">.</span><span class="nf">class</span><span class="p">,</span> <span class="n">e</span><span class="p">.</span><span class="nf">message</span>
+    <span class="k">end</span>
+
+    <span class="k">unless</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">parse</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:mappings</span><span class="p">])</span> <span class="o">==</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">parse</span><span class="p">(</span><span class="n">res</span><span class="p">)[</span><span class="s2">"</span><span class="si">#{</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:prefix</span><span class="p">]</span><span class="si">}</span><span class="s2">_template"</span><span class="p">][</span><span class="s2">"mappings"</span><span class="p">]</span>
+      <span class="n">put_template</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">put_template</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+    <span class="k">begin</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">info</span> <span class="s2">"== create mapping template to Elasticsearch."</span>
+      <span class="n">res</span> <span class="o">=</span> <span class="n">timeout</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:timeout</span><span class="p">])</span> <span class="p">{</span>
+        <span class="n">client</span><span class="p">.</span><span class="nf">put</span><span class="p">(</span><span class="s2">"/_template/</span><span class="si">#{</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:prefix</span><span class="p">]</span><span class="si">}</span><span class="s2">_template"</span><span class="p">,</span> <span class="n">build_template_body</span><span class="p">)</span>
+      <span class="p">}</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"== </span><span class="si">#{</span><span class="n">e</span><span class="p">.</span><span class="nf">class</span><span class="si">}</span><span class="s2">: mapping template could not put to Elasticsearch. Exiting..."</span>
+      <span class="k">raise</span> <span class="n">e</span><span class="p">.</span><span class="nf">class</span><span class="p">,</span> <span class="n">e</span><span class="p">.</span><span class="nf">message</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">build_template_body</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="no">Hash</span><span class="p">.</span><span class="nf">new</span>
+    <span class="n">body</span><span class="p">[</span><span class="s2">"template"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"</span><span class="si">#{</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:prefix</span><span class="p">]</span><span class="si">}</span><span class="s2">-*"</span>
+    <span class="n">body</span><span class="p">[</span><span class="s2">"order"</span><span class="p">]</span> <span class="o">=</span> <span class="vi">@config</span><span class="p">[</span><span class="ss">:template_order</span><span class="p">]</span>
+    <span class="n">body</span><span class="p">[</span><span class="s2">"mappings"</span><span class="p">]</span> <span class="o">=</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">parse</span><span class="p">(</span><span class="vi">@config</span><span class="p">[</span><span class="ss">:mappings</span><span class="p">])</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">debug</span> <span class="s2">"===== Template for index following..."</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">debug</span> <span class="n">body</span><span class="p">.</span><span class="nf">to_json</span>
+    <span class="n">body</span><span class="p">.</span><span class="nf">to_json</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="使い方" class="fragment"></span><a href="#%E4%BD%BF%E3%81%84%E6%96%B9"><i class="fa fa-link"></i></a>使い方</h3>
+
+<p>次のいずれかで使えます。設定変更はattributeまたは初期化時にどうぞ。</p>
+
+<h4>
+<span id="run_listにrecipechef_handler_elasticsearchdefaultを入れる" class="fragment"></span><a href="#run_list%E3%81%ABrecipechef_handler_elasticsearchdefault%E3%82%92%E5%85%A5%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a>run_listに<code>recipe[chef_handler_elasticsearch::default]</code>を入れる</h4>
+
+<p>この場合、attributeで設定をoverrideします。</p>
+
+<h4>
+<span id="chefconfigreport_handlerschefconfigexception_handlersに自前で追加する" class="fragment"></span><a href="#chefconfigreport_handlerschefconfigexception_handlers%E3%81%AB%E8%87%AA%E5%89%8D%E3%81%A7%E8%BF%BD%E5%8A%A0%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a><code>Chef::Config[:report_handlers]</code>,<code>Chef::Config[:exception_handlers]</code>に自前で追加する</h4>
+
+<p>自前のCookbookで、recipeかLibrariyで次のようにします。<br>
+metadataに<code>depends 'chef_handler_elasticsearch'</code> を入れる必要があります。</p>
+
+<p><code>Chef::Config[:report_handlers] &lt;&lt; Chef::Handler::Elasticsearch.new</code></p>
+
+<p>デフォルトの設定を上書きするには、初期化時にオプションで渡すか、</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">libraries/default.rb</span></div>
+<div class="highlight"><pre><span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:report_handlers</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">Elasticsearch</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+  <span class="ss">url: </span><span class="s1">'http://test.example.com:9200'</span><span class="p">,</span>
+  <span class="ss">timeout: </span><span class="mi">10</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+
+<p>自前のCookbookやRoleなどで優先度の高いattributeを使いましょう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">attributes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">override</span><span class="p">[</span><span class="ss">:chef_handler_elasticsearch</span><span class="p">][</span><span class="ss">:url</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'http://test.example.com:9200'</span>
+<span class="n">override</span><span class="p">[</span><span class="ss">:chef_handler_elasticsearch</span><span class="p">][</span><span class="ss">:timeout</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="solorbやclientrbで指定する" class="fragment"></span><a href="#solorb%E3%82%84clientrb%E3%81%A7%E6%8C%87%E5%AE%9A%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>solo.rbやclient.rbで指定する。</h4>
+
+<p>Cookbookごと環境に入れたり、余分なAttributeが増えるのを嫌う場合はハンドラのソースを適当な場所にコピーしてrequireします。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="nb">require</span> <span class="s1">'path_to_lib/chef_handler_elasticsearch.rb'</span>
+
+<span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:report_handlers</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">Elasticsearch</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+  <span class="ss">url: </span><span class="s1">'http://test.example.com:9200'</span><span class="p">,</span>
+  <span class="ss">timeout: </span><span class="mi">10</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div></div>
+
+<h3>
+<span id="ハンドラ実行" class="fragment"></span><a href="#%E3%83%8F%E3%83%B3%E3%83%89%E3%83%A9%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>ハンドラ実行</h3>
+
+<p>ハンドラの追加が上手く言っていれば、Elasticsearchにレポートを投げるようになっています。<br>
+初回のみテンプレートを作成します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>[2014-05-22T03:30:15+00:00] INFO: Chef Run complete in 0.060295361 seconds  
+
+Running handlers:       
+[2014-05-22T03:30:15+00:00] INFO: Running report handlers       
+[2014-05-22T03:30:15+00:00] INFO: HTTP Request Returned 404 Not Found:        
+[2014-05-22T03:30:15+00:00] INFO: == create mapping template to Elasticsearch.       
+[2014-05-22T03:30:19+00:00] INFO: == Chef::Handler::Elasticsearch request_id: 9368d16f-1f09-487e-9701-8acb001737fc       
+  - Chef::Handler::Elasticsearch       
+Running handlers complete       
+
+</pre></div></div>
+
+<h2>
+<span id="kibanaでの表示調整" class="fragment"></span><a href="#kibana%E3%81%A7%E3%81%AE%E8%A1%A8%E7%A4%BA%E8%AA%BF%E6%95%B4"><i class="fa fa-link"></i></a>Kibanaでの表示調整</h2>
+
+<p>とりあえず標準のLogstash Dashboardで表示してみましょう。</p>
+
+<p>Index Settingsから、<code>logstash</code>の文字列を<code>chef_handler</code>に変更します。<code>_all</code>でもOK。<br>
+インデックス名はハンドラの初期化時に指定できるので任意のものがつけられます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F807d79eb-c07a-2d2f-ec8e-6dd8ddb3a5ec.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4a13924b2469a1a5d88e24955914e15f" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F807d79eb-c07a-2d2f-ec8e-6dd8ddb3a5ec.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4a13924b2469a1a5d88e24955914e15f" alt="スクリーンショット_5_22_14__11_48_AM.png" title="スクリーンショット_5_22_14__11_48_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/807d79eb-c07a-2d2f-ec8e-6dd8ddb3a5ec.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F807d79eb-c07a-2d2f-ec8e-6dd8ddb3a5ec.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=90276da371d1071bac0ec007e122b669 1x" loading="lazy"></a></p>
+
+<p>さて、よくみる時系列データになりましたね。<br>
+ただ、デフォルトではsuccessもfailureも一緒くたなので、ひとつ調製例を。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5f7e7443-92d5-555d-d66f-61a729f3b1ca.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=63be23f825589ef51ff0a28df4a18920" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5f7e7443-92d5-555d-d66f-61a729f3b1ca.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=63be23f825589ef51ff0a28df4a18920" alt="スクリーンショット_5_22_14__12_34_PM.png" title="スクリーンショット_5_22_14__12_34_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/5f7e7443-92d5-555d-d66f-61a729f3b1ca.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5f7e7443-92d5-555d-d66f-61a729f3b1ca.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=54e3a8ca40a0b1c34bc0f0ed2ab4a344 1x" loading="lazy"></a></p>
+
+<p>試しにクエリを次の2つにわけてみました。</p>
+
+<ul>
+<li><code>_type:success</code></li>
+<li><code>_type:failure</code></li>
+</ul>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd9d6b5f4-418c-e4ef-028d-c59a898b6e90.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ab73011374f3c2777facd8e96d1cd758" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd9d6b5f4-418c-e4ef-028d-c59a898b6e90.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ab73011374f3c2777facd8e96d1cd758" alt="スクリーンショット_5_22_14__12_36_PM.png" title="スクリーンショット_5_22_14__12_36_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d9d6b5f4-418c-e4ef-028d-c59a898b6e90.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd9d6b5f4-418c-e4ef-028d-c59a898b6e90.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=ecb1ea0abd53f995ff71b0c7428b35c1 1x" loading="lazy"></a></p>
+
+<p>色分けでスッキリ。</p>
+
+<h2>
+<span id="課題" class="fragment"></span><a href="#%E8%AA%B2%E9%A1%8C"><i class="fa fa-link"></i></a>課題</h2>
+
+<p>index templateには改良の余地が結構ありそう。</p>

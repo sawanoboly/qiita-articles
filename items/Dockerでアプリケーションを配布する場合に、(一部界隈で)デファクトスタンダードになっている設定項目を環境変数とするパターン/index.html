@@ -1,0 +1,118 @@
+<p>なにかしらアプリケーションを開発しており、公式のDockerイメージを配布する。最近よく見かけますね。<br>
+利用者側の意見として、アプリケーションの設定には環境変数が使えると助かったりします。</p>
+
+<p>なんで？</p>
+
+<ul>
+<li>ADD/COPYがいらない
+
+<ul>
+<li>変更のたびビルドしなくていい</li>
+</ul>
+</li>
+<li>Mountつかわなくていい
+
+<ul>
+<li>Mount用のファイルを管理しなくていい</li>
+</ul>
+</li>
+<li>docker-compose.ymlなどで完結</li>
+</ul>
+
+<p>で、この環境変数からアプリケーションの設定というやり方、一部界隈のDockerイメージで命名規則が次のように、</p>
+
+<ul>
+<li><code>{アプリケーション名}_{ディレクティブ}_{サブディレクティブ}</code></li>
+<li><code>{アプリケーション名}_{設定項目名}</code></li>
+</ul>
+
+<p>という感じの環境変数をUppercaseでアプリケーションに渡せば、設定ファイルの同じ項目を指定・または上書きするというルールがあります。</p>
+
+<p>別にどんなイメージでもこうすればよいという主張ではなく、なんかしらの公式イメージとかを作って不特定多数に使ってもらう際にはこのようにしておくやり方もありますという話です。</p>
+
+<p>例えばこれらがそんなアプローチを取っています。</p>
+
+<ul>
+<li>kafka(Confluent)とその周りのモジュール <a href="https://github.com/confluentinc/cp-docker-images/tree/v5.1.2" rel="nofollow noopener" target="_blank">confluentinc/cp-docker-images at v5.1.2</a>
+</li>
+<li>graylog <a href="https://github.com/Graylog2/graylog-docker/tree/3.0.0-1" rel="nofollow noopener" target="_blank">Graylog2/graylog-docker at 3.0.0-1</a>
+</li>
+</ul>
+
+<blockquote>
+<p>追記: 後でもすこし触れているけど、設定ファイルのリファレンスがそのまま環境変数に置き換えられるのがこの規則の良いとこです。</p>
+</blockquote>
+
+<h2>
+<span id="環境変数からdockerコンテナ起動時に設定ファイルに追記するタイプ" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0%E3%81%8B%E3%82%89docker%E3%82%B3%E3%83%B3%E3%83%86%E3%83%8A%E8%B5%B7%E5%8B%95%E6%99%82%E3%81%AB%E8%A8%AD%E5%AE%9A%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AB%E8%BF%BD%E8%A8%98%E3%81%99%E3%82%8B%E3%82%BF%E3%82%A4%E3%83%97"><i class="fa fa-link"></i></a>環境変数から、Dockerコンテナ起動時に設定ファイルに追記するタイプ</h2>
+
+<p>例であげたkafka(Confluent)は、Dockerコンテナが起動する際に環境変数から設定ファイルへの追記を行います。</p>
+
+<p><a href="https://github.com/confluentinc/cp-docker-images/tree/v5.1.2" rel="nofollow noopener" target="_blank">confluentinc/cp-docker-images at v5.1.2</a></p>
+
+<p>設定ファイルに追記したい設定項目があれば、下記のような対応で環境変数をセットしてあげます。</p>
+
+<ul>
+<li>
+<code>default.replication.factor</code> &lt;= <code>KAFKA_DEFAULT_REPLICATION_FACTOR</code>
+</li>
+<li>
+<code>kafka.num.partitions</code> &lt;= <code>KAFKA_NUM_PARTITIONS</code>
+</li>
+</ul>
+
+<p>このようにすることで、あらゆるパラメータを環境変数経由で設定できるようにしています。</p>
+
+<p>実際どのようにやっているかは、下記のエントリーポイントファイル群を見るとなんとなくわかります。</p>
+
+<ul>
+<li><a href="https://github.com/confluentinc/cp-docker-images/tree/v5.1.2/debian/kafka/include/etc/confluent/docker" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/confluentinc/cp-docker-images/tree/v5.1.2/debian/kafka/include/etc/confluent/docker</a></li>
+</ul>
+
+<p>自作？のラッパーで追記してるようですね。(流石につらくはあるので、冒頭でアプリケーション配布側であればできるようにしたほうがよい、程度の表現になってます。)</p>
+
+<h2>
+<span id="環境変数があったら優先して使うタイプ" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0%E3%81%8C%E3%81%82%E3%81%A3%E3%81%9F%E3%82%89%E5%84%AA%E5%85%88%E3%81%97%E3%81%A6%E4%BD%BF%E3%81%86%E3%82%BF%E3%82%A4%E3%83%97"><i class="fa fa-link"></i></a>環境変数があったら、優先して使うタイプ</h2>
+
+<p>多分Graylog(未確定)がこのタイプなんだと思うのです。エントリーポイントをざっと見てもファイル変更してるように思えなかった。(Java力もないのでそれ以上追いかけませんでした。)</p>
+
+<ul>
+<li><a href="https://github.com/Graylog2/graylog-docker/tree/3.0.0-1" rel="nofollow noopener" target="_blank">Graylog2/graylog-docker at 3.0.0-1</a></li>
+</ul>
+
+<p>graylogはkafkaと違い、設定ファイル上の区切りが<code>_</code>なので、`<code>GRAYLOG_*</code>の環境変数の後半部分がlowercaseとアンダースコアの設定項目に対応してます。</p>
+
+<ul>
+<li>
+<code>is_master</code> &lt;= <code>GRAYLOG_IS_MASTER</code>
+</li>
+<li>
+<code>password_secret</code> &lt;= <code>GRAYLOG_PASSWORD_SECRET</code>
+</li>
+</ul>
+
+<p>設定ファイルのリファレンスを読みながら、環境変数に起こしていきやすいですね。<br>
+そのためか、次のような質問も、法則があるからそれに従おうぜという回答で締められています。</p>
+
+<ul>
+<li><a href="https://github.com/Graylog2/graylog-docker/issues/8" rel="nofollow noopener" target="_blank">Please document GRAYLOG_ELASTICSEARCH_HOSTS · Issue #8 · Graylog2/graylog-docker</a></li>
+</ul>
+
+<h3>
+<span id="おまけrubygems例" class="fragment"></span><a href="#%E3%81%8A%E3%81%BE%E3%81%91rubygems%E4%BE%8B"><i class="fa fa-link"></i></a>おまけ、Rubygems例</h3>
+
+<p>ちなみに、Rubygemsの<a href="https://github.com/thekompanee/chamber" rel="nofollow noopener" target="_blank">thekompanee/chamber</a> なんかもそのパターンで、設定用のyamlファイル上にあるキーと環境変数が対になるような使い方ができるのでたまに使っています。</p>
+
+<ul>
+<li><a href="https://github.com/thekompanee/chamber" rel="nofollow noopener" target="_blank">thekompanee/chamber: A surprisingly configurable convention-based approach to managing your application's custom configuration settings.</a></li>
+</ul>
+
+<p>こっちの環境変数があったら、優先して使うタイプはDockerコンテナに限らず利用できる点もよいですね。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>このアプローチはわりと浸透している気もしますが、はっきりこうだという話もあまり出てないなと思ったので書いときました。</p>
+
+<p>テンプレートからコンフィグファイルを作る、とかは項目が多くなってくると分岐で肥大化しちゃうことと、管理対象はなるべく少なくするのがやっぱりよいです。<br>
+使う側としても嬉しいし、自分で何か配布するときはそういうように作りたいな。</p>

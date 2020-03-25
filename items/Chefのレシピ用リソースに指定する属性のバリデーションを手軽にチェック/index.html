@@ -1,0 +1,159 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>OpscodeChefのレシピで使えるリソースは、属性のバリデーションをそれなりにやっています。<br>
+リソースが使えるケースでは、なるべく使ったほうがミスを防げるかもしれません。</p>
+
+<p>じゃあどんなバリデーションなのか軽く確かめる方法。</p>
+
+<h2>
+<span id="chefresouceのインスタンスをつくる" class="fragment"></span><a href="#chefresouce%E3%81%AE%E3%82%A4%E3%83%B3%E3%82%B9%E3%82%BF%E3%83%B3%E3%82%B9%E3%82%92%E3%81%A4%E3%81%8F%E3%82%8B"><i class="fa fa-link"></i></a>Chef::Resouceのインスタンスをつくる</h2>
+
+<p>Chef::Resouce以下のクラスは名前を渡せばパラメータを全部デフォルトでインスタンスが作成されます。</p>
+
+<p>Cronリソースで色々確かめてみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_ChefResourceCron</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'chef'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">cron</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">Cron</span><span class="p">.</span><span class="nf">new</span> <span class="s1">'my_cron'</span>
+<span class="o">=&gt;</span>
+<span class="o">&lt;</span><span class="n">cron</span><span class="p">[</span><span class="n">my_cron</span><span class="p">]</span>
+  <span class="vi">@name</span><span class="p">:</span> <span class="s2">"my_cron"</span>
+  <span class="vi">@noop</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@before</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@params</span><span class="p">:</span> <span class="p">{}</span>
+  <span class="vi">@provider</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@allowed_actions</span><span class="p">:</span> <span class="p">[</span><span class="ss">:nothing</span><span class="p">,</span> <span class="ss">:create</span><span class="p">,</span> <span class="ss">:delete</span><span class="p">]</span>
+  <span class="vi">@action</span><span class="p">:</span> <span class="ss">:create</span> <span class="vi">@updated</span><span class="p">:</span> <span class="kp">false</span> <span class="vi">@updated_by_last_action</span><span class="p">:</span> <span class="kp">false</span>
+  <span class="vi">@supports</span><span class="p">:</span> <span class="p">{}</span>
+  <span class="vi">@ignore_failure</span><span class="p">:</span> <span class="kp">false</span>
+  <span class="vi">@retries</span><span class="p">:</span> <span class="mi">0</span>
+  <span class="vi">@retry_delay</span><span class="p">:</span> <span class="mi">2</span>
+  <span class="vi">@source_line</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@elapsed_time</span><span class="p">:</span> <span class="mi">0</span>
+  <span class="vi">@resource_name</span><span class="p">:</span> <span class="ss">:cron</span>
+  <span class="vi">@minute</span><span class="p">:</span> <span class="s2">"*"</span>
+  <span class="vi">@hour</span><span class="p">:</span> <span class="s2">"*"</span>
+  <span class="vi">@day</span><span class="p">:</span> <span class="s2">"*"</span>
+  <span class="vi">@month</span><span class="p">:</span> <span class="s2">"*"</span>
+  <span class="vi">@weekday</span><span class="p">:</span> <span class="s2">"*"</span>
+  <span class="vi">@command</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@user</span><span class="p">:</span> <span class="s2">"root"</span>
+  <span class="vi">@mailto</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@path</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@shell</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@home</span><span class="p">:</span> <span class="kp">nil</span>
+  <span class="vi">@environment</span><span class="p">:</span> <span class="p">{}</span>
+<span class="o">&gt;</span> 
+</pre></div>
+</div>
+
+<h2>
+<span id="属性に値を入れてみて確認する" class="fragment"></span><a href="#%E5%B1%9E%E6%80%A7%E3%81%AB%E5%80%A4%E3%82%92%E5%85%A5%E3%82%8C%E3%81%A6%E3%81%BF%E3%81%A6%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>属性に値を入れてみて確認する</h2>
+
+<p>属性の名前はそのままメソッドになっていますので叩けばOK。このように。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_CronResource</span></div>
+<div class="highlight"><pre><span class="c1">## 何も渡さなければ現在の値</span>
+<span class="o">&gt;</span> <span class="n">cron</span><span class="p">.</span><span class="nf">minute</span>
+<span class="o">=&gt;</span> <span class="s2">"*"</span>
+
+<span class="c1">## なにか渡せば代入</span>
+<span class="o">&gt;</span> <span class="n">cron</span><span class="p">.</span><span class="nf">minute</span> <span class="mi">50</span>
+<span class="o">=&gt;</span> <span class="s2">"50"</span>
+
+<span class="c1">## バリデーションに引っかかる例１、99分</span>
+<span class="o">&gt;</span> <span class="n">cron</span><span class="p">.</span><span class="nf">minute</span> <span class="mi">99</span>
+<span class="no">RangeError</span><span class="p">:</span> <span class="no">RangeError</span>
+<span class="n">from</span> <span class="sr">/Users/s</span><span class="n">awanoboriyu</span><span class="o">/</span><span class="no">Dev</span><span class="o">/</span><span class="no">Reading</span><span class="o">/</span><span class="n">chef</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">chef</span><span class="o">/</span><span class="n">resource</span><span class="o">/</span><span class="n">cron</span><span class="p">.</span><span class="nf">rb</span><span class="p">:</span><span class="mi">56</span><span class="ss">:in</span> <span class="s1">'minute'</span>
+
+<span class="c1">## バリデーションに引っかかる例２、コマンドラインがStringでない</span>
+<span class="o">&gt;</span> <span class="n">cron</span><span class="p">.</span><span class="nf">command</span> <span class="mi">12</span>
+<span class="no">Chef</span><span class="o">::</span><span class="no">Exceptions</span><span class="o">::</span><span class="no">ValidationFailed</span><span class="p">:</span> <span class="no">Option</span> <span class="n">command</span> <span class="n">must</span> <span class="n">be</span> <span class="n">a</span> <span class="n">kind</span> <span class="n">of</span> <span class="no">String</span><span class="o">!</span>  <span class="no">You</span> <span class="n">passed</span> <span class="mi">12</span><span class="p">.</span>
+<span class="nf">from</span> <span class="sr">/Users/s</span><span class="n">awanoboriyu</span><span class="o">/</span><span class="no">Dev</span><span class="o">/</span><span class="no">Reading</span><span class="o">/</span><span class="n">chef</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">chef</span><span class="o">/</span><span class="n">mixin</span><span class="o">/</span><span class="n">params_validate</span><span class="p">.</span><span class="nf">rb</span><span class="p">:</span><span class="mi">150</span><span class="ss">:in</span> <span class="s1">'_pv_kind_of'</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="過信は禁物" class="fragment"></span><a href="#%E9%81%8E%E4%BF%A1%E3%81%AF%E7%A6%81%E7%89%A9"><i class="fa fa-link"></i></a>過信は禁物</h2>
+
+<p>分のバリデーションをもう少し試してみましょう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">cron</span><span class="p">.</span><span class="nf">minute</span> <span class="s2">"abcde"</span>
+<span class="o">=&gt;</span> <span class="s2">"abcde"</span>
+</pre></div>
+</div>
+
+<p>そんなチェックで大丈夫か。</p>
+
+<h3>
+<span id="chef-applyで実験" class="fragment"></span><a href="#chef-apply%E3%81%A7%E5%AE%9F%E9%A8%93"><i class="fa fa-link"></i></a>Chef-Applyで実験</h3>
+
+<p>そらFailしますわ、でも強行しないようになってるだけマシと思おう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">chef-apply_with_invalid_parameter</span></div>
+<div class="highlight"><pre><span class="c"># cat &lt;&lt;EOL | chef-apply -s</span>
+<span class="o">&gt;</span> cron <span class="s1">'hoge'</span> <span class="k">do</span>
+<span class="o">&gt;</span>   minute <span class="s1">'abcde'</span>
+<span class="o">&gt;</span> end
+<span class="o">&gt;</span> EOL
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> cron[hoge] action create
+<span class="o">================================================================================</span>
+Error executing action <span class="sb">`</span>create<span class="sb">`</span> on resource <span class="s1">'cron[hoge]'</span>
+<span class="o">================================================================================</span>
+
+Chef::Exceptions::Cron
+<span class="nt">----------------------</span>
+Error updating state of hoge, <span class="nb">exit</span>: 1
+
+Resource Declaration:
+<span class="nt">---------------------</span>
+<span class="c"># In /tmp/recipe-temporary-file20130920-9634-1ps5rqz</span>
+
+  1: cron <span class="s1">'hoge'</span> <span class="k">do
+  </span>2:   minute <span class="s1">'abcde'</span>
+  3: end
+
+Compiled Resource:
+<span class="nt">------------------</span>
+<span class="c"># Declared in /tmp/recipe-temporary-file20130920-9634-1ps5rqz:1:in `run_chef_recipe'</span>
+
+cron<span class="o">(</span><span class="s2">"hoge"</span><span class="o">)</span> <span class="k">do
+  </span>action :create
+  retries 0
+  retry_delay 2
+  minute <span class="s2">"abcde"</span>
+  hour <span class="s2">"*"</span>
+  day <span class="s2">"*"</span>
+  month <span class="s2">"*"</span>
+  weekday <span class="s2">"*"</span>
+  user <span class="s2">"root"</span>
+  cookbook_name <span class="s2">"(chef-apply cookbook)"</span>
+  recipe_name <span class="s2">"(chef-apply recipe)"</span>
+end
+
+<span class="o">[</span>2013-09-20T05:18:47+00:00] FATAL: Stacktrace dumped to /var/chef/cache/chef-stacktrace.out
+<span class="o">[</span>2013-09-20T05:18:47+00:00] FATAL: Chef::Exceptions::Cron: cron[hoge] <span class="o">((</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span> line 1<span class="o">)</span> had an error: Chef::Exceptions::Cron: Error updating state of hoge, <span class="nb">exit</span>: 1
+</pre></div>
+</div>
+
+<p>ちなみに上のChefApplyでChefが何をしようとして、何が<code>exit 1</code>だったのかの答えはこちら。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash</span></div>
+<div class="highlight"><pre><span class="c"># echo '* abcde * * * ' | crontab -u root -</span>
+<span class="s2">"-"</span>:0: bad hour
+errors <span class="k">in </span>crontab file, can<span class="s1">'t install.
+</span></pre></div>
+</div>

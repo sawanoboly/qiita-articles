@@ -1,0 +1,90 @@
+<p>Ember.jsのWebアプリケーションをH2Oでホストできるかな。</p>
+
+<ul>
+<li><a href="http://emberjs.com/" title="Ember.js - A framework for creating ambitious web applications." rel="nofollow noopener" target="_blank">Ember.js - A framework for creating ambitious web applications.</a></li>
+</ul>
+
+<h2>
+<span id="emberjsのルーターと挙動について簡単に" class="fragment"></span><a href="#emberjs%E3%81%AE%E3%83%AB%E3%83%BC%E3%82%BF%E3%83%BC%E3%81%A8%E6%8C%99%E5%8B%95%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6%E7%B0%A1%E5%8D%98%E3%81%AB"><i class="fa fa-link"></i></a>Ember.jsのルーターと挙動について簡単に</h2>
+
+<p>Ember.jsのバージョンは1.13くらい系。<br>
+アプリケーションをビルドすると、ざっくり下のようなツリーができます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>dist/
+├── assets
+│   ├── vendor-******.css
+│   └── vendor-******.js
+├── crossdomain.xml
+├── index.html
+└── robots.txt
+</pre></div></div>
+
+<p>Ember.jsに限らずこの手のWebアプリケーションは、サーバサイドではJavascriptのファイルを配布にとどめ、クライアントで全部動かします。</p>
+
+<p>ブラウザでの見た目は次のようになりますが、</p>
+
+<ul>
+<li>/login =&gt; ログインページ</li>
+<li>/users =&gt; ユーザのページ</li>
+</ul>
+
+<p>すべてのリクエストは<code>index.html</code>に仕込まれたルータが対応しています。</p>
+
+<h3>
+<span id="mod_rewriteなどでブラウザのリロードに対応する" class="fragment"></span><a href="#mod_rewrite%E3%81%AA%E3%81%A9%E3%81%A7%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%AE%E3%83%AA%E3%83%AD%E3%83%BC%E3%83%89%E3%81%AB%E5%AF%BE%E5%BF%9C%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>mod_rewriteなどでブラウザのリロードに対応する</h3>
+
+<p>通常使っている分には特に違和感無く使えますが、例えば<code>/users</code>の表示中にブラウザでリロードすると、<code>index.html</code>のルータを通りません。<br>
+普通に<code>/users</code>へのリクエストとなるため、対策を取っていないと404になります。</p>
+
+<p>この対策に、Apache httpdでmod_rewriteを使用する場合の例が下記です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>RewriteEngine On
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule (.*) index.html [L]
+</pre></div></div>
+
+<p>おおざっぱにいうと、リクエストが存在するファイル/ディレクトリでなければ、<code>index.html</code>に処理を投げます。</p>
+
+<h2>
+<span id="h2oでemberjs向けに設定を書いてみる" class="fragment"></span><a href="#h2o%E3%81%A7emberjs%E5%90%91%E3%81%91%E3%81%AB%E8%A8%AD%E5%AE%9A%E3%82%92%E6%9B%B8%E3%81%84%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>H2OでEmber.js向けに設定を書いてみる</h2>
+
+<p>まずはこちらを参考に。</p>
+
+<ul>
+<li><a href="http://blog.kazuhooku.com/2015/06/h2ophpmodrewrite.html" title="Kazuho's Weblog: H2OとPHPを組み合わせるの、超簡単です（もしくはmod_rewriteが不要な理由）" rel="nofollow noopener" target="_blank">Kazuho's Weblog: H2OとPHPを組み合わせるの、超簡単です（もしくはmod_rewriteが不要な理由）</a></li>
+</ul>
+
+<p>なるほど超簡単。</p>
+
+<p>で、うまくいったのが次の記述。H2Oは1.6.0を使用、Webアプリケーションは<code>/public</code>に置いてます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>hosts:
+  default:
+    listen:
+      port: 8000
+    paths:
+      /index.html:
+        redirect: /
+      /:
+        file.dir: /public
+        redirect:
+          url: /index.html?
+          internal: YES
+          status: 307
+</pre></div></div>
+
+<p>いくらか試して、redirect.urlを<code>/index.html?</code>とするのが今のところ挙動がしっくりくる。</p>
+
+<h3>
+<span id="ほかredirecturlで試した記述" class="fragment"></span><a href="#%E3%81%BB%E3%81%8Bredirecturl%E3%81%A7%E8%A9%A6%E3%81%97%E3%81%9F%E8%A8%98%E8%BF%B0"><i class="fa fa-link"></i></a>ほか、redirect.urlで試した記述。</h3>
+
+<ul>
+<li>NG: <code>/index.html</code> =&gt; リクエストが<code>/index.htmlusers</code>になり、さらにネストされたリダイレクトへ。</li>
+<li>NG: <code>/index.html/</code> =&gt; リクエストが<code>/index.html/users</code>になり、<code>/users</code>になり、リダイレクトループへ。</li>
+<li>OK?: <code>"/#"</code> =&gt; <code>internal=NO</code>でなら動作可能。2回リダイレクトされて元に戻る。旧Ember風な挙動。イマイチ。</li>
+<li>OK?: <code>/index.html#</code> =&gt; <code>internal=NO</code>でなら動作可能。2回リダイレクト後に"/"にたどり着けるのでなんとかなる模様。合計でリダイレクト3回。イマイチ。</li>
+</ul>
+
+<p>H2OとJavaScriptフレームワークを組み合わせるのも超簡単。。かな。。？</p>

@@ -1,0 +1,108 @@
+<p><a href="http://cloud-news.sakura.ad.jp/cloud_dns/" rel="nofollow noopener" target="_blank">クラウドDNS | さくらのクラウドニュース</a></p>
+
+<p>クラウド共用ライブラリの<a href="http://fog.io" rel="nofollow noopener" target="_blank">fog</a>に、なんだったかのイベント向けで作ったさくらのクラウド向け実装<a href="https://github.com/fog/fog-sakuracloud" rel="nofollow noopener" target="_blank">fog-sakuracloud</a>というGemを趣味で保守してます。<br>
+(当時目線で)世界のクラウド見本市のようなfog対応プロバイダ一覧に、日本のが無いなーという程度の理由で追加したはず。</p>
+
+<h2>
+<span id="fogでクラウドdns" class="fragment"></span><a href="#fog%E3%81%A7%E3%82%AF%E3%83%A9%E3%82%A6%E3%83%89dns"><i class="fa fa-link"></i></a>fogでクラウドDNS</h2>
+
+<p>この記事で、fog-sakuracloudはv1.3.1です。クラウドDNSが無料のうちに追加しました。</p>
+
+<h3>
+<span id="ゾーン一覧" class="fragment"></span><a href="#%E3%82%BE%E3%83%BC%E3%83%B3%E4%B8%80%E8%A6%A7"><i class="fa fa-link"></i></a>ゾーン一覧</h3>
+
+<p>クラウドDNSは必要な操作が少ないので、fogでまあまあ楽に管理できますね。</p>
+
+<div class="code-frame" data-lang="Ruby"><div class="highlight"><pre><span class="nb">require</span> <span class="s1">'fog/sakuracloud'</span>
+
+<span class="c1">## FogのDNSサービスを初期化</span>
+<span class="n">dns</span> <span class="o">=</span> <span class="no">Fog</span><span class="o">::</span><span class="no">DNS</span><span class="o">::</span><span class="no">SakuraCloud</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+  <span class="ss">:sakuracloud_api_token</span> <span class="o">=&gt;</span> <span class="s1">'YOUR_API_TOKEN'</span><span class="p">,</span>
+  <span class="ss">:sakuracloud_api_token_secret</span> <span class="o">=&gt;</span> <span class="s1">'YOUR_TOKEN_SECRET'</span>
+<span class="p">)</span>
+
+<span class="o">----</span>
+
+<span class="c1">## ゾーン一覧を取得</span>
+<span class="o">&gt;</span> <span class="n">dns</span><span class="p">.</span><span class="nf">zones</span>
+
+<span class="o">=&gt;</span> <span class="p">[</span>  <span class="o">&lt;</span><span class="no">Fog</span><span class="o">::</span><span class="no">DNS</span><span class="o">::</span><span class="no">SakuraCloud</span><span class="o">::</span><span class="no">Zone</span>
+    <span class="nb">id</span><span class="o">=</span><span class="s2">"112700801016"</span><span class="p">,</span>
+    <span class="nb">name</span><span class="o">=</span><span class="s2">"sawanoboly4.net"</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+    <span class="n">status</span><span class="o">=</span><span class="p">{</span><span class="s2">"Zone"</span><span class="o">=&gt;</span><span class="s2">"sawanoboly4.net"</span><span class="p">,</span> <span class="s2">"NS"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">"ns1.gslb2.sakura.ne.jp"</span><span class="p">,</span> <span class="s2">"ns2.gslb2.sakura.ne.jp"</span><span class="p">]},</span>
+    <span class="n">settings</span><span class="o">=</span><span class="p">{</span><span class="s2">"DNS"</span><span class="o">=&gt;</span><span class="p">{</span><span class="s2">"ResourceRecordSets"</span><span class="o">=&gt;</span><span class="kp">nil</span><span class="p">}},</span>
+    <span class="n">tags</span><span class="o">=</span><span class="p">[]</span>
+  <span class="o">&gt;</span><span class="p">,</span>
+   <span class="o">&lt;</span><span class="no">Fog</span><span class="o">::</span><span class="no">DNS</span><span class="o">::</span><span class="no">SakuraCloud</span><span class="o">::</span><span class="no">Zone</span>
+    <span class="nb">id</span><span class="o">=</span><span class="s2">"112700801019"</span><span class="p">,</span>
+    <span class="nb">name</span><span class="o">=</span><span class="s2">"sawanoboly5.net"</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+    <span class="n">status</span><span class="o">=</span><span class="p">{</span><span class="s2">"Zone"</span><span class="o">=&gt;</span><span class="s2">"sawanoboly5.net"</span><span class="p">,</span> <span class="s2">"NS"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">"ns1.gslb2.sakura.ne.jp"</span><span class="p">,</span> <span class="s2">"ns2.gslb2.sakura.ne.jp"</span><span class="p">]},</span>
+    <span class="n">settings</span><span class="o">=</span><span class="p">{</span><span class="s2">"DNS"</span><span class="o">=&gt;</span><span class="p">{</span><span class="s2">"ResourceRecordSets"</span><span class="o">=&gt;</span><span class="kp">nil</span><span class="p">}},</span>
+    <span class="n">tags</span><span class="o">=</span><span class="p">[]</span>
+  <span class="o">&gt;</span><span class="p">]</span>
+
+</pre></div></div>
+
+<p>(このstatusやsettingsのネスト、fogではわりと邪魔なので、ホンマに階層いるんかいなと思いつつ。。)ゾーン一覧が取れました。</p>
+
+<h3>
+<span id="ゾーン単品取得して更新" class="fragment"></span><a href="#%E3%82%BE%E3%83%BC%E3%83%B3%E5%8D%98%E5%93%81%E5%8F%96%E5%BE%97%E3%81%97%E3%81%A6%E6%9B%B4%E6%96%B0"><i class="fa fa-link"></i></a>ゾーン単品取得して、更新</h3>
+
+<p>zonesはArrayなので、selectやらfindも使えます。一応getでID指定できるのでそれで単品を取得します。</p>
+
+<div class="code-frame" data-lang="Ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">zone</span> <span class="o">=</span> <span class="n">dns</span><span class="p">.</span><span class="nf">zones</span><span class="p">.</span><span class="nf">get</span><span class="p">(</span><span class="s1">'112700801016'</span><span class="p">)</span>
+<span class="o">=&gt;</span>   <span class="o">&lt;</span><span class="no">Fog</span><span class="o">::</span><span class="no">DNS</span><span class="o">::</span><span class="no">SakuraCloud</span><span class="o">::</span><span class="no">Zone</span>
+    <span class="nb">id</span><span class="o">=</span><span class="s2">"112700801016"</span><span class="p">,</span>
+    <span class="nb">name</span><span class="o">=</span><span class="s2">"sawanoboly4.net"</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+    <span class="n">status</span><span class="o">=</span><span class="p">{</span><span class="s2">"Zone"</span><span class="o">=&gt;</span><span class="s2">"sawanoboly4.net"</span><span class="p">,</span> <span class="s2">"NS"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">"ns1.gslb2.sakura.ne.jp"</span><span class="p">,</span> <span class="s2">"ns2.gslb2.sakura.ne.jp"</span><span class="p">]},</span>
+    <span class="n">settings</span><span class="o">=</span><span class="p">{</span><span class="s2">"DNS"</span><span class="o">=&gt;</span><span class="p">{</span><span class="s2">"ResourceRecordSets"</span><span class="o">=&gt;</span><span class="kp">nil</span><span class="p">}},</span>
+    <span class="n">tags</span><span class="o">=</span><span class="p">[]</span>
+  <span class="o">&gt;</span>
+</pre></div></div>
+
+<p>ZoneやNS、ResourceRecordSetsにはちょっと便利なゲッターが使えます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; zone.zone
+=&gt; "sawanoboly4.net"
+
+&gt; zone.nameservers
+=&gt; ["ns1.gslb2.sakura.ne.jp", "ns2.gslb2.sakura.ne.jp"]
+</pre></div></div>
+
+<p>ではResourceRecordSetsを登録してみましょ。</p>
+
+<div class="code-frame" data-lang="Ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">zone</span><span class="p">.</span><span class="nf">rr_sets</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">"Name"</span><span class="o">=&gt;</span><span class="s2">"mail"</span><span class="p">,</span> <span class="s2">"Type"</span><span class="o">=&gt;</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"RData"</span><span class="o">=&gt;</span><span class="s2">"192.168.1.5"</span><span class="p">}]</span>
+<span class="o">=&gt;</span> <span class="p">[{</span><span class="s2">"Name"</span><span class="o">=&gt;</span><span class="s2">"mail"</span><span class="p">,</span> <span class="s2">"Type"</span><span class="o">=&gt;</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"RData"</span><span class="o">=&gt;</span><span class="s2">"192.168.1.5"</span><span class="p">}]</span>
+
+<span class="o">&gt;</span> <span class="n">zone</span><span class="p">.</span><span class="nf">save</span>
+<span class="p">[</span><span class="n">fog</span><span class="p">][</span><span class="no">WARNING</span><span class="p">]</span> <span class="no">Update</span> <span class="no">DNS</span> <span class="no">Zone</span> <span class="mi">112700801016</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+</pre></div></div>
+
+<p>設定が保存できているか確認します。</p>
+
+<div class="code-frame" data-lang="Ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">zone</span><span class="p">.</span><span class="nf">reload</span> <span class="c1"># reloadはAPIから再取得。</span>
+<span class="o">=&gt;</span>   <span class="o">&lt;</span><span class="no">Fog</span><span class="o">::</span><span class="no">DNS</span><span class="o">::</span><span class="no">SakuraCloud</span><span class="o">::</span><span class="no">Zone</span>
+    <span class="nb">id</span><span class="o">=</span><span class="s2">"112700801016"</span><span class="p">,</span>
+    <span class="nb">name</span><span class="o">=</span><span class="s2">"sawanoboly4.net"</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+    <span class="n">status</span><span class="o">=</span><span class="p">{</span><span class="s2">"Zone"</span><span class="o">=&gt;</span><span class="s2">"sawanoboly4.net"</span><span class="p">,</span> <span class="s2">"NS"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">"ns1.gslb2.sakura.ne.jp"</span><span class="p">,</span> <span class="s2">"ns2.gslb2.sakura.ne.jp"</span><span class="p">]},</span>
+    <span class="n">settings</span><span class="o">=</span><span class="p">{</span><span class="s2">"DNS"</span><span class="o">=&gt;</span><span class="p">{</span><span class="s2">"ResourceRecordSets"</span><span class="o">=&gt;</span><span class="p">[{</span><span class="s2">"Name"</span><span class="o">=&gt;</span><span class="s2">"mail"</span><span class="p">,</span> <span class="s2">"Type"</span><span class="o">=&gt;</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"RData"</span><span class="o">=&gt;</span><span class="s2">"192.168.1.5"</span><span class="p">}]}},</span>
+    <span class="n">tags</span><span class="o">=</span><span class="p">[]</span>
+  <span class="o">&gt;</span>
+</pre></div></div>
+
+<p>rr_setの変更用ヘルパーは<code>Zone#rr_sets=</code>しか実装していないので、Arrayらしく操作するなら<code>settings['DNS']['ResourceRecordSets']</code>を直接触ってOK。</p>
+
+<div class="code-frame" data-lang="Ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">zone</span><span class="p">.</span><span class="nf">settings</span><span class="p">[</span><span class="s1">'DNS'</span><span class="p">][</span><span class="s1">'ResourceRecordSets'</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="p">{</span><span class="s2">"Name"</span><span class="o">=&gt;</span><span class="s2">"www"</span><span class="p">,</span> <span class="s2">"Type"</span><span class="o">=&gt;</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"RData"</span><span class="o">=&gt;</span><span class="s2">"192.168.1.2"</span><span class="p">}</span>
+<span class="o">=&gt;</span> <span class="p">[{</span><span class="s2">"Name"</span><span class="o">=&gt;</span><span class="s2">"mail"</span><span class="p">,</span> <span class="s2">"Type"</span><span class="o">=&gt;</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"RData"</span><span class="o">=&gt;</span><span class="s2">"192.168.1.5"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"Name"</span><span class="o">=&gt;</span><span class="s2">"www"</span><span class="p">,</span> <span class="s2">"Type"</span><span class="o">=&gt;</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"RData"</span><span class="o">=&gt;</span><span class="s2">"192.168.1.2"</span><span class="p">}]</span>
+
+<span class="o">&gt;</span> <span class="n">zone</span><span class="p">.</span><span class="nf">save</span>
+<span class="p">[</span><span class="n">fog</span><span class="p">][</span><span class="no">WARNING</span><span class="p">]</span> <span class="no">Update</span> <span class="no">DNS</span> <span class="no">Zone</span> <span class="mi">112700801016</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+</pre></div></div>
+
+<p>その他の操作は<a href="http://fog.io/about/provider_documentation.html" rel="nofollow noopener" target="_blank">fogサイト</a>のDocumentationにまとめるようにしています。</p>

@@ -1,0 +1,524 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>実践Opscode Chefシリーズ、<a href="http://qiita.com/sawanoboly@github/items/79c7cdf782d64980677d" id="reference-c4a9608344533f6c45ac">part.2</a>の続きになります。</p>
+
+<blockquote>
+<p>記事中のCookbookとChefSolo設定一式はこちらに公開しています。<br>
+<a href="https://github.com/OpsRockin/lwrp_http_userdb" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/lwrp_http_userdb</a></p>
+</blockquote>
+
+<p><code>:create</code>アクションに足りないものを書こうとしたところで切りました、今のResource/Providerはこんな感じです。</p>
+
+<h3>
+<span id="resourcesauth_basicrb" class="fragment"></span><a href="#resourcesauth_basicrb"><i class="fa fa-link"></i></a><code>resources/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/resources/auth_basic.rb-end_of_2</span></div>
+<div class="highlight"><pre><span class="n">actions</span> <span class="ss">:create</span><span class="p">,</span> <span class="ss">:delete</span>
+<span class="n">default_action</span> <span class="ss">:create</span>
+
+<span class="n">attribute</span> <span class="ss">:user</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:required</span> <span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="n">attribute</span> <span class="ss">:password</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span>
+<span class="n">attribute</span> <span class="ss">:path</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:required</span> <span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="n">attribute</span> <span class="ss">:filemode</span><span class="p">,</span> <span class="ss">:default</span> <span class="o">=&gt;</span> <span class="mo">0600</span>
+
+<span class="nb">attr_accessor</span> <span class="ss">:crypted_passwd</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="providersauth_basicrb" class="fragment"></span><a href="#providersauth_basicrb"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-end_of_2</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'webrick'</span>
+
+<span class="k">def</span> <span class="nf">whyrun_supported?</span>
+  <span class="kp">true</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="k">if</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Found http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+    <span class="n">salt</span> <span class="o">=</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span><span class="p">[</span><span class="mi">0</span><span class="o">..</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span> <span class="o">==</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span><span class="p">.</span><span class="nf">crypt</span><span class="p">(</span><span class="n">salt</span><span class="p">)</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2"> was not modified. (up to date)"</span>
+    <span class="k">else</span>
+      <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Update http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+        <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Update http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+        <span class="n">update_user!</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">else</span>
+    <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+      <span class="n">update_user!</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:delete</span> <span class="k">do</span>
+  <span class="k">unless</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2"> was not found. Nothing to do. (up to date)"</span>
+  <span class="k">else</span>
+    <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Delete http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Delete http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+      <span class="n">delete_user!</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">update_user!</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">set_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="n">fix_permission!</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">delete_user!</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">delete_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="n">fix_permission!</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">fix_permission!</span>
+  <span class="no">FileUtils</span><span class="p">.</span><span class="nf">chmod</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">filemode</span><span class="p">.</span><span class="nf">to_i</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">load_current_resource</span>
+  <span class="vi">@current_resource</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">HttpsvAuthBasic</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span> <span class="o">=</span> <span class="n">htpasswd</span><span class="p">.</span><span class="nf">get_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="kp">true</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="バックアップをつくる" class="fragment"></span><a href="#%E3%83%90%E3%83%83%E3%82%AF%E3%82%A2%E3%83%83%E3%83%97%E3%82%92%E3%81%A4%E3%81%8F%E3%82%8B"><i class="fa fa-link"></i></a>バックアップをつくる？</h2>
+
+<p>今足りない要素、それはユーザDBのバックアップです。多分。</p>
+
+<h3>
+<span id="providersauth_basicrb-1" class="fragment"></span><a href="#providersauth_basicrb-1"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-add_backup</span></div>
+<div class="highlight"><pre><span class="c1"># --snip --</span>
+
+<span class="k">def</span> <span class="nf">update_user!</span>
+  <span class="n">backup!</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">set_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="n">fix_permission!</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">delete_user!</span>
+  <span class="n">backup!</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">delete_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="n">fix_permission!</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">fix_permission!</span>
+  <span class="no">FileUtils</span><span class="p">.</span><span class="nf">chmod</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">filemode</span><span class="p">.</span><span class="nf">to_i</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">backup!</span>
+  <span class="n">htpasswd_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">backup</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">Backup</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">htpasswd_file</span><span class="p">)</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">backup!</span>
+<span class="k">end</span>
+
+<span class="c1"># --snip --</span>
+</pre></div>
+</div>
+
+<p><code>Chef::Util::Backup</code>というのがありまして、引数に<code>Chef::Resource::File</code>のインスタンス(※正確には少し違う)を入れてあげるといつものリソース(file, cookbook_file, template, etc...)形式のバックアップを取ることができます。<br>
+これを使わない手はありませんね。</p>
+
+<h4>
+<span id="chef-solo-run" class="fragment"></span><a href="#chef-solo-run"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<p>ログレベルをINFOにしてChefを実行してみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample05'</span> <span class="nt">-l</span> info
+<span class="o">[</span>2013-09-08T00:45:15+09:00] INFO: Forking chef instance to converge...
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-08T00:45:15+09:00] INFO: <span class="k">***</span> Chef 11.6.0 <span class="k">***</span>
+<span class="o">[</span>2013-09-08T00:45:17+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-08T00:45:17+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-08T00:45:17+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample05]]
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Run List is <span class="o">[</span>recipe[httpsv::sample05]]
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Run List expands to <span class="o">[</span>httpsv::sample05]
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Starting Chef Run <span class="k">for </span>sawamba01.local
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Running start handlers
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Start handlers complete.
+Compiling Cookbooks...
+Converging 2 resources
+Recipe: httpsv::sample05
+  <span class="k">*</span> httpsv_auth_basic[var/www/site1:hoge1] action create[2013-09-08T00:45:17+09:00] INFO: Processing httpsv_auth_basic[var/www/site1:hoge1] action create <span class="o">(</span>httpsv::sample05 line 3<span class="o">)</span>
+<span class="o">[</span>2013-09-08T00:45:17+09:00] WARN: <span class="o">======</span> Create http_auth user hoge1
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] backed up to /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/backup/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd.chef-20130908004517
+
+    - <span class="o">======</span> Create http_auth user hoge1
+
+  <span class="k">*</span> httpsv_auth_basic[var/www/site1:hoge2] action create[2013-09-08T00:45:17+09:00] INFO: Processing httpsv_auth_basic[var/www/site1:hoge2] action create <span class="o">(</span>httpsv::sample05 line 10<span class="o">)</span>
+<span class="o">[</span>2013-09-08T00:45:17+09:00] WARN: <span class="o">======</span> Create http_auth user hoge2
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: file[/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd] backed up to /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/backup/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd.chef-20130908004517
+
+    - <span class="o">======</span> Create http_auth user hoge2
+
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Chef Run <span class="nb">complete </span><span class="k">in </span>0.273085 seconds
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Running report handlers
+<span class="o">[</span>2013-09-08T00:45:17+09:00] INFO: Report handlers <span class="nb">complete
+</span>Chef Client finished, 2 resources updated
+</pre></div>
+</div>
+
+<p>ファイルバックアップの様子がログに出ていますね。</p>
+
+<p><code>backed up to /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/backup/Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd.chef-20130908004517</code></p>
+
+<p>バックアップの取得状況を調べてみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">tree_of_the_backup</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>tree <span class="nt">-a</span> backup/<span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>
+backup//Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb
+└── var
+    └── www
+        └── site1
+            └── .htpasswd.chef-20130908004517
+
+3 directories, 1 file
+</pre></div>
+</div>
+
+<p>いつものChefが作るバックアップです、やった！</p>
+
+<h4>
+<span id="世代数を増やしたい" class="fragment"></span><a href="#%E4%B8%96%E4%BB%A3%E6%95%B0%E3%82%92%E5%A2%97%E3%82%84%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>世代数を増やしたい</h4>
+
+<p>さて、デフォルトのバックアップ世代数は5ですが、これは心持ち少ないかもしれません。<br>
+普通の<code>Chef::Resouce</code>で使う際はレシピで世代数を管理できますが、このように間借りする場合は場合どうしましょうか。</p>
+
+<p>こうします、<code>Chef::Resource::File</code>のインスタンス変数に強引に突っ込んでしまえば良いのです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">def_backup!-increase_generation</span></div>
+<div class="highlight"><pre><span class="k">def</span> <span class="nf">backup!</span>
+  <span class="n">htpasswd_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd_file</span><span class="p">.</span><span class="nf">instance_variable_set</span><span class="p">(</span><span class="ss">:@backup</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
+  <span class="n">backup</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">Backup</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">htpasswd_file</span><span class="p">)</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">backup!</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>これで世代数を30にすることができます。レシピ側で世代数を指定するやり方はもう分かりますね。</p>
+
+<h3>
+<span id="そんなタイムスタンプで大丈夫だろうか" class="fragment"></span><a href="#%E3%81%9D%E3%82%93%E3%81%AA%E3%82%BF%E3%82%A4%E3%83%A0%E3%82%B9%E3%82%BF%E3%83%B3%E3%83%97%E3%81%A7%E5%A4%A7%E4%B8%88%E5%A4%AB%E3%81%A0%E3%82%8D%E3%81%86%E3%81%8B"><i class="fa fa-link"></i></a>そんなタイムスタンプで大丈夫だろうか</h3>
+
+<p>先程のバックアップファイルに何か違和感を覚えませんでしたか？<br>
+そう、リソース更新は2回あったのにバックアップが一つしかありませんね。なぜならタイムスタンプが秒単位だからです。</p>
+
+<p>通常のChef実行では同一のファイルをごそごそいじることは無いため、秒単位でも十分なのですがこのLWRPでは少々困ります。<br>
+折角なのでミリ秒も付けてもらいましょう。</p>
+
+<p><code>#backup!</code>の内容はこのようになります。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">def_backup!-use-micro_sec</span></div>
+<div class="highlight"><pre><span class="k">def</span> <span class="nf">backup!</span>
+  <span class="n">htpasswd_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd_file</span><span class="p">.</span><span class="nf">instance_variable_set</span><span class="p">(</span><span class="ss">:@backup</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
+  <span class="n">backup</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">Backup</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">htpasswd_file</span><span class="p">)</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:backup_filename</span><span class="p">)</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">instance_variable_set</span><span class="p">(</span><span class="ss">:@backup_filename</span><span class="p">,</span><span class="n">backup</span><span class="p">.</span><span class="nf">instance_variable_get</span><span class="p">(</span><span class="ss">:@backup_filename</span><span class="p">).</span><span class="nf">gsub</span><span class="p">(</span><span class="sr">/[\d]+$/</span><span class="p">,</span><span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">strftime</span><span class="p">(</span><span class="s2">"%Y%m%d%H%M%S.%6N"</span><span class="p">)))</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">backup!</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>ここを解説しようとすると長くなりそうなので割愛します、興味があったら各自でお調べ下さい。</p>
+
+<p>新しい<code>#backup!</code>ではファイル名がこうなります。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">tree_of_the_backup-micro_sec</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>tree <span class="nt">-a</span> backup/<span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>
+backup//Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb
+└── var
+    └── www
+        └── site1
+            ├── .htpasswd.chef-20130908010118.944651
+            └── .htpasswd.chef-20130908010118.947960
+
+3 directories, 2 files
+</pre></div>
+</div>
+
+<p>リソース操作の間隔は3msしかなかったのですね。<br>
+しかしタイムスタンプの制度を変更することができたので、Chefの処理速度が10,000倍になるまでは問題ない。</p>
+
+<p>これで<code>:create</code>アクションは完成となります、<code>:delete</code>時にも<code>#backup!</code>が使いまわせていい感じですね。</p>
+
+<h2>
+<span id="最後のアクション-discard-を実装する" class="fragment"></span><a href="#%E6%9C%80%E5%BE%8C%E3%81%AE%E3%82%A2%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3-discard-%E3%82%92%E5%AE%9F%E8%A3%85%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>最後のアクション :discard を実装する</h2>
+
+<p><code>.htpasswd</code>上のユーザ操作ができるようになりました、もう一つ必要な操作として考えられるのはユーザDB本体の破棄です。</p>
+
+<p>認証自体を解除する場合には、<code>.htpasswd</code>ファイル自体不要なものになりますが、既存ユーザを全てdeleteするレシピを書くのはイマイチ現実的ではありません。それに今のやり方ではファイル自体は中身が空っぽで残ってしまいます。</p>
+
+<p>ということで、DB自体を削除するアクション<code>:discard</code>を実装してみたResouce/Providerがこちらです。</p>
+
+<h3>
+<span id="resourcesauth_basicrb-1" class="fragment"></span><a href="#resourcesauth_basicrb-1"><i class="fa fa-link"></i></a><code>resources/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/resources/auth_basic.rb-action-discard</span></div>
+<div class="highlight"><pre><span class="n">actions</span> <span class="ss">:create</span><span class="p">,</span> <span class="ss">:delete</span><span class="p">,</span> <span class="ss">:discard</span>
+<span class="n">default_action</span> <span class="ss">:create</span>
+
+<span class="n">attribute</span> <span class="ss">:user</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:required</span> <span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="n">attribute</span> <span class="ss">:password</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span>
+<span class="n">attribute</span> <span class="ss">:path</span><span class="p">,</span> <span class="ss">:kind_of</span> <span class="o">=&gt;</span> <span class="no">String</span><span class="p">,</span> <span class="ss">:required</span> <span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="n">attribute</span> <span class="ss">:filemode</span><span class="p">,</span> <span class="ss">:default</span> <span class="o">=&gt;</span> <span class="mo">0600</span>
+
+<span class="nb">attr_accessor</span> <span class="ss">:crypted_passwd</span>
+<span class="nb">attr_accessor</span> <span class="ss">:db_exists</span>
+</pre></div>
+</div>
+
+<p><code>db_exists</code>属性が増えました。使っている<code>WEBrick::HTTPAuth::Htpasswd</code>ライブラリの仕様のため必要になりました。</p>
+
+<h3>
+<span id="providersauth_basicrb-2" class="fragment"></span><a href="#providersauth_basicrb-2"><i class="fa fa-link"></i></a><code>providers/auth_basic.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/providers/auth_basic.rb-action-discard</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'webrick'</span>
+
+<span class="k">def</span> <span class="nf">whyrun_supported?</span>
+  <span class="kp">true</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:create</span> <span class="k">do</span>
+  <span class="k">if</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Found http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+    <span class="n">salt</span> <span class="o">=</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span><span class="p">[</span><span class="mi">0</span><span class="o">..</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span> <span class="o">==</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span><span class="p">.</span><span class="nf">crypt</span><span class="p">(</span><span class="n">salt</span><span class="p">)</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2"> was not modified. (up to date)"</span>
+    <span class="k">else</span>
+      <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Update http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+        <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Update http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+        <span class="n">update_user!</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">else</span>
+    <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Create http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+      <span class="n">update_user!</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:delete</span> <span class="k">do</span>
+  <span class="k">unless</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2"> was not found. Nothing to do. (up to date)"</span>
+  <span class="k">else</span>
+    <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Delete http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== Delete http_auth user </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="si">}</span><span class="s2">"</span>
+      <span class="n">delete_user!</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">action</span> <span class="ss">:discard</span> <span class="k">do</span>
+  <span class="k">if</span> <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">db_exists</span>
+    <span class="n">converge_by</span><span class="p">(</span><span class="s2">"====== Discard http_auth userdb </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">do</span>
+      <span class="n">backup!</span>
+      <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">unlink</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+    <span class="k">end</span>
+  <span class="k">else</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"====== http_auth user database </span><span class="si">#{</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="si">}</span><span class="s2"> was not found. Nothing to do. (up to date)"</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">update_user!</span>
+  <span class="n">backup!</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">set_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">password</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="n">fix_permission!</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">delete_user!</span>
+  <span class="n">backup!</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">delete_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span>
+  <span class="n">htpasswd</span><span class="p">.</span><span class="nf">flush</span>
+  <span class="n">fix_permission!</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">fix_permission!</span>
+  <span class="no">FileUtils</span><span class="p">.</span><span class="nf">chmod</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">filemode</span><span class="p">.</span><span class="nf">to_i</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">backup!</span>
+  <span class="n">htpasswd_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="n">htpasswd_file</span><span class="p">.</span><span class="nf">instance_variable_set</span><span class="p">(</span><span class="ss">:@backup</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
+  <span class="n">backup</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">Backup</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">htpasswd_file</span><span class="p">)</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:backup_filename</span><span class="p">)</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">instance_variable_set</span><span class="p">(</span><span class="ss">:@backup_filename</span><span class="p">,</span><span class="n">backup</span><span class="p">.</span><span class="nf">instance_variable_get</span><span class="p">(</span><span class="ss">:@backup_filename</span><span class="p">).</span><span class="nf">gsub</span><span class="p">(</span><span class="sr">/[\d]+$/</span><span class="p">,</span><span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">strftime</span><span class="p">(</span><span class="s2">"%Y%m%d%H%M%S.%6N"</span><span class="p">)))</span>
+  <span class="n">backup</span><span class="p">.</span><span class="nf">backup!</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">load_current_resource</span>
+  <span class="vi">@current_resource</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Resource</span><span class="o">::</span><span class="no">HttpsvAuthBasic</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span>
+  <span class="k">unless</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+    <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">db_exists</span> <span class="o">=</span> <span class="kp">false</span>
+    <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span> <span class="o">=</span> <span class="kp">nil</span>
+    <span class="k">return</span>
+  <span class="k">end</span>
+  <span class="n">htpasswd</span> <span class="o">=</span> <span class="no">WEBrick</span><span class="o">::</span><span class="no">HTTPAuth</span><span class="o">::</span><span class="no">Htpasswd</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vi">@new_resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+  <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">crypted_passwd</span> <span class="o">=</span> <span class="n">htpasswd</span><span class="p">.</span><span class="nf">get_passwd</span> <span class="kp">nil</span><span class="p">,</span> <span class="vi">@new_resource</span><span class="p">.</span><span class="nf">user</span><span class="p">,</span> <span class="kp">true</span>
+  <span class="vi">@current_resource</span><span class="p">.</span><span class="nf">db_exists</span> <span class="o">=</span> <span class="kp">true</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>:discard</code>についてはunlinkしているだけです、<code>@current_resource</code>の収集処理に手を加えています。</p>
+
+<p><code>WEBrick::HTTPAuth::Htpasswd</code>がnewする度にファイルを実際に作るので、<code>load_current_resource</code>が無条件にnewするとファイルが毎度作成されていました。<br>
+それでは<code>:discard</code>が永遠に収束しない(毎回空ファイル作成＆unlinkのマッチポンプ)ので、ユーザDBの存在確認を入れてあげました。</p>
+
+<h4>
+<span id="chef-solo-run-1" class="fragment"></span><a href="#chef-solo-run-1"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<p>Why-Runから行ってみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample08'</span> <span class="nt">-W</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-08T12:08:41+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-08T12:08:41+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-08T12:08:41+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample08]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample08
+  <span class="k">*</span> httpsv_auth_basic[var/www/site1:delete_dummy] action discard
+    - Would <span class="o">======</span> Discard http_auth userdb /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd
+
+Chef Client finished, 1 resources would have been updated
+</pre></div>
+</div>
+
+<p>レシピはこうなります。</p>
+
+<h3>
+<span id="recipessample08rb" class="fragment"></span><a href="#recipessample08rb"><i class="fa fa-link"></i></a><code>recipes/sample08.rb</code>
+</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/httpsv/recipes/sample08.rb</span></div>
+<div class="highlight"><pre><span class="n">base_dir</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'PWD'</span><span class="p">]</span>
+
+<span class="n">httpsv_auth_basic</span> <span class="s1">'var/www/site1'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:discard</span>
+  <span class="n">user</span> <span class="s1">'delete_dummy'</span>
+  <span class="n">path</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="nb">self</span><span class="p">.</span><span class="nf">name</span><span class="p">,</span> <span class="s1">'.htpasswd'</span><span class="p">)</span>
+  <span class="nb">name</span> <span class="p">[</span><span class="nb">self</span><span class="p">.</span><span class="nf">name</span><span class="p">,</span> <span class="nb">self</span><span class="p">.</span><span class="nf">user</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">':'</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="chef-solo-run-2" class="fragment"></span><a href="#chef-solo-run-2"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<p>続いて実行。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample08'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-08T12:09:12+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-08T12:09:12+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-08T12:09:12+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample08]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample08
+  <span class="k">*</span> httpsv_auth_basic[var/www/site1:delete_dummy] action discard
+    - <span class="o">======</span> Discard http_auth userdb /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd
+
+Chef Client finished, 1 resources updated
+</pre></div>
+</div>
+
+<h4>
+<span id="chef-solo-run-3" class="fragment"></span><a href="#chef-solo-run-3"><i class="fa fa-link"></i></a>chef-solo run</h4>
+
+<p>もう一度実行。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_chef-solo</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'httpsv::sample08'</span> 
+Starting Chef Client, version 11.6.0
+<span class="o">[</span>2013-09-08T12:09:27+09:00] WARN: Run List override has been provided.
+<span class="o">[</span>2013-09-08T12:09:27+09:00] WARN: Original Run List: <span class="o">[]</span>
+<span class="o">[</span>2013-09-08T12:09:27+09:00] WARN: Overridden Run List: <span class="o">[</span>recipe[httpsv::sample08]]
+Compiling Cookbooks...
+Converging 1 resources
+Recipe: httpsv::sample08
+  <span class="k">*</span> httpsv_auth_basic[var/www/site1:delete_dummy] action discard[2013-09-08T12:09:28+09:00] WARN: <span class="o">======</span> http_auth user database /Users/sawanoboriyu/github/opsrockin/lwrp_http_userdb/var/www/site1/.htpasswd was not found. Nothing to <span class="k">do</span><span class="nb">.</span> <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+ <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+Chef Client finished, 0 resources updated
+</pre></div>
+</div>
+
+<p>これで今回のLWRP作成はひと通り終了しました。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>パートが3つにもなってしまいましたが、LWRPを理解しましたね。</p>
+
+<h3>
+<span id="何故lwrp" class="fragment"></span><a href="#%E4%BD%95%E6%95%85lwrp"><i class="fa fa-link"></i></a>何故LWRP?</h3>
+
+<p>いくら内部DSLといっても、レシピ内で様々な処理を行ってしまうとレシピとしての可読性は下がる一方になります。<br>
+レシピの保守性を下げないようには、結局のところChefのフレームワークらしさを活かすためにもLWRPとしてリソースを実装することが最善でしょう。</p>
+
+<h3>
+<span id="作ってみよう" class="fragment"></span><a href="#%E4%BD%9C%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>作ってみよう</h3>
+
+<p>ここまで読むことが出来たのなら、次は自分のLWRPを作ってみましょう。実際大した手間ではありません。<br>
+しかし事前に言っておくと、そこそこハマる事うけあいです。今回も<code>@new_resource.action</code>の型が省略時Symbol, 指定時はArray(中身Symbol)などという妙な仕様に気づいたりもしました。</p>
+
+<h3>
+<span id="作らなくてもいい" class="fragment"></span><a href="#%E4%BD%9C%E3%82%89%E3%81%AA%E3%81%8F%E3%81%A6%E3%82%82%E3%81%84%E3%81%84"><i class="fa fa-link"></i></a>作らなくてもいい</h3>
+
+<p>さんざん解説しておいてなんですが、LWRPにまでしなくても<code>execute &amp; not_if</code>程度で十分なケース、そもそもChefでやらないほうが楽なケースもあります。知っておくのは良いことですがこだわらないこともまた大事ですよね。<br>
+ただ、危なっかしいexecuteやRuby処理が多すぎて読みにくいレシピがあったら、LWRPの実装を検討してみてください。</p>
+
+<hr>
+
+<p><a href="http://qiita.com/sawanoboly@github/items/9bdaebcfc98d73f84843" id="reference-6f6b24f848df51481b47">実践LWRP、HTTP認証用ファイル(htpasswd,htdigest)をChefのリソースとして管理する part.1 of 3</a><br>
+<a href="http://qiita.com/sawanoboly@github/items/79c7cdf782d64980677d">実践LWRP、HTTP認証用ファイル(htpasswd,htdigest)をChefのリソースとして管理する part.2 of 3</a><br>
+実践LWRP、HTTP認証用ファイル(htpasswd,htdigest)をChefのリソースとして管理する part.3 of 3</p>

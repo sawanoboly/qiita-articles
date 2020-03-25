@@ -1,0 +1,75 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>発表者以上の存在感に定評がある<a href="http://www.kokuyo-st.co.jp/stationery/fp/" rel="nofollow noopener" target="_blank">KOKUYOのプレゼン補助デバイス黒曜石</a>、これ実は外付けキーボードです。</p>
+
+<p>これが中々使いやすく、片手デバイス部門では<a href="http://www.amazon.co.jp/dp/B0001RBOM0" rel="nofollow noopener" target="_blank">アスキースティックL5</a>以来の殿堂(※独自調査による)入りとなりました。</p>
+
+<p>標準で<strong>PowerPoint</strong>,  <strong>KeyNote</strong>などの標準的なOffice向けプレゼンツールに対応していますが、折角なので黒曜石のキーバインドを調査して他のツールでも使ってみたいと思います。</p>
+
+<h2>
+<span id="黒曜石のキーバインド" class="fragment"></span><a href="#%E9%BB%92%E6%9B%9C%E7%9F%B3%E3%81%AE%E3%82%AD%E3%83%BC%E3%83%90%E3%82%A4%E3%83%B3%E3%83%89"><i class="fa fa-link"></i></a>黒曜石のキーバインド</h2>
+
+<p>黒曜石の送信するキーボードイベント一覧です、イベントの取得には<strong>KeyRemap4MacBook</strong>を使いました。</p>
+
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>ボタン名称</th>
+<th style="text-align: center">大きさ</th>
+<th>アクション</th>
+<th style="text-align: center">押しやすさ</th>
+<th>キーバインド</th>
+<th>寸評</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>真ん中</td>
+<td>NEXT</td>
+<td style="text-align: center">大</td>
+<td>押して離す(2秒以内)</td>
+<td style="text-align: center">◎</td>
+<td>PageDown<br>(離す時にKeyDown&amp;Upイベント)</td>
+<td>中央にあり、存在感はピカイチ。安定して押せる不動のエース。</td>
+</tr>
+<tr>
+<td>真ん中</td>
+<td>NEXT</td>
+<td style="text-align: center">大</td>
+<td>2秒の長押し</td>
+<td style="text-align: center">◯</td>
+<td>2秒後にF5<br>(押している間KeyDown、離してKeyUp)</td>
+<td>PowerPointを遠隔スタートできる点はよいがそれだけ、一発屋っぽさは否めない。<br>F5が連射になってしまうためWEBブラウザ用のプレゼンツールとの相性は難あり。</td>
+</tr>
+<tr>
+<td>右</td>
+<td>BACK</td>
+<td style="text-align: center">小</td>
+<td>押して離す</td>
+<td style="text-align: center">◯</td>
+<td>PageUp<br>(離す時にKeyDown&amp;Upイベント)</td>
+<td>指先側のため大きさから受ける印象より押しやすい。直感的にプレゼンを巻き戻すことができ、NEXTボタンの女房役として十分な操作性を確保している。</td>
+</tr>
+<tr>
+<td>左</td>
+<td>BLACK OUT</td>
+<td style="text-align: center">小</td>
+<td>押下</td>
+<td style="text-align: center">△</td>
+<td>b<br>(押してKeyDown、離してKeyUp)</td>
+<td>やや押しにくい位置にあるが、標準の暗転機能としてはあまり使わない。<br>このボタンのみ単純なKeyUp/Downイベントになる点には注意。</td>
+</tr>
+</tbody>
+</table>
+
+<h2>
+<span id="プレゼンツールとの連携" class="fragment"></span><a href="#%E3%83%97%E3%83%AC%E3%82%BC%E3%83%B3%E3%83%84%E3%83%BC%E3%83%AB%E3%81%A8%E3%81%AE%E9%80%A3%E6%90%BA"><i class="fa fa-link"></i></a>プレゼンツールとの連携</h2>
+
+<p>解析が済んだ所で最近良く見るJavaScriptで作られたプレゼンツールを対応させようと思った所、<a href="http://imakewebthings.com/deck.js/" rel="nofollow noopener" target="_blank">deck.js</a>なんかは標準でPageDownが次、PageUpも一つ前というキーバインドが割られており、そのまま使えてしまった。</p>
+
+<p>他でも狙っているツールはあるので対応できたらコードで記事を書こう。。</p>

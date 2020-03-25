@@ -1,0 +1,743 @@
+<p><a href="https://www.habitat.sh/" rel="nofollow noopener" target="_blank">Habitat - Automation That Travels with the App</a>というのがあります。</p>
+
+<p>詳細は上の公式とか、Podcastでも話題にしたことがあるのでそれを。</p>
+
+<p><a href="https://cloudinfra.audio/track-2-gcp-aws%E3%81%A8%E3%81%84%E3%82%8F%E3%82%86%E3%82%8Bseverless-%E3%81%BB%E3%81%8Bhabitat%E3%81%AE%E8%A9%B1-%E3%81%AE%E3%83%A1%E3%83%A2-3966dc86ad43#.xt4645ict" rel="nofollow noopener" target="_blank">Track 2 GCP.AWSといわゆるSeverless、ほかHabitatの話</a></p>
+
+<p>さて今回はHabitatの機能のうち、アプリケーションの起動・管理をせず、特定用途の実行環境のみアーカイブにまとめて使えるようにしてみるチャレンジのメモです。</p>
+
+<p>出てくるコードはここに。 =&gt; <a href="https://github.com/sawanoboly/habitat-ruby-archive-example" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/sawanoboly/habitat-ruby-archive-example</a></p>
+
+<h2>
+<span id="背景と目的" class="fragment"></span><a href="#%E8%83%8C%E6%99%AF%E3%81%A8%E7%9B%AE%E7%9A%84"><i class="fa fa-link"></i></a>背景と目的</h2>
+
+<ul>
+<li>(もらいものかつ秘伝的な)Rubyのスクリプトを動かしたい</li>
+<li>新規サーバ(インスタンス)起動時にgemとかをオンデマンドなインストールをしている</li>
+</ul>
+
+<p>と、これだけでも結構ヒヤヒヤする状態のものを移植する必要がありました。</p>
+
+<h3>
+<span id="なぜhabitatを試したのか" class="fragment"></span><a href="#%E3%81%AA%E3%81%9Chabitat%E3%82%92%E8%A9%A6%E3%81%97%E3%81%9F%E3%81%AE%E3%81%8B"><i class="fa fa-link"></i></a>なぜHabitatを試したのか</h3>
+
+<p>スクリプトが要求するRubygemsごとRubyを固めてしまいたいと考えた。</p>
+
+<ul>
+<li>64bit Linuxならなんでもよいようにしたい
+
+<ul>
+<li>Habitat 0.8くらいからtarエクスポートがついた</li>
+</ul>
+</li>
+<li>Omnibusは依存周りがわりと中途半端だし時間もかかる</li>
+<li>Habitatはビルド再現性(≒依存解決)へのこだわりがなんかスゴイ</li>
+</ul>
+
+<p>Habitatはそれっぽいことにも向いているかもと思いました。</p>
+
+<blockquote>
+<p>もちろん多少極端な感じとなり、汎用性はイマイチです。<br>
+たいていの場合ははBundlerでいいし、固めるにしても<code>bundle package --all</code>でRubyGemsを固めてしまえば十分な環境再現ができると思います。<br>
+そもそも外部コマンドとか叩くケースもあると思うので。</p>
+</blockquote>
+
+<p>そのあたりを踏まえた上でHabitatで<a href="https://app.habitat.sh/#/pkgs/core/ruby/2.3.1" rel="nofollow noopener" target="_blank">公式(?)パッケージとして用意されているRuby</a>を見てみます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ldd `/hab/bin/hab pkg path core/ruby`/bin/ruby 
+    linux-vdso.so.1 =&gt;  (0x00007ffdc8dff000)
+    libruby.so.2.3 =&gt; /hab/pkgs/core/ruby/2.3.1/20161102184006/lib/libruby.so.2.3 (0x00007f8699c8e000)
+    libpthread.so.0 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libpthread.so.0 (0x00007f8699a70000)
+    libdl.so.2 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libdl.so.2 (0x00007f869986c000)
+    libcrypt.so.1 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libcrypt.so.1 (0x00007f8699634000)
+    libm.so.6 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libm.so.6 (0x00007f8699335000)
+    libc.so.6 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libc.so.6 (0x00007f8698f91000)
+    /hab/pkgs/core/glibc/2.22/20160612063629/lib/ld-linux-x86-64.so.2 =&gt; /lib64/ld-linux-x86-64.so.2 (0x00007f869a178000)
+</pre></div></div>
+
+<p>なんというか、、とことんぼっちを追求しています。</p>
+
+<p>一応、パッケージに含まれる実行可能ファイルは<code>hab pkg binlink</code>でリンクを好きなパスに書き出しておくことができます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo /hab/bin/hab pkg binlink --dest /opt/local/bin core/ruby/2.3.1 ruby
+» Symlinking ruby from core/ruby/2.3.1 into /opt/local/bin
+★ Binary ruby from core/ruby/2.3.1/20161102184006 symlinked to /opt/local/bin/ruby
+
+$ /opt/local/bin/ruby --copyright
+ruby - Copyright (C) 1993-2016 Yukihiro Matsumoto
+</pre></div></div>
+
+<p>ついでにgemもリンクして、<code>GEM_PATHS</code>なんかも確認。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ /opt/local/bin/gem env
+RubyGems Environment:
+  - RUBYGEMS VERSION: 2.6.8
+  - RUBY VERSION: 2.3.1 (2016-04-26 patchlevel 112) [x86_64-linux]
+  - INSTALLATION DIRECTORY: /hab/pkgs/core/ruby/2.3.1/20161102184006/lib/ruby/gems/2.3.0
+  - USER INSTALLATION DIRECTORY: /home/vagrant/.gem/ruby/2.3.0
+  - RUBY EXECUTABLE: /hab/pkgs/core/ruby/2.3.1/20161102184006/bin/ruby
+  - EXECUTABLE DIRECTORY: /hab/pkgs/core/ruby/2.3.1/20161102184006/bin
+  - SPEC CACHE DIRECTORY: /home/vagrant/.gem/specs
+  - SYSTEM CONFIGURATION DIRECTORY: /hab/pkgs/core/ruby/2.3.1/20161102184006/etc
+  - RUBYGEMS PLATFORMS:
+    - ruby
+    - x86_64-linux
+  - GEM PATHS:
+     - /hab/pkgs/core/ruby/2.3.1/20161102184006/lib/ruby/gems/2.3.0
+     - /home/vagrant/.gem/ruby/2.3.0
+  - GEM CONFIGURATION:
+     - :update_sources =&gt; true
+     - :verbose =&gt; true
+     - :backtrace =&gt; false
+     - :bulk_threshold =&gt; 1000
+  - REMOTE SOURCES:
+     - https://rubygems.org/
+  - SHELL PATH:
+     - /usr/local/bin
+     - /bin
+     - /usr/bin
+     - /usr/local/sbin
+     - /usr/sbin
+     - /sbin
+     - /home/vagrant/bin
+</pre></div></div>
+
+<h3>
+<span id="そのまま使うのはほぼ駄目です" class="fragment"></span><a href="#%E3%81%9D%E3%81%AE%E3%81%BE%E3%81%BE%E4%BD%BF%E3%81%86%E3%81%AE%E3%81%AF%E3%81%BB%E3%81%BC%E9%A7%84%E7%9B%AE%E3%81%A7%E3%81%99"><i class="fa fa-link"></i></a>そのまま使うのは(ほぼ)駄目です</h3>
+
+<p>Pure Rubyのスクリプトを回すだけならこれでもよいです。しかしRubyGems、特に<code>native extension</code>を含むが必要となると。。。</p>
+
+<p>GEM_HOME/GEM_PATH環境変数とbundlerを駆使すればなんとかできなくもないですが、Habitatのぼっち理論からして、あとからbundleとかは甘えのようです。あれだ、イミュータブルだ。</p>
+
+<p>必要なライブラリを含んだパッケージを作ってみることにします。とれる方式は次の２つ。</p>
+
+<ul>
+<li>公式のRubyプランをもとに改造パッケージをつくる</li>
+<li>RubyGemsのみのパッケージを作る</li>
+</ul>
+
+<p>両方いってみよう。</p>
+
+<h2>
+<span id="公式のrubyプランをもとに改造パッケージをつくる" class="fragment"></span><a href="#%E5%85%AC%E5%BC%8F%E3%81%AEruby%E3%83%97%E3%83%A9%E3%83%B3%E3%82%92%E3%82%82%E3%81%A8%E3%81%AB%E6%94%B9%E9%80%A0%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92%E3%81%A4%E3%81%8F%E3%82%8B"><i class="fa fa-link"></i></a>公式のRubyプランをもとに改造パッケージをつくる</h2>
+
+<p>さて、まず手っ取り早いのは公開Rubyパッケージをを改変して新しいパッケージを作ることです。</p>
+
+<ul>
+<li><a href="https://github.com/habitat-sh/core-plans/tree/master/ruby" rel="nofollow noopener" target="_blank">core-plans/ruby</a></li>
+</ul>
+
+<p>ファイルはこれだけ。公式のチュートリアルではアプリケーションを起動させたがるので色々と必要に思えますが、単純にビルド＆パッケージにするだけならこんなもんです。<code>plan.sh</code>だけしかないのも沢山あります。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre>with_ruby/
+├── GlobalSignRootCA.pem
+├── patches
+│   └── ruby-2_1_3-no-mkmf.patch
+└── plan.sh
+</pre></div></div>
+
+<p>planもまあ、知れた感じで。</p>
+
+<p>変数の役割などはドキュメントで =&gt; <a href="https://www.habitat.sh/docs/reference/plan-syntax/" rel="nofollow noopener" target="_blank">Habitat plan syntax reference</a></p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">plan.sh</span></div>
+<div class="highlight"><pre><span class="nv">pkg_name</span><span class="o">=</span>ruby
+<span class="nv">pkg_origin</span><span class="o">=</span>core
+<span class="nv">pkg_version</span><span class="o">=</span>2.3.1
+<span class="nv">pkg_description</span><span class="o">=</span><span class="s2">"A dynamic, open source programming language with a focus on </span><span class="se">\</span><span class="s2">
+  simplicity and productivity. It has an elegant syntax that is natural to </span><span class="se">\</span><span class="s2">
+  read and easy to write."</span>
+<span class="nv">pkg_license</span><span class="o">=(</span><span class="s2">"Ruby"</span><span class="o">)</span>
+<span class="nv">pkg_maintainer</span><span class="o">=</span><span class="s2">"The Habitat Maintainers &lt;humans@habitat.sh&gt;"</span>
+<span class="nv">pkg_source</span><span class="o">=</span>https://cache.ruby-lang.org/pub/<span class="k">${</span><span class="nv">pkg_name</span><span class="k">}</span>/<span class="k">${</span><span class="nv">pkg_name</span><span class="k">}</span>-<span class="k">${</span><span class="nv">pkg_version</span><span class="k">}</span>.tar.gz
+<span class="nv">pkg_upstream_url</span><span class="o">=</span>https://www.ruby-lang.org/en/
+<span class="nv">pkg_filename</span><span class="o">=</span><span class="k">${</span><span class="nv">pkg_name</span><span class="k">}</span>-<span class="k">${</span><span class="nv">pkg_version</span><span class="k">}</span>.tar.gz
+<span class="nv">pkg_shasum</span><span class="o">=</span>b87c738cb2032bf4920fef8e3864dc5cf8eae9d89d8d523ce0236945c5797dcd
+<span class="nv">pkg_deps</span><span class="o">=(</span>core/glibc core/ncurses core/zlib core/openssl core/libyaml core/libffi<span class="o">)</span>
+<span class="nv">pkg_build_deps</span><span class="o">=(</span>core/coreutils core/diffutils core/patch core/make core/gcc core/sed<span class="o">)</span>
+<span class="nv">pkg_lib_dirs</span><span class="o">=(</span>lib<span class="o">)</span>
+<span class="nv">pkg_include_dirs</span><span class="o">=(</span>include<span class="o">)</span>
+<span class="nv">pkg_bin_dirs</span><span class="o">=(</span>bin<span class="o">)</span>
+<span class="nv">pkg_interpreters</span><span class="o">=(</span>bin/ruby<span class="o">)</span>
+
+do_build<span class="o">()</span> <span class="o">{</span>
+    <span class="nv">CFLAGS</span><span class="o">=</span><span class="s2">"</span><span class="k">${</span><span class="nv">CFLAGS</span><span class="k">}</span><span class="s2"> -O3 -g -pipe"</span>
+    patch <span class="nt">-p1</span> <span class="nt">-i</span> <span class="s2">"</span><span class="nv">$PLAN_CONTEXT</span><span class="s2">/patches/ruby-2_1_3-no-mkmf.patch"</span>
+
+    <span class="c"># Resolves issue for older versions of RubyGems which require new trust</span>
+    <span class="c"># authority SSL certificate required as of 2016-10-06.</span>
+    <span class="c">#</span>
+    <span class="c"># Most likely the next Ruby release will resolve this issue as the vendored</span>
+    <span class="c"># version of RubyGems should be newer.</span>
+    <span class="c">#</span>
+    <span class="c"># For more details see:</span>
+    <span class="c"># http://guides.rubygems.org/ssl-certificate-update/#manual-solution-to-ssl-issue</span>
+    <span class="nb">cp</span> <span class="nt">-v</span> <span class="s2">"</span><span class="nv">$PLAN_CONTEXT</span><span class="s2">/GlobalSignRootCA.pem"</span> lib/rubygems/ssl_certs/
+
+    ./configure <span class="s2">"--prefix=</span><span class="nv">$pkg_prefix</span><span class="s2">"</span> <span class="se">\</span>
+                <span class="nt">--enable-shared</span> <span class="se">\</span>
+                <span class="nt">--disable-install-doc</span> <span class="se">\</span>
+                <span class="s2">"--with-openssl-dir=</span><span class="si">$(</span>_resolve_dependency core/openssl<span class="si">)</span><span class="s2">"</span> <span class="se">\</span>
+                <span class="s2">"--with-libyaml-dir=</span><span class="si">$(</span>_resolve_dependency core/libyaml<span class="si">)</span><span class="s2">"</span>
+    make
+<span class="o">}</span>
+
+do_install<span class="o">()</span> <span class="o">{</span>
+  do_default_install
+  gem update <span class="nt">--system</span> <span class="nt">--no-document</span>
+  gem <span class="nb">install </span>rb-readline <span class="nt">--no-document</span>
+<span class="o">}</span>
+
+do_check<span class="o">()</span> <span class="o">{</span>
+  make <span class="nb">test</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+
+<p>だいたい何をやっているかはわかりますね。</p>
+
+<h3>
+<span id="プランを改造する" class="fragment"></span><a href="#%E3%83%97%E3%83%A9%E3%83%B3%E3%82%92%E6%94%B9%E9%80%A0%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>プランを改造する</h3>
+
+<p>環境はmacOS <code>10.12.1</code>, habitatは<code>0.13.1</code>を使ってます。</p>
+
+<p>RubyGemsを管理する場合、<code>gem install</code>で全てバージョン指定... とは流石にやりたくないので、<code>Gemfile.lock</code>を使いました。</p>
+
+<p>手元のRubyで適当につくりましょう。これは某環境で必要なRubyGemsを再現のため列挙したGemfileです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="c1"># frozen_string_literal: true</span>
+<span class="c1"># A sample Gemfile</span>
+<span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s1">'docker-api'</span>
+<span class="n">gem</span> <span class="s1">'filewatcher'</span>
+<span class="n">gem</span> <span class="s1">'aws-sdk'</span>
+<span class="n">gem</span> <span class="s1">'sys-filesystem'</span>
+</pre></div>
+</div>
+
+<p>いくつかnative extentionを作るやつが入ってますね。lockを作ってプランのディレクトリに混ぜます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre>with_ruby/
+├── Gemfile          <span class="c"># 追加</span>
+├── Gemfile.lock     <span class="c"># 追加(どこかで作る)</span>
+├── GlobalSignRootCA.pem
+├── patches
+│   └── ruby-2_1_3-no-mkmf.patch
+└── plan.sh
+</pre></div></div>
+
+<p>まず<code>pkg_origin</code>, <code>pkg_maintainer</code>を自分の情報に書き換えます。(※<code>core/ruby</code>の流用planではpkg_nameを変更すると幾つか不都合がでてくるのでrubyのままにしてます。</p>
+
+<p>そして、do_installにちょいと追加します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>do_install() {
+  do_default_install
+  gem update --system --no-document
+  gem install rb-readline --no-document
+  gem install bundler --no-document
+  BUNDLE_GEMFILE="$PLAN_CONTEXT/Gemfile" bundle install
+}
+</pre></div></div>
+
+<p>ほかにnative extentionで必要なライブラリの追加があれば、<code>pkg_build_deps</code>(ビルド時のみ必要)または<code>pkg_deps</code>(実行時にそのSharedObjectが必要)を追加します。たいていcoreにあるかと思います。<br>
+この例ではlibffiが必要ですが、既に入っているので変更なしです。</p>
+
+<h3>
+<span id="パッケージをビルドする" class="fragment"></span><a href="#%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92%E3%83%93%E3%83%AB%E3%83%89%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>パッケージをビルドする</h3>
+
+<p>オリジン/パッケージは<code>sawanoboly/ruby</code>となります。<br>
+で、hab studioに入る。<code>studio</code>はmacならDocker、Linuxならcgroupやnamespaceを駆使したコンテナ環境だ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ hab studio enter
+0.13.1: Pulling from studio
+Digest: sha256:7584882a621ff81b3faa99a4ada54915298b39613a4a7e6b0f6bc1b7a793536a
+Status: Image is up to date for habitat-docker-registry.bintray.io/studio:0.13.1
+   hab-studio: Creating Studio at /hab/studios/src (default)
+   hab-studio: Importing sawanoboly secret origin key
+» Importing origin key from standard input
+★ Imported secret origin key sawanoboly-20161114083512.
+   hab-studio: Entering Studio at /hab/studios/src (default)
+   hab-studio: Exported: HAB_ORIGIN=sawanoboly
+
+[1][default:/src:0]# pwd
+/src
+
+## カレントディレクトリをマウントしている
+[2][default:/src:0]# Gemfile  Gemfile.lock  GlobalSignRootCA.pem  patches  plan.sh
+</pre></div></div>
+
+<p>ちなみに、プロンプトでパスのすぐ右にある数字は直前のコマンドのexit_statusのようです。</p>
+
+<p>プランからパッケージを作るには<code>build</code>(studioの外から<code>hab pkg build</code>でもOK。)コマンドです。</p>
+
+<blockquote>
+<p>ビルド時、ホストの名前解決でコケたりすることがあるようで、そんなときはstudio環境内の<code>/etc/resolv.conf</code>で他の有効なリゾルバを向ければよいです。</p>
+</blockquote>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">hab_studio_build</span></div>
+<div class="highlight"><pre><span class="c"># build</span>
+   : Loading /src/plan.sh
+   ruby4myscript: Plan loaded
+   ruby4myscript: Validating plan metadata
+   ruby4myscript: hab-plan-build setup
+   ruby4myscript: Using <span class="nv">HAB_BIN</span><span class="o">=</span>/hab/pkgs/core/hab/0.13.1/20161114235527/bin/hab <span class="k">for </span>installs, signing, and hashing
+   ruby4myscript: Resolving dependencies
+
+
+... <span class="c">## 依存関係にあるパッケージたちをダウンロードしていく</span>
+
+
+   ruby: hab-plan-build cleanup
+   ruby: 
+   ruby: Source Cache: /hab/cache/src/ruby-2.3.1
+   ruby: Installed Path: /hab/pkgs/sawanoboly/ruby/2.3.1/20161115062140
+   ruby: Artifact: /src/results/sawanoboly-ruby-2.3.1-20161115062140-x86_64-linux.hart
+   ruby: Build Report: /src/results/last_build.env
+   ruby: SHA256 Checksum: 76c313df25c12cd05e160072c89c2291102a8c2ba0250a5a072e7754a314663c
+   ruby: Blake2b Checksum: e63676e4ac6452f1eded5c2932e06b5aa0702c766fc0a9aad8f6e72329e05431
+   ruby: 
+   ruby: I love it when a plan.sh comes together.
+   ruby: 
+   ruby: Build <span class="nb">time</span>: 5m59s
+</pre></div>
+</div>
+
+<p>ビルドが済んだら、<code>hab pkg path sawanoboly/ruby</code>とするとパスがわかります。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="o">[</span>13][default:/src:0]# hab pkg path sawanoboly/ruby
+/hab/pkgs/sawanoboly/ruby/2.3.1/20161115062140
+</pre></div></div>
+
+<p>パッケージに含まれるメタ情報として、例えばFILESを見てみます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="o">[</span>12][default:/src:0]# <span class="nb">cat</span> <span class="sb">`</span>hab pkg path sawanoboly/ruby<span class="sb">`</span>/FILES | <span class="nb">grep </span>aws-sdk | <span class="nb">head</span> <span class="nt">-n</span> 3
+88e39dfae824756eddfd745d4955beb18b23e1caa3e0a28964f00103409ea79e  /hab/pkgs/sawanoboly/ruby/2.3.1/20161115062140/lib/ruby/gems/2.3.0/cache/aws-sdk-2.6.19.gem
+a5974ca042b7bd636f48d7ef64534b452e2ea5c54806088b4428cb34e32e76c8  /hab/pkgs/sawanoboly/ruby/2.3.1/20161115062140/lib/ruby/gems/2.3.0/cache/aws-sdk-core-2.6.19.gem
+1f5aa802301b5b1602148353089f20a706f8d711e871e8d71ea39a43b29fa25d  /hab/pkgs/sawanoboly/ruby/2.3.1/20161115062140/lib/ruby/gems/2.3.0/cache/aws-sdk-resources-2.6.19.gem
+</pre></div></div>
+
+<p>全てのファイルにハッシュがついています。また、この時使った依存のライブラリたちのパッケージについているタイムスタンプも保存されています。<br>
+手順と成果物の再現性にこだわりを見せている雰囲気です。</p>
+
+<h3>
+<span id="パッケージをtarアーカイブとして保存する" class="fragment"></span><a href="#%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92tar%E3%82%A2%E3%83%BC%E3%82%AB%E3%82%A4%E3%83%96%E3%81%A8%E3%81%97%E3%81%A6%E4%BF%9D%E5%AD%98%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>パッケージをtarアーカイブとして保存する</h3>
+
+<p><code>hab pkg export tar {ORIGIN/PKG}</code>とすることで、環境一式のアーカイブを作成できます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>[26][default:/src:0]# hab pkg export tar sawanoboly/ruby
+∵ Missing package for core/hab-pkg-tarize
+» Installing core/hab-pkg-tarize
+↓ Downloading core/hab-pkg-tarize/0.13.1/20161115003912
+    3.79 KB / 3.79 KB / [================================================================================================================================================================================================================] 100.00 % 33.83 MB/s  
+→ Using core/acl/2.2.52/20161031042300
+→ Using core/attr/2.4.47/20161031042251
+→ Using core/bash/4.3.42/20161102154320
+
+... ## 専用の処理が色々走り、habコマンド(およびアプリケーションスタック環境用)などのファイルを含めてアーカイブができあがる。
+
+✓ Installed core/libsodium/1.0.8/20161102180731
+✓ Installed core/xz/5.2.2/20161031043427
+✓ Installed core/hab-sup/0.13.1/20161115003952
+★ Install of core/hab-sup/0.13.1/20161115003952 complete with 6 new packages installed.
+» Symlinking hab from core/hab into /tmp/hab-pkg-tarize-KoMG/hab/bin
+★ Binary hab from core/hab/0.13.1/20161114235527 symlinked to /tmp/hab-pkg-tarize-KoMG/hab/bin/hab
+» Symlinking bash from core/busybox-static into /tmp/hab-pkg-tarize-KoMG/bin
+★ Binary bash from core/busybox-static/1.24.2/20161102170221 symlinked to /tmp/hab-pkg-tarize-KoMG/bin/bash
+» Symlinking sh from core/busybox-static into /tmp/hab-pkg-tarize-KoMG/bin
+★ Binary sh from core/busybox-static/1.24.2/20161102170221 symlinked to /tmp/hab-pkg-tarize-KoMG/bin/sh
+</pre></div></div>
+
+<p>出来上がったアーカイブはタイムスタンプが付いて、一点ものっぽさがあります。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>[28][default:/src:0]# ls sawanoboly-ruby-2.3.1-20161115062140.tar.gz 
+sawanoboly-ruby-2.3.1-20161115062140.tar.gz
+
+
+[29][default:/src:0]# du -sh sawanoboly-ruby-2.3.1-20161115062140.tar.gz 
+72M sawanoboly-ruby-2.3.1-20161115062140.tar.gz
+</pre></div></div>
+
+<p>サイズもまあまあ常識の範囲内です。</p>
+
+<h3>
+<span id="できたパッケージをlinuxサーバにインストールしてみる" class="fragment"></span><a href="#%E3%81%A7%E3%81%8D%E3%81%9F%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92linux%E3%82%B5%E3%83%BC%E3%83%90%E3%81%AB%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>できたパッケージをLinuxサーバにインストールしてみる</h3>
+
+<p>とりあえずTest-KitchenでCentOS6でも作ってみます。<code>synced_folders</code>を設定しておけばできた先から放り込めるので楽かな。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.yml</span></div>
+<div class="highlight"><pre><span class="nn">...</span>
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">centos-6.8</span>
+    <span class="na">driver</span><span class="pi">:</span>
+      <span class="na">synced_folders</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="pi">[</span><span class="s2">"</span><span class="s">ext_tools"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">/opt/ext_tools"</span><span class="pi">]</span>
+<span class="nn">...</span>
+</pre></div>
+</div>
+
+<p>ということで、この段落のシェル出力はVMのCentOS6です。</p>
+
+<p>tarを<code>-C /</code>で展開します。このパスでないと動きません。<br>
+すらハブに独自のディストリビューションを突っ込む感じですね。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">CentOS6</span></div>
+<div class="highlight"><pre><span class="o">(</span>VM<span class="o">)</span><span class="nv">$ </span>tree <span class="nt">-L</span> 3 <span class="nt">-d</span> /hab/
+/hab/
+├── bin
+└── pkgs
+    ├── core
+    │   ├── acl
+    │   ├── attr
+    │   ├── busybox-static
+    │   ├── bzip2
+    │   ├── cacerts
+    │   ├── coreutils
+    │   ├── gcc-libs
+    │   ├── glibc
+    │   ├── gmp
+    │   ├── <span class="nb">grep</span>
+    │   ├── hab
+    │   ├── hab-sup
+    │   ├── libarchive
+    │   ├── libcap
+    │   ├── libffi
+    │   ├── libsodium
+    │   ├── libtool
+    │   ├── libyaml
+    │   ├── linux-headers
+    │   ├── ncurses
+    │   ├── openssl
+    │   ├── pcre
+    │   ├── <span class="nb">sed</span>
+    │   ├── xz
+    │   └── zlib
+    └── sawanoboly
+        └── ruby
+
+30 directories
+</pre></div>
+</div>
+
+<p>Habitatまわりのオペレーションは<code>/hab/bin/hab</code>で行います。PATHを通す程のものでは無いかな。。？</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>(VM)$ ldd /hab/bin/hab
+    not a dynamic executable
+
+
+(VM)$ /hab/bin/hab --version
+hab 0.13.1/20161114235527
+</pre></div></div>
+
+<p>このhabバイナリを使って、LinuxでもStudioを作ることもできますが、それはまた今度。</p>
+
+<h4>
+<span id="実行ファイルのリンクを作成し実行してみる" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AE%E3%83%AA%E3%83%B3%E3%82%AF%E3%82%92%E4%BD%9C%E6%88%90%E3%81%97%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>実行ファイルのリンクを作成し、実行してみる</h4>
+
+<p>ざっくりbinのしたを全てリンクにしてみます。<code>hab pkg binlink</code>をつかいましょう。もちろんPATHをそこに向けても構いませんが。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">hab_pkg_binlink</span></div>
+<div class="highlight"><pre><span class="o">(</span>VM<span class="o">)</span><span class="nv">$ </span><span class="nb">ls</span> <span class="sb">`</span>/hab/bin/hab pkg path sawanoboly/ruby<span class="sb">`</span>/bin
+aws.rb  bundle  bundler  erb  filewatcher  gem  irb  rake  rdoc  ri  ruby  update_rubygems
+
+<span class="o">(</span>VM<span class="o">)</span><span class="nv">$ </span><span class="k">for </span>x <span class="k">in</span> <span class="sb">`</span><span class="nb">ls</span> <span class="si">$(</span>/hab/bin/hab pkg path sawanoboly/ruby<span class="si">)</span>/bin<span class="sb">`</span> <span class="p">;</span> <span class="k">do </span><span class="nb">sudo</span> /hab/bin/hab pkg binlink <span class="nt">--dest</span> /opt/local/bin sawanoboly/ruby <span class="nv">$x</span> <span class="p">;</span> <span class="k">done</span>
+
+» Symlinking aws.rb from sawanoboly/ruby into /opt/local/bin
+Ω Creating parent directory /opt/local/bin
+★ Binary aws.rb from sawanoboly/ruby/2.3.1/20161115062140 symlinked to /opt/local/bin/aws.rb
+» Symlinking bundle from sawanoboly/ruby into /opt/local/bin
+
+... <span class="o">(</span>省略<span class="o">)</span>
+
+★ Binary ruby from sawanoboly/ruby/2.3.1/20161115062140 symlinked to /opt/local/bin/ruby
+» Symlinking update_rubygems from sawanoboly/ruby into /opt/local/bin
+★ Binary update_rubygems from sawanoboly/ruby/2.3.1/20161115062140 symlinked to /opt/local/bin/update_rubygems
+</pre></div>
+</div>
+
+<p>外部のRubyGemとか、なんか気難しい感じのRubyGemもrequireできてるね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ /opt/local/bin/ruby -raws-sdk -e 'puts Aws::VERSION'
+2.6.19
+
+
+$ /opt/local/bin/ruby -rnet/https -e 'puts OpenSSL::VERSION'
+1.1.0
+</pre></div></div>
+
+<p>さて、binの下をまるごとリンクにして使おうと思ったら、実行可能ファイルを含むRubyGemではshbangがイマイチになってます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="c">## これいいやつ</span>
+<span class="nv">$ </span><span class="nb">head</span> <span class="nt">-n1</span> /opt/local/bin/erb 
+<span class="c">#!/hab/pkgs/sawanoboly/ruby/2.3.1/20161115062140/bin/ruby</span>
+
+<span class="c">## 動かないやつ</span>
+<span class="nv">$ </span><span class="nb">head</span> <span class="nt">-n1</span> /opt/local/bin/filewatcher 
+<span class="c">#! ruby</span>
+
+<span class="c">### shbangがヘンである</span>
+
+<span class="nv">$ </span>/opt/local/bin/filewatcher <span class="nt">--help</span>
+<span class="nt">-bash</span>: /opt/local/bin/filewatcher: ruby: bad interpreter: No such file or directory
+</pre></div></div>
+
+<p>少し調整がいるようだ。</p>
+
+<h3>
+<span id="shbangを調整する" class="fragment"></span><a href="#shbang%E3%82%92%E8%AA%BF%E6%95%B4%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>shbangを調整する</h3>
+
+<p>Railsのサンプルを参考にしてみると、shbangに色々工夫をして乗り切るような事をしている模様だった。</p>
+
+<p><a href="https://github.com/habitat-sh/core-plans/tree/master/ruby-rails-sample" rel="nofollow noopener" target="_blank">core-plans/ruby-rails-sample</a></p>
+
+<p>へたにbinstubしてBundlerコンテキストになってもそれはそれで困る。<code>/usr/bin/env</code>の取扱いだけ真似してみる。<br>
+<code>do_prepare</code>をそのまま使って、さらに<code>do_install()</code>に少し処理を追加。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>do_install() {
+  do_default_install
+  gem update --system --no-document
+  gem install rb-readline --no-document
+  gem install bundler --no-document
+  if [ -d ./.bundle ] ; then rm -rf ./bundle ; fi
+  BUNDLE_GEMFILE="$PLAN_CONTEXT/Gemfile" bundle install
+
+  for binexec in ${pkg_prefix}/bin/*; do
+    if [ "$binexec" == "${pkg_prefix}/bin/ruby" ] ; then continue ; fi
+    build_line "Setting shebang for ${binexec} to 'ruby'"
+    [[ -f $binexec ]] &amp;&amp; sed -e "s#/usr/bin/env ruby#${pkg_prefix}/bin/ruby#" -i $binexec
+  done
+
+  if [[ `readlink /usr/bin/env` = "$(pkg_path_for coreutils)/bin/env" ]]; then
+    build_line "Removing the symlink we created for '/usr/bin/env'"
+    rm /usr/bin/env
+  fi
+}
+</pre></div></div>
+
+<p>この辺をちょっと試してみるために、プランの中で<code>attach</code>を使った。 <a href="https://www.habitat.sh/docs/create-packages-debugging/" rel="nofollow noopener" target="_blank">Debugging Plans</a></p>
+
+<blockquote>
+<p>余談:<br>
+ちなみに、ここで出て来る<code>sed</code>でさえ専用にビルドしたバイナリを使います。<br>
+Studio内ではPATHがえらいことになってる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># echo $PATH | tr ':' '\n'
+/hab/bin
+
+/hab/pkgs/core/hab-plan-build/0.13.1/20161115003556/bin
+/hab/pkgs/core/diffutils/3.3/20161031043343/bin
+/hab/pkgs/core/less/481/20161102154500/bin
+/hab/pkgs/core/make/4.2.1/20161102154828/bin
+/hab/pkgs/core/mg/20160118/20161102210444/bin
+/hab/pkgs/core/util-linux/2.27.1/20161102155008/bin
+/hab/pkgs/core/vim/8.0.0004/20161102192849/bin
+/hab/pkgs/core/ncurses/6.0/20161102154037/bin
+/hab/pkgs/core/acl/2.2.52/20161031042300/bin
+/hab/pkgs/core/attr/2.4.47/20161031042251/bin
+/hab/pkgs/core/bash/4.3.42/20161102154320/bin
+/hab/pkgs/core/binutils/2.25.1/20161031031252/bin
+/hab/pkgs/core/bzip2/1.0.6/20161031042910/bin
+...
+</pre></div></div>
+</blockquote>
+
+<p>で、これで作られた実行可能ファイルはこのようになります。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ head -n 2 /hab/pkgs/sawanoboly/ruby/2.3.1/20161115112245/bin/filewatcher
+#!/hab/pkgs/sawanoboly/ruby/2.3.1/20161115112245/bin/ruby
+#
+</pre></div></div>
+
+<p>これなら単品で動くかな？ 再度<code>pkg export</code>を行い、CentOSに展開してみる。<br>
+<code>hab pkg path</code>は特に指定がなければ最新のパッケージを指すので、binlinkももう一度実行でよい。</p>
+
+<p>OK, 動いたわー。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ /opt/local/bin/filewatcher -v
+filewatcher, version 0.5.3 by Thomas Flemming 2015
+</pre></div></div>
+
+<p>作成時に少々ややこしい処理が必要ですが、なんとか作れたと思います。</p>
+
+<h2>
+<span id="rubygemsのみのパッケージを作る場合ダイジェスト" class="fragment"></span><a href="#rubygems%E3%81%AE%E3%81%BF%E3%81%AE%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92%E4%BD%9C%E3%82%8B%E5%A0%B4%E5%90%88%E3%83%80%E3%82%A4%E3%82%B8%E3%82%A7%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>RubyGemsのみのパッケージを作る場合(ダイジェスト)</h2>
+
+<p>前述の<code>core/ruby</code>を改造する場合に気になる点として。</p>
+
+<ul>
+<li>Rubyのビルドに時間がかかる</li>
+<li>折角<code>core/ruby</code>があるので、それの依存で別パッケージにしたい</li>
+</ul>
+
+<p>というようなことも思うじゃないですか。</p>
+
+<p>これも一応可能でした。だいたい次の点に注意です。</p>
+
+<ul>
+<li>実行時、<code>GEM_PATH</code>には<code>core/ruby</code>と作成したrubygemsのパッケージパスを両方指定する</li>
+<li>native extentionから必要なShared Objectがある場合、<code>pkg_deps</code>に入れておかないとちゃんとリンクしてくれない。</li>
+</ul>
+
+<p>実行時にも取り回し注意、となります。ただGEM_PATH次第でGemsetを切り替える感じになるので、神経質なBundle Packagerとして使えなくもないかなと思います。</p>
+
+<h3>
+<span id="パッケージを作る" class="fragment"></span><a href="#%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92%E4%BD%9C%E3%82%8B"><i class="fa fa-link"></i></a>パッケージを作る</h3>
+
+<p>オリジン/パッケージを<code>sawanoboly/rubygems4myscript</code>として、buildします。こちらの方式はRubyをビルドしなくて済むのでattachして色々確認とかがやりやすくはなります。</p>
+
+<p>他パッケージへの依存はこのくらい。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>pkg_deps=(
+  core/glibc
+  core/ruby
+  core/libffi
+  core/bundler
+)
+
+pkg_build_deps=(
+  core/gcc
+  core/make
+  core/coreutils
+  )
+</pre></div></div>
+
+<p>これも <a href="https://github.com/habitat-sh/core-plans/tree/master/ruby-rails-sample" rel="nofollow noopener" target="_blank">core-plans/ruby-rails-sample</a> をだいたい参考にしつつ、先程のRuby改造版を踏襲して作成。</p>
+
+<p>shbangが<code>pkg_path_for</code>ヘルパーを使っていたり、RubyGemsが<code>core/ruby</code>側に入っていかないように<code>GEM_HOME</code>を自分のパッケージを指定しています。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">plan.sh</span></div>
+<div class="highlight"><pre>...
+
+do_install<span class="o">()</span> <span class="o">{</span>
+  <span class="nb">export </span><span class="nv">CPPFLAGS</span><span class="o">=</span><span class="s2">"</span><span class="k">${</span><span class="nv">CPPFLAGS</span><span class="k">}</span><span class="s2"> </span><span class="k">${</span><span class="nv">CFLAGS</span><span class="k">}</span><span class="s2">"</span>
+  <span class="nb">local </span><span class="nv">_bundler_dir</span><span class="o">=</span><span class="si">$(</span>pkg_path_for bundler<span class="si">)</span>
+
+  <span class="nb">export </span><span class="nv">GEM_HOME</span><span class="o">=</span><span class="k">${</span><span class="nv">pkg_prefix</span><span class="k">}</span>
+  <span class="nb">export </span><span class="nv">GEM_PATH</span><span class="o">=</span><span class="k">${</span><span class="nv">_bundler_dir</span><span class="k">}</span>:<span class="k">${</span><span class="nv">GEM_HOME</span><span class="k">}</span>
+
+  <span class="nv">BUNDLE_GEMFILE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PLAN_CONTEXT</span><span class="s2">/Gemfile"</span> bundle <span class="nb">install
+
+  </span><span class="k">for </span>binexec <span class="k">in</span> <span class="k">${</span><span class="nv">pkg_prefix</span><span class="k">}</span>/bin/<span class="k">*</span><span class="p">;</span> <span class="k">do
+    </span>build_line <span class="s2">"Setting shebang for </span><span class="k">${</span><span class="nv">binexec</span><span class="k">}</span><span class="s2"> to 'core/ruby'"</span>
+    <span class="o">[[</span> <span class="nt">-f</span> <span class="nv">$binexec</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> <span class="nb">sed</span> <span class="nt">-e</span> <span class="s2">"s#/usr/bin/env ruby#</span><span class="si">$(</span>pkg_path_for core/ruby<span class="si">)</span><span class="s2">/bin/ruby#"</span> <span class="nt">-i</span> <span class="nv">$binexec</span>
+  <span class="k">done
+
+  if</span> <span class="o">[[</span> <span class="sb">`</span><span class="nb">readlink</span> /usr/bin/env<span class="sb">`</span> <span class="o">=</span> <span class="s2">"</span><span class="si">$(</span>pkg_path_for coreutils<span class="si">)</span><span class="s2">/bin/env"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then
+    </span>build_line <span class="s2">"Removing the symlink we created for '/usr/bin/env'"</span>
+    <span class="nb">rm</span> /usr/bin/env
+  <span class="k">fi</span>
+<span class="o">}</span>
+
+...
+</pre></div>
+</div>
+
+<p>こんなツリーができます。とてもBundlerです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree -L 5 -d /hab/pkgs/sawanoboly/
+/hab/pkgs/sawanoboly/
+└── rubygems4myscript
+    └── 2.3.1
+        └── 20161115120237
+            ├── bin
+            ├── build_info
+            ├── cache
+            ├── doc
+            ├── extensions
+            │   └── x86_64-linux
+            ├── gems
+            │   ├── aws-sdk-2.6.19
+            │   ├── aws-sdk-core-2.6.19
+            │   ├── aws-sdk-resources-2.6.19
+            │   ├── docker-api-1.32.1
+            │   ├── excon-0.54.0
+            │   ├── ffi-1.9.14
+            │   ├── filewatcher-0.5.3
+            │   ├── jmespath-1.3.1
+            │   ├── json-2.0.2
+            │   ├── sys-filesystem-1.1.7
+            │   └── trollop-2.1.2
+            └── specifications
+
+22 directories
+</pre></div></div>
+
+<p>Linuxサーバにインストールして、binlinkを作りました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ for x in `ls $(/hab/bin/hab pkg path sawanoboly/rubygems4myscript)/bin` ; do sudo /hab/bin/hab pkg binlink --dest /opt/local/bin sawanoboly/rubygems4myscript $x ; done
+
+» Symlinking aws.rb from sawanoboly/rubygems4myscript into /opt/local/bin
+★ Binary aws.rb from sawanoboly/rubygems4myscript/2.3.1/20161115120237 symlinked to /opt/local/bin/aws.rb
+» Symlinking filewatcher from sawanoboly/rubygems4myscript into /opt/local/bin
+★ Binary filewatcher from sawanoboly/rubygems4myscript/2.3.1/20161115120237 symlinked to /opt/local/bin/filewatcher
+</pre></div></div>
+
+<p>実行してみると、まずはコケます。<code>core/ruby</code>本体が持つデフォルトのGEM_PATHと合わないからですね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ /opt/local/bin/filewatcher 
+/hab/pkgs/core/ruby/2.3.1/20161102184006/lib/ruby/site_ruby/2.3.0/rubygems.rb:270:in `find_spec_for_exe': can't find gem filewatcher (&gt;= 0.a) (Gem::GemNotFoundException)
+    from /hab/pkgs/core/ruby/2.3.1/20161102184006/lib/ruby/site_ruby/2.3.0/rubygems.rb:298:in `activate_bin_path'
+    from /opt/local/bin/filewatcher:22:in `&lt;main&gt;'
+</pre></div></div>
+
+<p>このパッケージ<code>sawanoboly/rubygems4myscript</code>と<code>core/ruby</code>に<code>GEM_PATH</code>を通したらようやく実行できます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ GEM_PATH=`/hab/bin/hab pkg path sawanoboly/rubygems4myscript`:`/hab/bin/hab pkg path core/ruby` /opt/local/bin/filewatcher -v
+filewatcher, version 0.5.3 by Thomas Flemming 2015
+</pre></div></div>
+
+<p><code>pkg_deps</code>の指定が足りないと、ここで<code>Not Found</code>がずらっと並んでしまいます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ find `/hab/bin/hab pkg path sawanoboly/rubygems4myscript` -name '*.so' | xargs ldd
+/hab/pkgs/sawanoboly/rubygems4myscript/2.3.1/20161115121308/gems/ffi-1.9.14/lib/ffi_c.so:
+    linux-vdso.so.1 =&gt;  (0x00007ffd8a58e000)
+    libruby.so.2.3 =&gt; /hab/pkgs/core/ruby/2.3.1/20161102184006/lib/libruby.so.2.3 (0x00007fbc33a8f000)
+    libffi.so.6 =&gt; /hab/pkgs/core/libffi/3.2.1/20161102160809/lib/libffi.so.6 (0x00007fbc33881000)
+    libpthread.so.0 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libpthread.so.0 (0x00007fbc33664000)
+    libdl.so.2 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libdl.so.2 (0x00007fbc33460000)
+    libcrypt.so.1 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libcrypt.so.1 (0x00007fbc33227000)
+    libm.so.6 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libm.so.6 (0x00007fbc32f29000)
+    libc.so.6 =&gt; /hab/pkgs/core/glibc/2.22/20160612063629/lib/libc.so.6 (0x00007fbc32b85000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007fbc3419c000)
+...
+</pre></div></div>
+
+<h2>
+<span id="非対話でやりたい場合" class="fragment"></span><a href="#%E9%9D%9E%E5%AF%BE%E8%A9%B1%E3%81%A7%E3%82%84%E3%82%8A%E3%81%9F%E3%81%84%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>非対話でやりたい場合</h2>
+
+<p>habitatはLinuxシステム上で動かすのが一番シームレスです。ほかではそのまま実行する場合に一部の機能に制限があります。</p>
+
+<p>一応、<code>hab studio run</code>を経由すれば、例えばmacOSからでもフル機能を使うことができました。</p>
+
+<p>こんな感じ。<code>hab studio run hab pkg export tar core/ruby</code></p>
+
+<p>ということでこんなスクリプトを用意して、</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">build.sh</span></div>
+<div class="highlight"><pre>build
+hab pkg <span class="nb">export tar </span>sawanoboly/rubygems4myscript
+</pre></div>
+</div>
+
+<p><code>hab studio run</code>で実行すればtar.gzがカレントディレクトリに出来上がります。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>hab studio run ./build.sh
+</pre></div></div>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>habitatはアプリケーションスタックのコントロールまで行うプロダクトのようなんですが、こんなのもアリかなと。<br>
+(多分)パッケージをビルドするときにできる<code>*.hart</code>を使えば全く同じ環境がとことん再現できるのはスゴイを通り越して少々あきれるくらいです。<br>
+大々的に使う予定は無いけども、たまに出せるツールとして覚えておこうと思います。</p>
+
+<p>手堅く行こうと思えばどこまでも手堅くできる、そんなhabitatでした。</p>

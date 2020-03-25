@@ -1,0 +1,82 @@
+<p>某所でServerless Frameworkが採用されており、コンソールでCloudWatch Logsをみると、<code>Never Expire</code>のlogsが沢山できていた。<br>
+これは真綿で首を絞めるような課金になるので、<code>serverless.yml</code>上で<code>logRetentionInDays</code>を設定するやり方を調べた。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sls --version
+1.11.0
+</pre></div></div>
+
+<h2>
+<span id="標準リソースの上書き機能を使う" class="fragment"></span><a href="#%E6%A8%99%E6%BA%96%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E3%81%AE%E4%B8%8A%E6%9B%B8%E3%81%8D%E6%A9%9F%E8%83%BD%E3%82%92%E4%BD%BF%E3%81%86"><i class="fa fa-link"></i></a>標準リソースの上書き機能を使う</h2>
+
+<p>そのまんまのサンプルが案内されていました。</p>
+
+<p><a href="https://github.com/serverless/serverless/blob/master/docs/providers/aws/guide/resources.md#override-aws-cloudformation-resource" rel="nofollow noopener" target="_blank">serverless/resources.md | serverless/serverless</a></p>
+
+<blockquote>
+<p>You can override the specific CloudFormation resource to apply your own options. For example, if you want to set AWS::Logs::LogGroup retention time to 30 days, override it with above table's Name Template.</p>
+</blockquote>
+
+<p>なるほど、標準でつくられるLogGroup(<code>/aws/lambda/{service_name}-{stage}-{function_name}</code>)の定義を上書きできるんだ。</p>
+
+<p>上書き用名前指定の書式は、<code>{normalizedFunctionName}</code> + <code>LogGroup</code>となっている。</p>
+
+<p>例えば次の例,function名を<code>main</code>としている場合、<code>MainLogGroup</code>に<code>RetentionInDays</code>を付与してあげればよい。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">serverless.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">service</span><span class="pi">:</span> <span class="s">myservice</span>
+
+<span class="c1"># ...</span>
+
+<span class="na">functions</span><span class="pi">:</span>
+  <span class="na">main</span><span class="pi">:</span>
+    <span class="na">handler</span><span class="pi">:</span> <span class="s">lambda_function.lambda_handler</span>
+
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>resources:
+  Resources:
+    MainLogGroup:
+      Properties:
+        RetentionInDays: "30"
+</pre></div></div>
+
+<p><code>--noDeploy(-n)</code>(1.12.x以降は<code>sls package</code>)でCFnテンプレートだけ作ってみると、ちゃんとそのようになっていることが確認できる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>  "Resources": {
+    "MainLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/myservice-development-main",
+        "RetentionInDays": "30"
+      }
+    },
+</pre></div></div>
+
+<p>function名に<code>-</code>や<code>_</code>が入っている場合、それぞれ予約文字列の<code>Dash</code>、<code>Underscore</code>を使えばよいとのこと。<br>
+名前自体が<code>Dash</code>だったりするケースは調べていません。</p>
+
+<h3>
+<span id="環境stageによって期限を変更したい場合" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83stage%E3%81%AB%E3%82%88%E3%81%A3%E3%81%A6%E6%9C%9F%E9%99%90%E3%82%92%E5%A4%89%E6%9B%B4%E3%81%97%E3%81%9F%E3%81%84%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>環境(stage)によって期限を変更したい場合</h3>
+
+<p>例えば<code>custom</code>属性を使って、stage名で引っ張ってくれば使い分けができますね。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">serverless.yml</span></div>
+<div class="highlight"><pre><span class="na">custom</span><span class="pi">:</span>
+  <span class="na">logRetentionInDays</span><span class="pi">:</span>
+    <span class="na">development</span><span class="pi">:</span> <span class="s2">"</span><span class="s">14"</span>  <span class="c1"># stage[development]は14日</span>
+    <span class="na">production</span><span class="pi">:</span> <span class="s2">"</span><span class="s">90"</span>   <span class="c1"># stage[production]は90日</span>
+    <span class="na">default</span><span class="pi">:</span> <span class="s2">"</span><span class="s">3"</span>       <span class="c1"># stageが見つからなかったらこれにfallbackするために設定</span>
+
+<span class="na">resources</span><span class="pi">:</span>
+  <span class="na">Resources</span><span class="pi">:</span>
+    <span class="na">MainLogGroup</span><span class="pi">:</span>
+      <span class="na">Properties</span><span class="pi">:</span>
+        <span class="na">RetentionInDays</span><span class="pi">:</span> <span class="s">${self:custom.logRetentionInDays.${opt:stage, self:provider.stage}, self:custom.logRetentionInDays.default}</span>
+</pre></div>
+</div>
+
+<p>デフォルトにfallbackするかどうかはお好みかな。</p>

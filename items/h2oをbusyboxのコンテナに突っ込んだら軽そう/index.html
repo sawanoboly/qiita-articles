@@ -1,0 +1,193 @@
+<p>HTTPサーバの<a href="https://h2o.examp1e.net" rel="nofollow noopener" target="_blank">h2o</a>を単品のバイナリにしてbusyboxのコンテナで動くかなという実験。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9b8836d0-e4c9-89fb-847b-f27465e74a8c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=576f855fd2667037f22a9aaec7798e5b" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9b8836d0-e4c9-89fb-847b-f27465e74a8c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=576f855fd2667037f22a9aaec7798e5b" alt="Quick_Start_-_Configure_-_H2O.jpg" title="Quick_Start_-_Configure_-_H2O.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/9b8836d0-e4c9-89fb-847b-f27465e74a8c.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9b8836d0-e4c9-89fb-847b-f27465e74a8c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=995245c790cfe64ca8e8e4600ede5d12 1x" loading="lazy"></a></p>
+
+<p>結果、普通のファイル配信はいけそう。<br>
+1.5.4(と現時点のmasterである1.6.0Bata)でリバースプロキシにホスト名を使ううと名前解決でSegFauiltしたので、一部機能が怪しくはある。</p>
+
+<p>作ったイメージはDockerhubに置いた。 <a href="https://hub.docker.com/r/higanworks/h2o-busybox/" class="autolink" rel="nofollow noopener" target="_blank">https://hub.docker.com/r/higanworks/h2o-busybox/</a></p>
+
+<h2>
+<span id="h2o-busyboxの準備" class="fragment"></span><a href="#h2o-busybox%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>h2o-busyboxの準備</h2>
+
+<p>手元がOSXなので、ビルドもDockerでいいや。</p>
+
+<p>h2oを強引に単品バイナリとするため、StackOverflowさんから軽く調べた範囲で<code>CMakeLists.txt</code>にてオプションを追加する。<br>
+綺麗ではないがまずはお試し。</p>
+
+<div class="code-frame" data-lang="Dockerfile(抜粋)"><div class="highlight"><pre>...
+RUN echo 'SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")' &gt;&gt; CMakeLists.txt
+RUN echo 'SET(BUILD_SHARED_LIBRARIES OFF)' &gt;&gt; CMakeLists.txt
+RUN echo 'SET(CMAKE_EXE_LINKER_FLAGS "-static")' &gt;&gt; CMakeLists.txt
+RUN cmake -DWITH_BUNDLED_SSL=on -DBUILD_SHARED_LIBS=no .\
+&amp;&amp; make h2o
+...
+</pre></div></div>
+
+<p>Busybox戦略は、準備段階のDockerイメージについてサイズがいくらデカくても気にしなくていいのが良いね。</p>
+
+<p>できたh2oバイナリをチェック。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>root@66e2f5bd84a4:/h2o# ./h2o --version
+h2o version 1.5.4
+OpenSSL: LibreSSL 2.2.4
+
+root@66e2f5bd84a4:/h2o# ldd ./h2o 
+    not a dynamic executable
+</pre></div></div>
+
+<p>外部にリンクしてないようには見える。</p>
+
+<h2>
+<span id="取り出したh2oをbusyboxベースのイメージに入れる" class="fragment"></span><a href="#%E5%8F%96%E3%82%8A%E5%87%BA%E3%81%97%E3%81%9Fh2o%E3%82%92busybox%E3%83%99%E3%83%BC%E3%82%B9%E3%81%AE%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B8%E3%81%AB%E5%85%A5%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a>取り出した<code>h2o</code>を<code>busybox</code>ベースのイメージに入れる</h2>
+
+<p>公式のイメージにADDするだけのお仕事です。</p>
+
+<div class="code-frame" data-lang="Dockerfile(busybox-h2o)"><div class="highlight"><pre>FROM busybox:ubuntu-14.04
+ADD build/h2o /bin/h2o
+CMD ["/bin/sh"]
+</pre></div></div>
+
+<p>hubにpush。サイズちっさ。。ちっさ。。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fa066549e-7416-9ea2-4f0c-7b89c0717903.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b9d0890e4ba375d727aea515c6f57a45" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fa066549e-7416-9ea2-4f0c-7b89c0717903.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b9d0890e4ba375d727aea515c6f57a45" alt="Docker_Hub.jpg" title="Docker_Hub.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/a066549e-7416-9ea2-4f0c-7b89c0717903.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fa066549e-7416-9ea2-4f0c-7b89c0717903.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=e47114e7ead16828359c7615a779eba6 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="適当なwebサイトをコンテナに突っ込む" class="fragment"></span><a href="#%E9%81%A9%E5%BD%93%E3%81%AAweb%E3%82%B5%E3%82%A4%E3%83%88%E3%82%92%E3%82%B3%E3%83%B3%E3%83%86%E3%83%8A%E3%81%AB%E7%AA%81%E3%81%A3%E8%BE%BC%E3%82%80"><i class="fa fa-link"></i></a>適当なWebサイトをコンテナに突っ込む。</h2>
+
+<p>ちょうどhugoで作ってるサイトがあったので、ビルドしたファイルを突っ込んでみよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>sawanoboly.github.io/public/
+├── 2015
+│   └── 11
+│       └── blog-hugo
+├── css
+├── js
+├── post
+└── tags
+    ├── blog
+    └── hugo
+
+9 directories
+</pre></div></div>
+
+<p>マウントでもいいんやけどさ。昔の雑誌付録CD-R(※)みたいにサイトごと焼きこんでもいいかなと思って入れてみた。</p>
+
+<p>(※あったよね？)</p>
+
+<div class="code-frame" data-lang="Dockerfile(Webサイト用サンプル)"><div class="highlight"><pre>FROM higanworks/h2o-busybox:1.5.4
+
+COPY h2o /h2o
+COPY public /public
+ENTRYPOINT ["/sbin/h2o", "-c", "/h2o/h2o.conf"]
+</pre></div></div>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">h2o.conf</span></div>
+<div class="highlight"><pre>listen:
+  port: 8080
+user: root
+hosts:
+  "default":
+    paths:
+      /:
+        file.dir: /public
+access-log: /dev/stdout
+</pre></div>
+</div>
+
+<p>これでサイト入りh2o(配信機能付きサイトアーカイブ？)の準備は整った。</p>
+
+<h2>
+<span id="ビルドして起動してみる" class="fragment"></span><a href="#%E3%83%93%E3%83%AB%E3%83%89%E3%81%97%E3%81%A6%E8%B5%B7%E5%8B%95%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>ビルドして、起動してみる。</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker build -t sawanoboly.github.io .
+
+...
+
+Successfully built 5631bf462823
+</pre></div></div>
+
+<p>サイズ16MBしか無いぜ。なかなかポータビってるぞ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker images | grep sawanoboly.github.io 
+sawanoboly.github.io              latest               5631bf462823        36 seconds ago      16.74 MB
+</pre></div></div>
+
+<p>早速起動だ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker run --rm -it -p 8080:8080 sawanoboly.github.io
+[INFO] raised RLIMIT_NOFILE to 1048576
+h2o server (pid:1) is ready to serve requests
+
+# ブラウザでアクセス。
+
+192.168.99.1 - - [01/Dec/2015:04:29:52 +0000] "GET / HTTP/1.1" 200 3725 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.7 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.7"
+192.168.99.1 - - [01/Dec/2015:04:29:52 +0000] "GET /css/blog.css HTTP/1.1" 200 2664 "http://192.168.99.100:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.7 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.7"
+192.168.99.1 - - [01/Dec/2015:04:29:52 +0000] "GET /css/prism.css HTTP/1.1" 200 2356 "http://192.168.99.100:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.7 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.7"
+192.168.99.1 - - [01/Dec/2015:04:29:52 +0000] "GET /js/prism.js HTTP/1.1" 200 40574 "http://192.168.99.100:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.7 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.7"
+192.168.99.1 - - [01/Dec/2015:04:29:52 +0000] "GET /css/custom.css HTTP/1.1" 200 141 "http://192.168.99.100:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.7 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.7"
+</pre></div></div>
+
+<p>うむ、ちゃんと表示された。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5d28ebff-67d5-5d99-8275-1a8ea904992c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5b75c1c4e124c0af98ebc3a776920063" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5d28ebff-67d5-5d99-8275-1a8ea904992c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5b75c1c4e124c0af98ebc3a776920063" alt="Sawanoboly_net_-_Sawanoboly_net.jpg" title="Sawanoboly_net_-_Sawanoboly_net.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/5d28ebff-67d5-5d99-8275-1a8ea904992c.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5d28ebff-67d5-5d99-8275-1a8ea904992c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=d353f44794e33698bb6cc78c899a91ea 1x" loading="lazy"></a></p>
+
+<p>このほか、次の機能についてはこのバイナリで問題なく動作することを確認。</p>
+
+<ul>
+<li>TLS&amp;HTTP/2</li>
+<li>スレッド数指定</li>
+</ul>
+
+<h2>
+<span id="この利用方法で既知の問題proxyreverse" class="fragment"></span><a href="#%E3%81%93%E3%81%AE%E5%88%A9%E7%94%A8%E6%96%B9%E6%B3%95%E3%81%A7%E6%97%A2%E7%9F%A5%E3%81%AE%E5%95%8F%E9%A1%8Cproxyreverse"><i class="fa fa-link"></i></a>この利用方法で既知の問題:<code>proxy.reverse</code>
+</h2>
+
+<p>順風満帆に見えたが、設定によって止まることがあった。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>proxy.reverse.url: "http://127.0.0.1:8080/" # これは動く
+proxy.reverse.url: "http://www.example.com:8080/" # これでSegFault
+</pre></div></div>
+
+<p>名前解決が必要なバックエンドだと、このコンテナは止まる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>h2o server (pid:1) is ready to serve requests
+received fatal signal 11; backtrace follows
+[0x445575]
+[0x531070]
+/lib/libnss_files.so.2(+0x4b2c)[0x7f5b1d094b2c]
+/lib/libnss_files.so.2(_nss_files_gethostbyname4_r+0xd3)[0x7f5b1d095ca3]
+[0x586033]
+[0x58818b]
+[0x407e51]
+[0x52db84]
+[0x58be19]
+</pre></div></div>
+
+<p>環境のせいだとは思う。<br>
+フル機能完全に使うには、Busyboxのベースイメージから調整するほうがいいのかな。。</p>
+
+<p>さらにこの辺をStaticにするには、GCCから調整しないといけないのね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>CMakeFiles/h2o.dir/lib/common/serverutil.c.o: In function `h2o_setuidgid':
+/h2o/lib/common/serverutil.c:72: warning: Using 'initgroups' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+CMakeFiles/h2o.dir/src/main.c.o: In function `on_config_user':
+/h2o/src/main.c:970: warning: Using 'getpwnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+CMakeFiles/h2o.dir/lib/common/serverutil.c.o: In function `h2o_setuidgid':
+/h2o/lib/common/serverutil.c:60: warning: Using 'getpwnam_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+CMakeFiles/h2o.dir/deps/libyrmcds/connect.c.o: In function `connect_to_server':
+/h2o/deps/libyrmcds/connect.c:36: warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+</pre></div></div>
+
+<h2>
+<span id="動機の片鱗" class="fragment"></span><a href="#%E5%8B%95%E6%A9%9F%E3%81%AE%E7%89%87%E9%B1%97"><i class="fa fa-link"></i></a>動機の片鱗</h2>
+
+<p>急にアドベントカレンダーが来たのですこし関係有ることを追記してしめよう。</p>
+
+<p><a href="http://www.slice.media" rel="nofollow noopener" target="_blank">SliceMediaっちゅーサービス</a> で作れるサイトは一部をNginx+mruby配信のHTTP/2にしてある。<br>
+しかしスタイル等の共通パーツを<a href="https://zenlogic.jp" rel="nofollow noopener" target="_blank">Zenlogic</a>に置いてるのでHTTP/1.1になってる。</p>
+
+<p>...HTTP/2は快適で一部やったら全部やりたくなる魅力にあふれている、特に装飾が多めのCMSとかで。スタイル系の部品を、h2oコンテナとVolumeの組み合わせで他所に移そっかなと思ってちょっと試している最中。</p>
+
+<p>転送制限ないレンサバって(同一国内向けなら)Static配信役として向いてるので、HTTP/2が使えるようになるといいね。</p>

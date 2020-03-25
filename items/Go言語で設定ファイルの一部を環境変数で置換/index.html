@@ -1,0 +1,131 @@
+<p>Go製ツール<a href="https://github.com/walter-cd/walter" title="walter-cd/walter" rel="nofollow noopener" target="_blank">walter</a>の設定ファイル<code>pipeline.yml</code>で値を環境変数から取りたいなあと思ったのでトライ。</p>
+
+<p>とりあえず"text/template"で環境変数を使える体まで書いたのでメモ。</p>
+
+<h2>
+<span id="まず環境変数をまるごとマップに" class="fragment"></span><a href="#%E3%81%BE%E3%81%9A%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0%E3%82%92%E3%81%BE%E3%82%8B%E3%81%94%E3%81%A8%E3%83%9E%E3%83%83%E3%83%97%E3%81%AB"><i class="fa fa-link"></i></a>まず環境変数をまるごとマップに</h2>
+
+<p>Goでは環境変数の一覧を<code>os.Environ()</code>で取れるんだけど、キーバリュー込みで1つの単位になるテキストのスライスをもらえるだけなので、そのままでは扱いづらい。</p>
+
+<p>じゃあまずマップに変換してみようと。</p>
+
+<p><a href="https://github.com/higanworks/envmap" rel="nofollow noopener" target="_blank">github.com/higanworks/envmap</a></p>
+
+<p>参考にしたのはこちらの記事 <a href="https://coderwall.com/p/kjuyqw/get-environment-variables-as-a-map-in-golang" title="coderwall.com : establishing geek cred since 1305712800" rel="nofollow noopener" target="_blank">Get environment variables as a map in golang - coderwall</a></p>
+
+<p>ライブラリの内容はこちら。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>package envmap
+
+import (
+    "os"
+    "strings"
+)
+
+// 全部入りのマップを返す
+func All() map[string]string {
+    data := os.Environ()
+    items := make(map[string]string)
+    for _, val := range data {
+        splits := strings.SplitN(val, "=", 2)  // `=`で分割、分割数を2にして値側の`=`を無視
+        key := splits[0]
+        value := splits[1]
+        items[key] = value
+    }
+    return items
+}
+
+// キーの一覧を返す
+func ListKeys() []string {
+    data := os.Environ()
+    var keys []string
+    for _, val := range data {
+        splits := strings.SplitN(val, "=", 2)  // `=`で分割、分割数を2にして値側の`=`を無視
+        keys = append(keys, splits[0])
+    }
+    return keys
+}
+</pre></div></div>
+
+<p>事前の仕込みはこれでよし。</p>
+
+<h2>
+<span id="yamlの文字列をtexttemplateで処理" class="fragment"></span><a href="#yaml%E3%81%AE%E6%96%87%E5%AD%97%E5%88%97%E3%82%92texttemplate%E3%81%A7%E5%87%A6%E7%90%86"><i class="fa fa-link"></i></a>yamlの文字列を<code>text/template</code>で処理</h2>
+
+<p>変換したいところをヒゲで囲んだ<code>hoge.yml</code>を用意した。今回はドットのあとに代入したい環境変数。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">hoge.yml</span></div>
+<div class="highlight"><pre><span class="na">message</span><span class="pi">:</span>
+ <span class="na">hoge</span><span class="pi">:</span> <span class="s">Hello {{.HOME}}</span>
+</pre></div>
+</div>
+
+<p>で、<a href="http://golang.org/pkg/text/template/" title="template - The Go Programming Language" rel="nofollow noopener" target="_blank">template - The Go Programming Language</a>を見ながら処理を書いた。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">main.go</span></div>
+<div class="highlight"><pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"github.com/higanworks/envmap"</span>
+    <span class="s">"io/ioutil"</span>
+    <span class="s">"os"</span>
+    <span class="s">"text/template"</span>
+<span class="p">)</span>
+
+<span class="k">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">envs</span> <span class="o">:=</span> <span class="n">envmap</span><span class="o">.</span><span class="n">All</span><span class="p">()</span> <span class="c">// 環境変数マップを取得</span>
+
+    <span class="n">rawdata</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">ioutil</span><span class="o">.</span><span class="n">ReadFile</span><span class="p">(</span><span class="s">"hoge.yml"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="nb">panic</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="n">tmpl</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">template</span><span class="o">.</span><span class="n">New</span><span class="p">(</span><span class="s">"test"</span><span class="p">)</span><span class="o">.</span><span class="n">Parse</span><span class="p">(</span><span class="kt">string</span><span class="p">(</span><span class="n">rawdata</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="nb">panic</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="n">err</span> <span class="o">=</span> <span class="n">tmpl</span><span class="o">.</span><span class="n">Execute</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">Stdout</span><span class="p">,</span> <span class="n">envs</span><span class="p">)</span> <span class="c">// 置換して標準出力へ</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="nb">panic</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="p">}</span>
+
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p>実行して、置換後の出力。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">hoge.yml(output)</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">message</span><span class="pi">:</span>
+ <span class="na">hoge</span><span class="pi">:</span> <span class="s">Hello /Users/sawanoboly</span>
+</pre></div>
+</div>
+
+<p>できたわー。</p>
+
+<p>ちなみにコードこのままだと、環境変数が無かったら<code>&lt;no value&gt;</code>で埋められちゃう。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">hoge.yml(output_with_no_value)</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">message</span><span class="pi">:</span>
+ <span class="na">hoge</span><span class="pi">:</span> <span class="s">Hello &lt;no value&gt;</span>
+</pre></div>
+</div>
+
+<p>もしかすると"text/template"の<code>Actions</code>だけでも何とかなりそうだけど、yaml側に色々書くのも変だし。</p>
+
+<h2>
+<span id="おすすめgo" class="fragment"></span><a href="#%E3%81%8A%E3%81%99%E3%81%99%E3%82%81go"><i class="fa fa-link"></i></a>おすすめGo</h2>
+
+<p>この2つにお世話になりました。</p>
+
+<ul>
+<li><a href="http://www.amazon.co.jp/dp/4863541171" title="Amazon.co.jp： 基礎からわかる Go言語: 古川 昇: 本" rel="nofollow noopener" target="_blank">Amazon.co.jp： 基礎からわかる Go言語: 古川 昇: 本</a></li>
+<li><a href="https://github.com/fatih/vim-go" title="fatih/vim-go" rel="nofollow noopener" target="_blank">fatih/vim-go</a></li>
+</ul>

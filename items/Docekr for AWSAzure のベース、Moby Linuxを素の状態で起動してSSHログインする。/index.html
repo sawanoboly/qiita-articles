@@ -1,0 +1,110 @@
+<p>Docker for AWS(以下D4a)はDocker社が用意したAMIを含む、Swarmクラスタを作るためのCloudFormationテンプレートです。</p>
+
+<p>ここで使われるAMIはAlpineがベースのMoby Linuxというやつで、D4aのテンプレートを無改造で使用すると、インスタンスへのSSHログインは専用のDockerコンテナに入ります。<br>
+この方式では、ホスト(manager/worker)に適用しておきたいカスタマイズがあるケースでは、テンプレートに直接試すのが少々面倒でした。</p>
+
+<p>ちょっと試したい追加設定があるたびに、CloudFormationのテンプレートを改造していてはラチがあかないので、あたりをつけるまでは直接触って影響などみたいなーという時に、AMIを単品で起動してしまうこともできます。</p>
+
+<p>ちなみに、beta10までは申請済みのAWSアカウントにSharedの状態でアクセス権が与えられていましたが、beta11以降は気付いたら<code>Community AMIs</code>に公開しているようなので、一応誰でも起動してよくなったみたいです。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6108eb38-7c22-ac50-cde1-7afc7c118aab.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3663b2d633816b6e869dafe6431ca1d1" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6108eb38-7c22-ac50-cde1-7afc7c118aab.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3663b2d633816b6e869dafe6431ca1d1" alt="EC2_Management_Console.jpg" title="EC2_Management_Console.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/6108eb38-7c22-ac50-cde1-7afc7c118aab.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6108eb38-7c22-ac50-cde1-7afc7c118aab.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=32051cce5084811de8f3d7221f20e371 1x" loading="lazy"></a></p>
+
+<p>(なんかbeta15、2つある。。)</p>
+
+<blockquote>
+<p>名前をよく間違えるとかで、割と適当にアップしている模様です。<code>ec2 describe-images</code>でオーナーIDと作成日時を一応チェックしてから使いましょう。</p>
+</blockquote>
+
+<h2>
+<span id="単品起動にuserscriptを適用する" class="fragment"></span><a href="#%E5%8D%98%E5%93%81%E8%B5%B7%E5%8B%95%E3%81%ABuserscript%E3%82%92%E9%81%A9%E7%94%A8%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>単品起動にUserScriptを適用する</h2>
+
+<p>※ Boot2Dockerも一応Mobyでしたが、EC2で直接触って試したいこともあったりします。</p>
+
+<p>D4aでログイン用のDockerイメージのHistoryを参考に、次のような感じでUserScriptを突っ込んで起動します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>#!/bin/sh
+docker kill shell-aws
+apk add --update bash openssh ca-certificates sudo curl jq
+echo -e "Port 22\nClientAliveInterval 180\nPasswordAuthentication no\n" &gt;&gt; /etc/ssh/sshd_config
+
+rc-update add sshd
+/etc/init.d/sshd start
+echo -e "\ndocker ALL=(ALL) NOPASSWD: ALL\n" &gt;&gt; /etc/sudoers 
+</pre></div></div>
+
+<blockquote>
+<p>追記2017.9： いつのまにやらshell-awsコンテナが起動するようになっているので、 <code>docker kill shell-aws</code> で止めます。</p>
+</blockquote>
+
+<p>あとはストレージを適当に増やしておきましょう。</p>
+
+<h2>
+<span id="sshでmobyにログイン" class="fragment"></span><a href="#ssh%E3%81%A7moby%E3%81%AB%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3"><i class="fa fa-link"></i></a>SSHでMobyにログイン</h2>
+
+<p>ログインユーザは<code>docker</code>です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ssh docker@52.91.xxx.xxx
+
+...
+
+Welcome to Moby, based on Alpine Linux.
+ip-10-0-11-114:~$ id
+uid=1001(docker) gid=50(docker) groups=50(docker),50(docker)
+</pre></div></div>
+
+<p>SSHログインできました。</p>
+
+<h2>
+<span id="d4aのmobyカスタマイズ例" class="fragment"></span><a href="#d4a%E3%81%AEmoby%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%9E%E3%82%A4%E3%82%BA%E4%BE%8B"><i class="fa fa-link"></i></a>D4aのMobyカスタマイズ例</h2>
+
+<p>例えば、DockerコンテナからEC2のメタデータを取れないようにしたいとか、そういう設定を試してみるのにつかえます。</p>
+
+<p>通常は次のように、EC2のインスタンス上でDockerコンテナを稼働させると、いつものメタデータAPIを参照することができます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker run -it --rm alpine wget http://169.254.169.254/latest/meta-data/ -O - | head
+Connecting to 169.254.169.254 (169.254.169.254:80)
+ami-id
+ami-launch-index
+ami-manifest-path
+block-device-mapping/
+hostname
+instance-action
+instance-id
+instance-type
+local-hostname
+</pre></div></div>
+
+<p>えーと、これが見れるようでは困るケースもあるわけです。CI用に貸し出してるとかで。</p>
+
+<p>いくつか情報を拾ったりつつ(どこだったか忘れた。。)、とりあえずPREROUTINGでごまかすことが可能ぽかったので試してみます。到達しないようにしちゃうと。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo iptables -t nat -I PREROUTING -i docker0 -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 1.1.1.1
+$ sudo iptables -t nat -I PREROUTING -i docker_gwbridge -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 1.1.1.1
+</pre></div></div>
+
+<p>無事、DockerコンテナからEC2メタデータを隠蔽することができたようです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker run -it --rm alpine wget http://169.254.169.254/latest/meta-data/ -T 10 -O -
+Connecting to 169.254.169.254 (169.254.169.254:80)
+wget: download timed out
+</pre></div></div>
+
+<p>あとは、今回成功した<code>iptables</code>のコマンドをテンプレートのUserScriptに仕込めばよいはず、と。</p>
+
+<hr>
+
+<p>以下おまけ。</p>
+
+<p>何かの拍子で再起動した時にも適用されるよう、一応<code>local.d</code>にも仕込んでおく場合、こんな感じですかね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo rc-update add local default
+
+$ cat &lt;&lt;"EOL" | sudo tee -a /etc/local.d/block_metadata.start
+iptables -t nat -I PREROUTING -i docker0 -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 1.1.1.1
+iptables -t nat -I PREROUTING -i docker_gwbridge -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 1.1.1.1
+EOL
+
+$ sudo chmod +x /etc/local.d/block_metadata.start
+</pre></div></div>
+
+<p>ただ、今回試したbeta15用のAMIは(AutoScaleGroupで捨てるのが前提だから？)、そもそもrebootしたらSTOPのまま上がってこないので、自動適用の成否はわからんです。</p>

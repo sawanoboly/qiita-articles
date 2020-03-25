@@ -1,0 +1,185 @@
+<p>書きやすいのでホイホイQiitaに色々記事を書いてるわけですが、たまにやたら古い記事をストックされることがあります。<br>
+古いだけで今でも通用する内容なら良いんだけど、ライブラリのバージョンとか変わりすぎてて、そのままでは全く動かない記事もある。</p>
+
+<p>動かないとはっきりわかっている記事がストックされたら、手動で警告をいれたりもしています。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd421bfb1-cb8e-6677-53de-01a5dde8488e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8c91b9ae6762c54d1a46e6f13cc676cf" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd421bfb1-cb8e-6677-53de-01a5dde8488e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8c91b9ae6762c54d1a46e6f13cc676cf" alt="スクリーンショット_4_8_15__5_05_PM.png" title="スクリーンショット_4_8_15__5_05_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d421bfb1-cb8e-6677-53de-01a5dde8488e.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd421bfb1-cb8e-6677-53de-01a5dde8488e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=092e49cf43e26056f7625be65580fc62 1x" loading="lazy"></a></p>
+
+<p>ただ、毎度警告を書くわけにもいかない。とりあえず古い記事には <strong>これ古いのよ</strong> と適当につけてみました。</p>
+
+<p><a href="https://github.com/sawanoboly/qiita-articles-best-before" rel="nofollow noopener" target="_blank">この記事用のリポジトリ： sawanoboly/qiita-articles-best-before</a></p>
+
+<h2>
+<span id="rakeで全部の記事に警告をつける" class="fragment"></span><a href="#rake%E3%81%A7%E5%85%A8%E9%83%A8%E3%81%AE%E8%A8%98%E4%BA%8B%E3%81%AB%E8%AD%A6%E5%91%8A%E3%82%92%E3%81%A4%E3%81%91%E3%82%8B"><i class="fa fa-link"></i></a>Rakeで全部の記事に警告をつける</h2>
+
+<p>またRakeでベタ書きか。はい。<br>
+最終更新日を基準に、365日くらい経過している記事には先頭に固定の文字列を入れることにした。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+<span class="nb">require</span> <span class="s1">'qiita'</span>
+<span class="nb">require</span> <span class="s1">'formatador'</span>
+<span class="nb">require</span> <span class="s1">'logger'</span>
+
+<span class="no">BEST_BEFORE</span><span class="o">=</span><span class="s2">"&lt;!-- too_old --&gt;</span><span class="se">\n</span><span class="s2">&gt; **この記事は最終更新から1年以上経過しています。** 気をつけてね。</span><span class="se">\n</span><span class="s2">"</span>
+<span class="vi">@client</span> <span class="o">=</span> <span class="no">Qiita</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">access_token: </span><span class="no">ENV</span><span class="p">[</span><span class="s1">'QIITA_TOKEN'</span><span class="p">])</span>
+<span class="vi">@logger</span> <span class="o">=</span> <span class="no">Logger</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vg">$stdout</span><span class="p">)</span>
+
+<span class="n">desc</span> <span class="s2">"show all items"</span>
+<span class="n">task</span> <span class="ss">:show</span> <span class="k">do</span>
+  <span class="n">all_items</span> <span class="o">=</span> <span class="n">return_all_items</span>
+  <span class="c1"># ["rendered_body", "body", "coediting", "created_at", "id", "private", "tags", "title", "updated_at", "url", "user"]</span>
+  <span class="no">Formatador</span><span class="p">.</span><span class="nf">display_table</span><span class="p">(</span><span class="n">all_items</span><span class="p">,</span> <span class="p">[</span><span class="s1">'created_at'</span><span class="p">,</span> <span class="s1">'updated_at'</span><span class="p">,</span> <span class="s1">'since_last_update'</span><span class="p">,</span> <span class="s1">'tagged'</span><span class="p">,</span> <span class="s1">'title'</span><span class="p">,</span> <span class="s1">'url'</span><span class="p">])</span>
+<span class="k">end</span>
+
+<span class="c1">## PATCH</span>
+<span class="c1"># {</span>
+<span class="c1">#   "body": "# Example",</span>
+<span class="c1">#   "coediting": false,</span>
+<span class="c1">#   "private": false,</span>
+<span class="c1">#   "tags": [</span>
+<span class="c1">#     {</span>
+<span class="c1">#       "name": "example",</span>
+<span class="c1">#       "versions": [</span>
+<span class="c1">#         "0.0.1"</span>
+<span class="c1">#       ]</span>
+<span class="c1">#     }</span>
+<span class="c1">#   ],</span>
+<span class="c1">#   "title": "hello world"</span>
+<span class="c1"># }</span>
+
+<span class="n">task</span> <span class="ss">:preview</span> <span class="k">do</span>
+  <span class="n">all_items</span> <span class="o">=</span> <span class="n">return_all_items</span>
+  <span class="n">tester</span> <span class="o">=</span> <span class="n">all_items</span><span class="p">[</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span>
+  <span class="n">item</span> <span class="o">=</span> <span class="n">set_header_to_item</span><span class="p">(</span><span class="n">tester</span><span class="p">)</span>
+  <span class="n">patch_header_to_item</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="n">desc</span> <span class="s2">"put warning header to all items"</span>
+<span class="n">task</span> <span class="ss">:all</span> <span class="k">do</span>
+  <span class="n">all_items</span> <span class="o">=</span> <span class="n">return_all_items</span>
+  <span class="n">all_items</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">item</span><span class="o">|</span>
+    <span class="n">updater</span> <span class="o">=</span> <span class="n">set_header_to_item</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+    <span class="vi">@logger</span><span class="p">.</span><span class="nf">info</span> <span class="n">updater</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]</span> <span class="o">+</span> <span class="s2">" will be update."</span> <span class="k">if</span> <span class="n">updater</span>
+    <span class="n">patch_header_to_item</span><span class="p">(</span><span class="n">updater</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">return_all_items</span>
+  <span class="n">all_items</span> <span class="o">=</span> <span class="p">[]</span>
+  <span class="n">page</span> <span class="o">=</span> <span class="mi">1</span>
+
+  <span class="n">items</span> <span class="o">=</span> <span class="vi">@client</span><span class="p">.</span><span class="nf">list_user_items</span><span class="p">(</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'QIITA_USER'</span><span class="p">],</span> <span class="ss">page: </span><span class="n">page</span><span class="p">)</span>
+
+  <span class="k">while</span> <span class="n">items</span><span class="p">.</span><span class="nf">next_page_url</span> <span class="k">do</span>
+    <span class="n">all_items</span><span class="p">.</span><span class="nf">concat</span><span class="p">(</span><span class="n">items</span><span class="p">.</span><span class="nf">body</span><span class="p">)</span>
+    <span class="n">page</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">items</span> <span class="o">=</span> <span class="vi">@client</span><span class="p">.</span><span class="nf">list_user_items</span><span class="p">(</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'QIITA_USER'</span><span class="p">],</span> <span class="ss">page: </span><span class="n">page</span><span class="p">)</span>
+  <span class="k">end</span>
+
+  <span class="n">all_items</span><span class="p">.</span><span class="nf">concat</span><span class="p">(</span><span class="n">items</span><span class="p">.</span><span class="nf">body</span><span class="p">)</span>
+
+  <span class="c1"># Time.strptime('2015-04-03T15:38:50+09:00', '%Y-%m-%dT%H:%M:%S')</span>
+  <span class="n">all_items</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">i</span><span class="o">|</span>
+    <span class="c1">## 最終更新日からの経過日数を一旦計算していれておく</span>
+    <span class="n">i</span><span class="p">[</span><span class="s1">'since_last_update'</span><span class="p">]</span>  <span class="o">=</span> <span class="p">(</span> <span class="p">(</span><span class="no">Time</span><span class="p">.</span><span class="nf">now</span> <span class="o">-</span> <span class="no">Time</span><span class="p">.</span><span class="nf">strptime</span><span class="p">(</span><span class="n">i</span><span class="p">[</span><span class="s1">'updated_at'</span><span class="p">],</span> <span class="s1">'%Y-%m-%dT%H:%M:%S'</span><span class="p">))</span> <span class="o">/</span> <span class="mi">60</span> <span class="o">/</span> <span class="mi">60</span> <span class="o">/</span> <span class="mi">24</span> <span class="p">).</span><span class="nf">to_i</span>
+    <span class="c1">## 固定の文字列があるかのチェックフラグを作っておく</span>
+    <span class="n">i</span><span class="p">[</span><span class="s1">'tagged'</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span><span class="p">[</span><span class="s1">'body'</span><span class="p">].</span><span class="nf">start_with?</span><span class="p">(</span><span class="no">BEST_BEFORE</span><span class="p">)</span>
+    <span class="n">i</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">set_header_to_item</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+  <span class="vi">@logger</span><span class="p">.</span><span class="nf">info</span> <span class="n">item</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]</span> <span class="o">+</span> <span class="s2">": "</span> <span class="o">+</span> <span class="n">item</span><span class="p">[</span><span class="s2">"since_last_update"</span><span class="p">].</span><span class="nf">to_s</span> <span class="o">+</span> <span class="s2">" days."</span>
+  <span class="k">return</span> <span class="kp">false</span> <span class="k">if</span> <span class="n">item</span><span class="p">[</span><span class="s2">"tagged"</span><span class="p">]</span>
+  <span class="k">return</span> <span class="kp">false</span> <span class="k">if</span> <span class="n">item</span><span class="p">[</span><span class="s2">"since_last_update"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">365</span>
+  <span class="n">item</span><span class="p">[</span><span class="s2">"body"</span><span class="p">]</span> <span class="o">=</span> <span class="no">BEST_BEFORE</span> <span class="o">+</span>  <span class="n">item</span><span class="p">[</span><span class="s2">"body"</span><span class="p">]</span>
+  <span class="n">item</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">patch_header_to_item</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+  <span class="k">if</span> <span class="n">item</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="vi">@client</span><span class="p">.</span><span class="nf">update_item</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s2">"id"</span><span class="p">],</span> <span class="p">{</span>
+      <span class="ss">body:       </span><span class="n">item</span><span class="p">[</span><span class="s2">"body"</span><span class="p">],</span>
+      <span class="ss">coediting:  </span><span class="n">item</span><span class="p">[</span><span class="s2">"coediting"</span><span class="p">],</span>
+      <span class="ss">private:    </span><span class="n">item</span><span class="p">[</span><span class="s2">"private"</span><span class="p">],</span>
+      <span class="ss">tags:       </span><span class="n">item</span><span class="p">[</span><span class="s2">"tags"</span><span class="p">],</span>
+      <span class="ss">title:      </span><span class="n">item</span><span class="p">[</span><span class="s2">"title"</span><span class="p">]</span>
+    <span class="p">})</span>
+    <span class="vi">@logger</span><span class="p">.</span><span class="nf">info</span> <span class="n">res</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="現状を把握する" class="fragment"></span><a href="#%E7%8F%BE%E7%8A%B6%E3%82%92%E6%8A%8A%E6%8F%A1%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>現状を把握する</h3>
+
+<p>さっきのRakeファイルをでは、<code>rake show</code>で経過日数と警告をつけているかの確認(2年目以降の対策)を確認できるようにしました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ rake show
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | created_at                | updated_at                | since_last_update | tagged | title                                                                       | url                                                    |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | 2015-04-03T15:16:06+09:00 | 2015-04-03T15:38:50+09:00 | 5                 |        | Shellで構築、Shellでテストする Test-Kitchen                                           | http://qiita.com/sawanoboly/items/2874018f385dbe8562b1 |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | 2015-04-01T10:09:05+09:00 | 2015-04-01T10:25:48+09:00 | 7                 |        | Loader.ioを使ってWordPressのバックエンド構成を変えつつ性能を測ってみる、php-fpmとHHVM                   | http://qiita.com/sawanoboly/items/e422b366439f67bfb01c |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | 2015-03-25T23:30:15+09:00 | 2015-03-26T17:20:09+09:00 | 12                |        | Dockerで自分のサイトを手軽にHTTP/2対応にしよっか                                              | http://qiita.com/sawanoboly/items/9b6b21430781fbc48370 |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | 2015-03-24T21:05:12+09:00 | 2015-03-25T15:04:00+09:00 | 14                |        | サーバー管理者のためのChef超入門（2） - @IT の補足、Cookbookのディレクトリ                             | http://qiita.com/sawanoboly/items/a2cbd4c42525ae894371 |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | 2015-03-06T18:34:39+09:00 | 2015-04-02T15:29:32+09:00 | 6                 |        | GithubのマイルストーンからCHANGELOGを生成する                                              | http://qiita.com/sawanoboly/items/abd46dafc18c59dde368 |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+
+----
+
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | 2012-07-12T16:28:15+09:00 | 2015-04-08T16:24:45+09:00 | 0                 | true   | HAProxyのtcplogをsyslog-ngでファイルに出力してfluentdで拾う                                | http://qiita.com/sawanoboly/items/fa69ca3f122719479c29 |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+  | 2012-07-11T17:30:55+09:00 | 2015-04-08T15:47:08+09:00 | 0                 | true   | naveでインストールしたnode.jsのアプリをstart-stop-daemonとmonitで運用する                       | http://qiita.com/sawanoboly/items/e1c40a9a3f30a8ee2334 |
+  +---------------------------+---------------------------+-------------------+--------+-----------------------------------------------------------------------------+--------------------------------------------------------+
+</pre></div></div>
+
+<h3>
+<span id="記事に警告をつける" class="fragment"></span><a href="#%E8%A8%98%E4%BA%8B%E3%81%AB%E8%AD%A6%E5%91%8A%E3%82%92%E3%81%A4%E3%81%91%E3%82%8B"><i class="fa fa-link"></i></a>記事に警告をつける</h3>
+
+<p><code>rake all</code>で全記事をなめておわり。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ rake all
+I, [2015-04-08 #6842]  INFO -- : 2874018f385dbe8562b1: 5 days.
+I, [2015-04-08 #6842]  INFO -- : e422b366439f67bfb01c: 7 days.
+I, [2015-04-08 #6842]  INFO -- : 9b6b21430781fbc48370: 12 days.
+I, [2015-04-08 #6842]  INFO -- : a2cbd4c42525ae894371: 14 days.
+I, [2015-04-08 #6842]  INFO -- : abd46dafc18c59dde368: 6 days.
+I, [2015-04-08 #6842]  INFO -- : 741fdb59c14736841b24: 34 days.
+I, [2015-04-08 #6842]  INFO -- : 7cf323e65a4757321553: 34 days.
+I, [2015-04-08 #6842]  INFO -- : 8c512c7a35a90c6c6bff: 48 days.
+I, [2015-04-08 #6842]  INFO -- : ac559c43b9662304931a: 65 days.
+I, [2015-04-08 #6842]  INFO -- : b9d3ca4c6f0ef5544c92: 68 days.
+I, [2015-04-08 #6842]  INFO -- : 7dc40a156db92ac96876: 88 days.
+I, [2015-04-08 #6842]  INFO -- : 05c1131753f63448350e: 102 days.
+I, [2015-04-08 #6842]  INFO -- : 76abd295b32123c4568d: 104 days.
+I, [2015-04-08 #6842]  INFO -- : 28e98827bc044abdc32f: 92 days.
+I, [2015-04-08 #6842]  INFO -- : 80c43625a06717fa1da3: 124 days.
+I, [2015-04-08 #6842]  INFO -- : 498497383319ad200e3d: 132 days.
+I, [2015-04-08 #6842]  INFO -- : 0b2afedd7949cd045e82: 140 days.
+I, [2015-04-08 #6842]  INFO -- : d7a77901bc7685540d4d: 167 days.
+I, [2015-04-08 #6842]  INFO -- : f5c72db552113c3f19a1: 175 days.
+</pre></div></div>
+
+<p>どれどれ。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff52e5b57-18fc-dcc9-5fef-c3cc14aeae34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3a73c50ed31100d615d0db1115655b4a" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff52e5b57-18fc-dcc9-5fef-c3cc14aeae34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3a73c50ed31100d615d0db1115655b4a" alt="bashのfunctionを外部に置いてcurlで取り込む_-_Qiita.png" title="bashのfunctionを外部に置いてcurlで取り込む_-_Qiita.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/f52e5b57-18fc-dcc9-5fef-c3cc14aeae34.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff52e5b57-18fc-dcc9-5fef-c3cc14aeae34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=d87b31d2a099135cd2b3ebd90093efc9 1x" loading="lazy"></a></p>
+
+<p>影響は更新履歴から確認。ミスってもここから戻せばいいしね！</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc109d088-f7b7-9624-1a0d-1a6e77b05e23.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a2f7426db098fa265347e48a5bf9bf98" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc109d088-f7b7-9624-1a0d-1a6e77b05e23.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a2f7426db098fa265347e48a5bf9bf98" alt="「HAProxyのtcplogをsyslog-ngでファイルに出力してfluentdで拾う」の編集履歴_-_Qiita.png" title="「HAProxyのtcplogをsyslog-ngでファイルに出力してfluentdで拾う」の編集履歴_-_Qiita.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/c109d088-f7b7-9624-1a0d-1a6e77b05e23.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc109d088-f7b7-9624-1a0d-1a6e77b05e23.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=6c69c71c5b400922ceb6419250929667 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="さいごに" class="fragment"></span><a href="#%E3%81%95%E3%81%84%E3%81%94%E3%81%AB"><i class="fa fa-link"></i></a>さいごに</h2>
+
+<p>タスクを作っている間(特に記事取得の)APIをガンガン叩いたけど、終始レスポンスは快適。やるなQiitaと思いました。</p>
+
+<p>なお、そのうちこの記事にも警告が張られるでしょう。</p>

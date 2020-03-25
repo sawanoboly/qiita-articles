@@ -1,0 +1,27 @@
+<p>EC2などをプロバイダにした時、2回目以降の同期対象がおかしいアレ。</p>
+
+<p><a href="https://github.com/mitchellh/vagrant/issues/5199" rel="nofollow noopener" target="_blank">Problem reloading Chef shared folders · Issue #5199 · mitchellh/vagrant</a></p>
+
+<p>で、とりあえずの回避策。<br>
+<code>.vagrant/machines/default/aws/synced_folders</code>ファイルがなければ毎回rsyncに行くので、Vagrantfileで消す。</p>
+
+<div class="code-frame" data-lang="Vagrantfile"><div class="highlight"><pre>
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2"
+
+if Vagrant::VERSION == "1.7.2"
+  synced_folder_files = Dir.glob(File.expand_path("../.vagrant/machines/**/synced_folders", __FILE__))
+  synced_folder_files.map do |synced_folder_file|
+    File.unlink(synced_folder_file) if File.exists?(synced_folder_file)
+  end
+end
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+
+## -- ship --
+</pre></div></div>
+
+<p>vagrantコマンドを何かしら実行するたびに<code>synced_folders</code>ファイルが消えちゃうけど、実害はないのでいいっしょ。</p>

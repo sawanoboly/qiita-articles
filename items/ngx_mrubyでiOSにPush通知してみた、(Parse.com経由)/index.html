@@ -1,0 +1,114 @@
+<p>Parse.comにはREST APIから各種デバイスへのPushをキックする仕組みがあるので、じゃあNginxが押してもいいじゃんと。</p>
+
+<h2>
+<span id="ios-pushの仕込み" class="fragment"></span><a href="#ios-push%E3%81%AE%E4%BB%95%E8%BE%BC%E3%81%BF"><i class="fa fa-link"></i></a>iOS Pushの仕込み</h2>
+
+<p>Pushを受ける側についてはドキュメントを追っていっただけなので箇条書き。</p>
+
+<ul>
+<li>Apple Dev Centerで一式そろえる。
+
+<ul>
+<li>pushアリのアプリ用証明書作成＆Push用証明書作成＆登録</li>
+<li>デバイス登録</li>
+<li>アプリ＆デバイスを含むプロビジョニングプロファイル作成(Developer)</li>
+</ul>
+</li>
+<li>Parse.comでアプリ登録
+
+<ul>
+<li>アプリのPushに使う証明書を登録</li>
+</ul>
+</li>
+<li>通知用の空アプリをデプロイ
+
+<ul>
+<li>ParseStarterProject-SwiftをXCodeでビルド</li>
+<li>端末でアプリを起動し、Pushを許可</li>
+</ul>
+</li>
+<li>Parse.comで端末登録の確認
+
+<ul>
+<li>ついでにチャンネル<code>Nginx</code>をSubscribe(手書き)</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="ngx_mrubyで外部httpsリクエスト用のmgemを追加" class="fragment"></span><a href="#ngx_mruby%E3%81%A7%E5%A4%96%E9%83%A8https%E3%83%AA%E3%82%AF%E3%82%A8%E3%82%B9%E3%83%88%E7%94%A8%E3%81%AEmgem%E3%82%92%E8%BF%BD%E5%8A%A0"><i class="fa fa-link"></i></a>ngx_mrubyで外部HTTPSリクエスト用のmgemを追加</h2>
+
+<p>ngx_mrubyに最初から用意されているサンプルの<code>build_config.rb</code>に対して、追加したのはこれら。</p>
+
+<ul>
+<li>mruby-httprequest</li>
+<li>mruby-polarssl</li>
+</ul>
+
+<p>※ 今回はちょっとした都合(たまたま？)で <code>s/mruby-onig-regexp/mruby-pcre-regexp/</code> という変更もした。</p>
+
+<h2>
+<span id="ではサンプルコード" class="fragment"></span><a href="#%E3%81%A7%E3%81%AF%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>ではサンプルコード</h2>
+
+<p>使いどころとしては、何かしら不都合や攻撃があったタイミングで使えないかなーと考えていました。<br>
+しかし、まずはシンプルにこの方針。</p>
+
+<ol>
+<li>誰かがサイトを訪れたら</li>
+<li>IPをiOSに通報する</li>
+</ol>
+
+<p>やってみよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>location / {
+  mruby_content_handler_code '
+    Server = Nginx
+
+    c = Server::Connection.new
+
+    http = HttpRequest.new()
+    res = http.post(
+           "https://api.parse.com/1/push",
+           JSON.generate({
+              "channels" =&gt; ["Nginx"],
+              "data"  =&gt; {"alert" =&gt; "Your site was visited from #{c.remote_ip} ."}
+            }),{
+            "Content-Type"           =&gt; "application/json",
+            "X-Parse-Application-Id" =&gt; "Parseのアプリケーションキー",
+            "X-Parse-REST-API-Key"   =&gt; "ParseのREST APIキー"
+            })
+
+    Nginx.errlogger Nginx::LOG_WARN, res["status"]
+
+    Server.echo "reported your access."
+  ';
+}
+</pre></div></div>
+
+<h3>
+<span id="ブラウザでリクエストした" class="fragment"></span><a href="#%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E3%83%AA%E3%82%AF%E3%82%A8%E3%82%B9%E3%83%88%E3%81%97%E3%81%9F"><i class="fa fa-link"></i></a>ブラウザでリクエストした</h3>
+
+<p>ちちょっとDockerで立ち上げたサーバにブラウザでリクエスト。通報された。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb12b8515-e043-5fa0-9bae-1caa5a59da10.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=09798e410477162886d0f664e99272bc" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb12b8515-e043-5fa0-9bae-1caa5a59da10.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=09798e410477162886d0f664e99272bc" alt="192_168_99_100_8080_と_192_168_99_100_8080_と_sawanoboriyu_—_bash_—_157×41.jpg" title="192_168_99_100_8080_と_192_168_99_100_8080_と_sawanoboriyu_—_bash_—_157×41.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/b12b8515-e043-5fa0-9bae-1caa5a59da10.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb12b8515-e043-5fa0-9bae-1caa5a59da10.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=72c8f8e48bbe517f492247549708f901 1x" loading="lazy"></a></p>
+
+<p>リクエスト処理中に同期処理でParseを叩いているので、それなりに待つのは(今回は)仕方ないとして。。。<br>
+Nginx側のログに、Parseからの戻りが<code>200 OK</code>であることが記録された。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>2015/09/02 xx:xx:xx [warn] 1#0: *1 200 OK, client: 192.168.99.1, server: _, request: "GET / HTTP/1.1", host: "192.168.99.100:8080"
+</pre></div></div>
+
+<h3>
+<span id="push通知確認" class="fragment"></span><a href="#push%E9%80%9A%E7%9F%A5%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>Push通知確認</h3>
+
+<p>そしてPushは来た。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F66490988-854a-1100-55e9-04d134147e61.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8a84940a3a0be0d94c05c74ad964fec2" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F66490988-854a-1100-55e9-04d134147e61.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8a84940a3a0be0d94c05c74ad964fec2" alt="IMG_0573.JPG" title="IMG_0573.JPG" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/66490988-854a-1100-55e9-04d134147e61.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F66490988-854a-1100-55e9-04d134147e61.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=19d39b5ca1ae6c6d2948ea30d923e88a 1x" loading="lazy"></a></p>
+
+<p>何かに外部へのリクエストを使うなら、うまいことワーカープロセスが丸ごと待ちにならないよう書きたいね。</p>
+
+<hr>
+
+<p>追記:</p>
+
+<p>メモリが無尽蔵で外部APIのレスポンスがクライアントに対して不要ならば、ダブルforkで囲んじゃうという手がある。</p>

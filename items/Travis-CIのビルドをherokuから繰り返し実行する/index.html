@@ -1,0 +1,179 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://travis-ci.org/" rel="nofollow noopener" target="_blank">Travis-CI</a>はビルド実行ツール。コードのリポジトリと連携して色々自動でやらせます。</p>
+
+<p>さて、Travis-CIはGithubなどと連携して、リビジョン毎にBuildするのが一般的です。<br>
+でも定期的にBuild走らせるのもありかなと、herokuのスケジューラと組み合わせて叩いてみます。</p>
+
+<h2>
+<span id="よそのbashをテストするスクリプト" class="fragment"></span><a href="#%E3%82%88%E3%81%9D%E3%81%AEbash%E3%82%92%E3%83%86%E3%82%B9%E3%83%88%E3%81%99%E3%82%8B%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88"><i class="fa fa-link"></i></a>よそのBashをテストするスクリプト</h2>
+
+<p>とりあえずなんでもいいんですが、ChefのOmunibus InstallerのSyntaxチェックをするスクリプトでも作ってGithubに公開します。</p>
+
+<p><a href="https://github.com/OpsRockin/travis_bash_sample" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/travis_bash_sample</a></p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">test.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+curl <span class="nt">-s</span> <span class="nt">-L</span> https://www.getchef.com/chef/install.sh | bash <span class="nt">-n</span> <span class="o">&amp;&amp;</span> <span class="nb">echo</span> <span class="s1">'syntax OK'</span>
+</pre></div>
+</div>
+
+<p>要はリポジトリのリビジョンに関係ない外部の何かをチェックするタスクです。</p>
+
+<p><code>.travis.yml</code>はこんな感じ。デフォルトではrubyを用意してくれるけど気にしない。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.travis.yml</span></div>
+<div class="highlight"><pre><span class="na">script</span><span class="pi">:</span> <span class="s2">"</span><span class="s">./test.sh"</span>
+</pre></div>
+</div>
+
+<p>これをTravis,ciに登録します。</p>
+
+<p><a href="https://travis-ci.org/OpsRockin/travis_bash_sample" class="autolink" rel="nofollow noopener" target="_blank">https://travis-ci.org/OpsRockin/travis_bash_sample</a></p>
+
+<p>しました。</p>
+
+<h2>
+<span id="travis-ciのrubyライブラリで最終のビルドをリスタートする" class="fragment"></span><a href="#travis-ci%E3%81%AEruby%E3%83%A9%E3%82%A4%E3%83%96%E3%83%A9%E3%83%AA%E3%81%A7%E6%9C%80%E7%B5%82%E3%81%AE%E3%83%93%E3%83%AB%E3%83%89%E3%82%92%E3%83%AA%E3%82%B9%E3%82%BF%E3%83%BC%E3%83%88%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Travis-CIのRubyライブラリで最終のビルドをリスタートする</h2>
+
+<p>そしたらTravis-CIのAPIを叩く準備をします。</p>
+
+<p>Rubyのライブラリがあったので使いましょう。</p>
+
+<p><a href="https://github.com/travis-ci/travis" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/travis-ci/travis</a></p>
+
+<p>ライブラリを使って、最新のビルドをリスタートするRakeタスクを作りました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'bundler/setup'</span>
+<span class="nb">require</span> <span class="s1">'travis'</span>
+
+<span class="n">desc</span> <span class="s1">'call travis to build restart'</span>
+<span class="n">task</span> <span class="ss">:default</span> <span class="k">do</span>
+  <span class="no">Travis</span><span class="p">.</span><span class="nf">access_token</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'TRAVIS_TOKEN'</span><span class="p">]</span>
+  <span class="n">build</span> <span class="o">=</span> <span class="no">Travis</span><span class="o">::</span><span class="no">Repository</span><span class="p">.</span><span class="nf">find</span><span class="p">(</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'TRAVIS_BUILD'</span><span class="p">])</span>
+  <span class="n">build</span><span class="p">.</span><span class="nf">last_build</span><span class="p">.</span><span class="nf">restart</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>task :default do</code>から<code>end</code>までがリスタートの処理です。使いやすくていいですね。</p>
+
+<p>このタスクを実行すると、最新のビルドがリスタートします。<br>
+UIから見てると分かりやすい。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F0093e70c-e47e-a31c-0542-46cdfe2738d2.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b4ae5fc40e508a4cf9a3711af1e20971" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F0093e70c-e47e-a31c-0542-46cdfe2738d2.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b4ae5fc40e508a4cf9a3711af1e20971" alt="スクリーンショット_12_15_13__2_16_PM.png" title="スクリーンショット_12_15_13__2_16_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/0093e70c-e47e-a31c-0542-46cdfe2738d2.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F0093e70c-e47e-a31c-0542-46cdfe2738d2.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=d44d8066bf7c2ce81ec7fddd20de1222 1x" loading="lazy"></a></p>
+
+<p>ここのRakeタスクはherokuに叩かせるので、Gitリポジトリにします。ついでにGithubへもPush。</p>
+
+<p><a href="https://github.com/OpsRockin/travis-ci_scheduler" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/travis-ci_scheduler</a></p>
+
+<h2>
+<span id="herokuのスケジューラに継続的に実行させる" class="fragment"></span><a href="#heroku%E3%81%AE%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%A9%E3%81%AB%E7%B6%99%E7%B6%9A%E7%9A%84%E3%81%AB%E5%AE%9F%E8%A1%8C%E3%81%95%E3%81%9B%E3%82%8B"><i class="fa fa-link"></i></a>herokuのスケジューラに継続的に実行させる</h2>
+
+<p>実行するタスクがデキたので、herokuにコードを持って行きましょう。</p>
+
+<h3>
+<span id="新規アプリの作成" class="fragment"></span><a href="#%E6%96%B0%E8%A6%8F%E3%82%A2%E3%83%97%E3%83%AA%E3%81%AE%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>新規アプリの作成</h3>
+
+<p>herokuコマンドでちょいちょいとアプリケーションを登録しました。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>heroku apps:create travis-bash-sample
+Creating travis-bash-sample... <span class="k">done</span>, stack is cedar
+http://travis-bash-sample.herokuapp.com/ | git@heroku.com:travis-bash-sample.git
+</pre></div></div>
+
+<p>ではRakefileをherokuに置きます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>git remote add heroku git@heroku.com:travis-bash-sample.git
+<span class="nv">$ </span>git push heroku
+Initializing repository, <span class="k">done</span><span class="nb">.</span>
+Counting objects: 6, <span class="k">done</span><span class="nb">.</span>
+Delta compression using up to 4 threads.
+Compressing objects: 100% <span class="o">(</span>5/5<span class="o">)</span>, <span class="k">done</span><span class="nb">.</span>
+Writing objects: 100% <span class="o">(</span>6/6<span class="o">)</span>, 1.12 KiB | 0 bytes/s, <span class="k">done</span><span class="nb">.</span>
+Total 6 <span class="o">(</span>delta 0<span class="o">)</span>, reused 0 <span class="o">(</span>delta 0<span class="o">)</span>
+
+<span class="nt">-----</span><span class="o">&gt;</span> Ruby app detected
+<span class="nt">-----</span><span class="o">&gt;</span> Compiling Ruby
+<span class="c"># -- 以下略</span>
+</pre></div></div>
+
+<p>はいご苦労さん。</p>
+
+<p>じゃあ<code>heroku config</code>で必要な環境変数を登録して、rakeを実行してみましょう。</p>
+
+<h3>
+<span id="rakeタスクをherokuで実行おためし" class="fragment"></span><a href="#rake%E3%82%BF%E3%82%B9%E3%82%AF%E3%82%92heroku%E3%81%A7%E5%AE%9F%E8%A1%8C%E3%81%8A%E3%81%9F%E3%82%81%E3%81%97"><i class="fa fa-link"></i></a>Rakeタスクをherokuで実行(おためし)</h3>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>heroku config:add <span class="nv">TRAVIS_TOKEN</span><span class="o">=</span><span class="s2">"YOUR_TOKEN"</span>
+<span class="nv">$ </span>heroku config:add <span class="nv">TRAVIS_BUILD</span><span class="o">=</span><span class="s2">"OpsRockin/travis_bash_sample"</span>
+<span class="nv">$ </span>heroku run rake
+Running <span class="sb">`</span>rake<span class="sb">`</span> attached to terminal... up, run.7639
+</pre></div></div>
+
+<p>Travis-CIのUIを眺めていると、Buildがリスタートしました。OKね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F992f356a-fa65-657a-e717-fb0268011086.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e34e115140083aa48180712194455640" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F992f356a-fa65-657a-e717-fb0268011086.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e34e115140083aa48180712194455640" alt="スクリーンショット_12_15_13__2_32_PM.png" title="スクリーンショット_12_15_13__2_32_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/992f356a-fa65-657a-e717-fb0268011086.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F992f356a-fa65-657a-e717-fb0268011086.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=b72e5394946caf311366509f03d44dd1 1x" loading="lazy"></a></p>
+
+<h3>
+<span id="herokuのスケジューラアドオンを作成" class="fragment"></span><a href="#heroku%E3%81%AE%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%A9%E3%82%A2%E3%83%89%E3%82%AA%E3%83%B3%E3%82%92%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>herokuのスケジューラアドオンを作成</h3>
+
+<p>herokuはアドオンにスケジューラを持っているので、定期的にrakeコマンドを叩いてもらいます。</p>
+
+<p><code>heroku addons</code>でアプリにスケジューラを追加します。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>heroku addons:add scheduler:standard
+Adding scheduler:standard on travis-bash-sample... <span class="k">done</span>, v5 <span class="o">(</span>free<span class="o">)</span>
+This add-on consumes dyno hours, which could impact your monthly bill. To learn more:
+http://devcenter.heroku.com/addons_with_dyno_hour_usage
+To manage scheduled <span class="nb">jobs </span>run:
+heroku addons:open scheduler
+Use <span class="sb">`</span>heroku addons:docs scheduler<span class="sb">`</span> to view documentation.
+</pre></div></div>
+
+<p>追加できたので、Jobの編集画面を開きます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>heroku addons:open scheduler
+Opening scheduler:standard <span class="k">for </span>travis-bash-sample... <span class="k">done</span>
+</pre></div></div>
+
+<p>ブラウザで開くので、実行するコマンドとスケジュールを登録。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff94abfaf-5c57-9e62-fb34-8723453bee05.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1ab006f84b037c76b3df32e32263463c" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff94abfaf-5c57-9e62-fb34-8723453bee05.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1ab006f84b037c76b3df32e32263463c" alt="スクリーンショット_12_15_13__4_17_PM.png" title="スクリーンショット_12_15_13__4_17_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/f94abfaf-5c57-9e62-fb34-8723453bee05.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff94abfaf-5c57-9e62-fb34-8723453bee05.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=f949d83f3afdd8e15f0e8465a4a5976e 1x" loading="lazy"></a></p>
+
+<p>1時間に一回でいいかな。</p>
+
+<p>これで指定したスケジュールでTravis-CIの最終ビルドが再実行されます。</p>
+
+<h3>
+<span id="スケジューラの実行状況を確認する" class="fragment"></span><a href="#%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%A9%E3%81%AE%E5%AE%9F%E8%A1%8C%E7%8A%B6%E6%B3%81%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>スケジューラの実行状況を確認する</h3>
+
+<p>スケジューラホンマに動いてんの？って思うならログを見てもいいです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ heroku logs --ps scheduler
+2013-12-15T07:27:38.479645+00:00 heroku[scheduler.1943]: Starting process with command `bundle exec rake`
+2013-12-15T07:27:44.896760+00:00 heroku[scheduler.1943]: Process exited with status 0
+2013-12-15T07:27:44.916523+00:00 heroku[scheduler.1943]: State changed from up to complete
+2013-12-15T07:27:39.142666+00:00 heroku[scheduler.1943]: State changed from starting to up
+2013-12-15T07:36:32.726247+00:00 heroku[scheduler.8651]: Starting process with command `bundle exec rake`
+2013-12-15T07:36:33.395186+00:00 heroku[scheduler.8651]: State changed from starting to up
+2013-12-15T07:36:40.094286+00:00 heroku[scheduler.8651]: Process exited with status 0
+2013-12-15T07:36:40.100911+00:00 heroku[scheduler.8651]: State changed from up to complete
+</pre></div></div>
+
+<p>やってるようだね。<br>
+ログの間隔が10分なのは撮影用にチェックしたからです。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>herokuだけだと通知の仕組みがいる、Travis-CIだけだとスケジュール定期実行はしない。<br>
+なら、できることを殿様食いしましょう。</p>

@@ -1,0 +1,96 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>プロセスの死活監視は多くがpollingベースで動作する、monitのように○分おきにチェックとか。</p>
+
+<p>rubygemsのプロセス監視デーモン、<a href="http://godrb.com/" rel="nofollow noopener" target="_blank">god</a>は対象プロセスの状態変化をイベントシステムで追うやり方を提供している。</p>
+
+<h2>
+<span id="godがイベントシステム対応でインストールされているか確認する" class="fragment"></span><a href="#god%E3%81%8C%E3%82%A4%E3%83%99%E3%83%B3%E3%83%88%E3%82%B7%E3%82%B9%E3%83%86%E3%83%A0%E5%AF%BE%E5%BF%9C%E3%81%A7%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%95%E3%82%8C%E3%81%A6%E3%81%84%E3%82%8B%E3%81%8B%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>godがイベントシステム対応でインストールされているか確認する</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ god check
+using event system: netlink
+-- snip --
+</pre></div></div>
+
+<p><code>event system</code>が<code>none</code>でなければ使える。</p>
+
+<h2>
+<span id="サンプルの監視対象プロセスを用意する" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AE%E7%9B%A3%E8%A6%96%E5%AF%BE%E8%B1%A1%E3%83%97%E3%83%AD%E3%82%BB%E3%82%B9%E3%82%92%E7%94%A8%E6%84%8F%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>サンプルの監視対象プロセスを用意する</h2>
+
+<p>単純に終わらないスクリプトを用意。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">sample.rb</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="kp">loop</span> <span class="k">do</span>
+  <span class="nb">puts</span> <span class="s1">'Hello'</span>
+  <span class="nb">sleep</span> <span class="mi">10</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="godのコンフィグ" class="fragment"></span><a href="#god%E3%81%AE%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%82%B0"><i class="fa fa-link"></i></a>godのコンフィグ</h2>
+
+<p>監視対象を起動しつつ、<code>process_exits</code>を検知したらstartを実行してup状態を保てという設定。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">god.conf</span></div>
+<div class="highlight"><pre><span class="no">God</span><span class="p">.</span><span class="nf">watch</span> <span class="k">do</span> <span class="o">|</span><span class="n">w</span><span class="o">|</span>
+  <span class="n">w</span><span class="p">.</span><span class="nf">name</span> <span class="o">=</span> <span class="s2">"sample"</span>
+  <span class="n">w</span><span class="p">.</span><span class="nf">start</span> <span class="o">=</span> <span class="s2">"/root/sandbox/god/sample.rb"</span>
+  <span class="n">w</span><span class="p">.</span><span class="nf">keepalive</span>
+
+  <span class="c1"># 状態監視のジョブ</span>
+  <span class="n">w</span><span class="p">.</span><span class="nf">transition</span><span class="p">(</span><span class="ss">:up</span><span class="p">,</span> <span class="ss">:start</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">on</span><span class="o">|</span>
+    <span class="n">on</span><span class="p">.</span><span class="nf">condition</span><span class="p">(</span><span class="ss">:process_exits</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="godが検知する様子" class="fragment"></span><a href="#god%E3%81%8C%E6%A4%9C%E7%9F%A5%E3%81%99%E3%82%8B%E6%A7%98%E5%AD%90"><i class="fa fa-link"></i></a>godが検知する様子</h2>
+
+<p>眺めるためにフォアグラウンドで起動。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># god -D -c god.conf
+I [2012-08-09 20:03:36]  INFO: Loading god.conf
+I [2012-08-09 20:03:36]  INFO: Syslog enabled.
+I [2012-08-09 20:03:36]  INFO: Using pid file directory: /var/run/god
+I [2012-08-09 20:03:36]  INFO: Started on drbunix:///tmp/god.17165.sock
+I [2012-08-09 20:03:36]  INFO: sample move 'unmonitored' to 'init'
+I [2012-08-09 20:03:36]  INFO: sample moved 'unmonitored' to 'init'
+I [2012-08-09 20:03:36]  INFO: sample [trigger] process is running (ProcessRunning)
+I [2012-08-09 20:03:36]  INFO: sample move 'init' to 'up'
+I [2012-08-09 20:03:36]  INFO: sample registered 'proc_exit' event for pid 21539
+I [2012-08-09 20:03:36]  INFO: sample registered 'proc_exit' event for pid 21539
+I [2012-08-09 20:03:36]  INFO: sample moved 'init' to 'up'
+</pre></div></div>
+
+<p>先ほどのプロセスをkill。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># date &amp;&amp; kill 21539
+Wed Aug  9 20:05:21 PDT 2012
+</pre></div></div>
+
+<p>godはprocessのexitを検知して、コンディションをstartに変更する。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>[2012-08-09 20:05:21]  INFO: sample [trigger] process 21539 exited {:pid=&gt;21539, :exit_code=&gt;15, :exit_signal=&gt;17, :thread_group_id=&gt;21539} (ProcessExits)
+I [2012-08-09 20:05:21]  INFO: sample move 'up' to 'start'
+I [2012-08-09 20:05:21]  INFO: sample deregistered 'proc_exit' event for pid 21539
+I [2012-08-09 20:05:21]  INFO: sample deregistered 'proc_exit' event for pid 21539
+I [2012-08-09 20:05:21]  INFO: sample start: /root/sandbox/god/sample.rb
+I [2012-08-09 20:05:21]  INFO: sample moved 'up' to 'start'
+I [2012-08-09 20:05:21]  INFO: sample [trigger] process is running (ProcessRunning)
+I [2012-08-09 20:05:21]  INFO: sample move 'start' to 'up'
+I [2012-08-09 20:05:21]  INFO: sample registered 'proc_exit' event for pid 22979
+I [2012-08-09 20:05:21]  INFO: sample registered 'proc_exit' event for pid 22979
+I [2012-08-09 20:05:21]  INFO: sample moved 'start' to 'up'
+</pre></div></div>
+
+<p>プロセスの終了から再開までは一秒未満、pollingではインターバル分のリードタイムがあるので、状況によって使い分けができる。</p>

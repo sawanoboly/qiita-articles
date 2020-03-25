@@ -1,0 +1,77 @@
+
+
+<p>先日JoyentのSmartOSで、困ったパッケージの配布をやられました。</p>
+
+<ul>
+<li>パッケージ名が一緒</li>
+<li>バージョンが一緒</li>
+<li>でもsvc上のサービスの名前が違うので、管理用に実行するコマンドが異なる</li>
+</ul>
+
+<p>linux系で例えると、<code>service restart hogehoge</code> のhogehogeに指定する文字だけが違い、普通のパッケージ情報では分からんという状況です。</p>
+
+<h2>
+<span id="lazyのサンプル" class="fragment"></span><a href="#lazy%E3%81%AE%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB"><i class="fa fa-link"></i></a>lazyのサンプル</h2>
+
+<p>対象のサービスを、リソース収束の直前で、サーバの現状から調べてこなければならないと言うケースでは<code>lazy</code>による遅延処理が使用できます。</p>
+
+<div class="code-frame" data-lang="Ruby">
+<div class="code-lang"><span class="bold">recipe.rb</span></div>
+<div class="highlight"><pre><span class="c1">##-本来はLibrariesに書く</span>
+<span class="n">module</span> <span class="o">::</span><span class="no">Helper</span>
+  <span class="k">def</span> <span class="nc">self</span><span class="o">.</span><span class="nf">get_cron_service_name</span>
+    <span class="c1">## 本当は泥臭い判別処理を記述して、使用できる文字列を返す</span>
+    <span class="s1">'cron'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+
+<span class="c1">## サービス名を実行時に取得するリソース定義</span>
+<span class="n">service</span> <span class="s1">'test'</span> <span class="k">do</span>
+  <span class="n">service_name</span> <span class="n">lazy</span> <span class="p">{</span> <span class="o">::</span><span class="no">Helper</span><span class="p">.</span><span class="nf">get_cron_service_name</span> <span class="p">}</span>
+  <span class="c1"># subscribes :restart, 'file[/tmp/hoge]', :immediately ## subscribesでもOK</span>
+<span class="k">end</span>
+
+<span class="n">file</span> <span class="s1">'/tmp/hoge'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span>
+  <span class="n">notifies</span> <span class="ss">:restart</span><span class="p">,</span> <span class="s1">'service[test]'</span><span class="p">,</span> <span class="ss">:immediately</span> 
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>これで、リソースの名前は<code>service[test]</code>ですが、実際に発行されるコマンドではヘルパーが返してくれた文字列(この場合は<code>cron</code>)を使用します。</p>
+
+<p>大体のケースでは<code>lazy</code>でなくとも大丈夫ですが、初回の実行などでパッケージのインストールが済んでない場合に、<code>lazy</code>しないとサービス名がわからないのですよね。</p>
+
+<h2>
+<span id="chef-applyでお試し" class="fragment"></span><a href="#chef-apply%E3%81%A7%E3%81%8A%E8%A9%A6%E3%81%97"><i class="fa fa-link"></i></a>chef-applyでお試し</h2>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">chef-apply</span></div>
+<div class="highlight"><pre><span class="c"># chef-apply test.rb </span>
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> service[test] action nothing <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+  <span class="k">*</span> file[/tmp/hoge] action create
+    - update content <span class="k">in </span>file /tmp/hoge from 2b795c to 04db98
+        <span class="nt">---</span> /tmp/hoge   2014-04-15 03:13:48.000000000 +0000
+        +++ /tmp/.hoge20140415-4288-ulgn9f      2014-04-15 03:15:43.000000000 +0000
+        @@ <span class="nt">-1</span>,2 +1,2 @@
+        <span class="nt">-2014-04-15</span> 03:13:48 +0000
+        +2014-04-15 03:15:43 +0000
+
+  <span class="k">*</span> service[test] action restart
+    - restart service service[test]
+
+</pre></div>
+</div>
+
+<p>予定通りCronがリスタートしました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>cron[4831]: (CRON) INFO (pidfile fd = 3)
+cron[4832]: (CRON) STARTUP (fork ok)
+</pre></div></div>
+
+<h2>
+<span id="追記" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98"><i class="fa fa-link"></i></a>追記</h2>
+
+<p><code>lazy</code>でやると楽な事象は、なかなかのレアケースだと思います。</p>

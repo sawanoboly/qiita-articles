@@ -1,0 +1,375 @@
+<p>Chef(<a href="http://www.getchef.com/" rel="nofollow noopener" target="_blank">ChefInc</a>)の管理ツールKnifeのプラグインで、<a href="https://github.com/higanworks/knife-zero" rel="nofollow noopener" target="_blank">Knife-Zero</a>というのを作りました。</p>
+
+<p><a href="https://github.com/higanworks/knife-zero" rel="nofollow noopener" target="_blank">https://github.com/higanworks/knife-zero</a></p>
+
+<blockquote>
+<p>追記： バージョンアップして、knife zero chef_client/convergeサブコマンドを追加しました。</p>
+
+<p>追記： ひと通りの機能を実装したので、knife-zeroのことをまとめるドキュメントをゆるやかに作成しています。<br>
+ <a href="https://knife-zero.github.io" class="autolink" rel="nofollow noopener" target="_blank">https://knife-zero.github.io</a> </p>
+</blockquote>
+
+<p>端的にいうとAnsibleのやり方をパクりつつ、Chef-Serverから構成管理を含む機能全部を頂戴しながら本体の管理を捨てました。<br>
+Knife-ZeroとChefのローカルモードを使うと、手元のChef-Repoだけで状態込みのサーバインフラ管理が完結するので色々と楽ができそうです。</p>
+
+<p>参考: <a href="http://docs.getchef.com/essentials_repository.html" rel="nofollow noopener" target="_blank">About the chef-repo</a></p>
+
+<h2>
+<span id="knife-zeroの特徴" class="fragment"></span><a href="#knife-zero%E3%81%AE%E7%89%B9%E5%BE%B4"><i class="fa fa-link"></i></a>Knife-Zeroの特徴</h2>
+
+<p>ほとんど最近追加されたChefのローカルモードの恩恵ですけど、だいたいこんな感じです。</p>
+
+<ul>
+<li>リモートサーバにKitchen(CookbookやRole等のChefリソース)をSCPやRsyncなど個別に転送する必要がない
+
+<ul>
+<li>転送は普通のC/S構成と同じくHTTP、ただしover SSH tcp-forward.</li>
+<li>run-listにあるCookbookのみキャッシュはさせます。(files,templatesは使う時点で転送)</li>
+</ul>
+</li>
+<li>サーバの状態(Node Object)を手元のファイルに書き出して保存
+
+<ul>
+<li>不要なAttributeは保存対象外にできる<br>
+</li>
+<li>RecipeやKnifeからサーチも使える</li>
+</ul>
+</li>
+<li>ChefServer構成で使える機能を認証を除いてサポート</li>
+</ul>
+
+<blockquote>
+
+<h3>
+<span id="chefzeroとchefのローカルモードについて" class="fragment"></span><a href="#chefzero%E3%81%A8chef%E3%81%AE%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%83%A2%E3%83%BC%E3%83%89%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6"><i class="fa fa-link"></i></a>ChefZeroとChefのローカルモードについて</h3>
+
+<p>ChefZeroはオンメモリ軽量ChefServer(※認証はダミー)。<br>
+標準のオンメモリだけでなくバックエンドが色々選択でき、今回関係するChef-Clientのローカルモードはファイルシステムをそのままバックエンドとして使用する。</p>
+
+<p>ローカルモードはChefZero(※実行中のみ起動)をChefServerに見立ててknifeによるCRUD、Node情報の更新やサーチが行えるモード。</p>
+</blockquote>
+
+<p>ちなみに<a href="https://github.com/opscode/chef-metal" rel="nofollow noopener" target="_blank">Chef-Metal</a>も似たような思想で作られていますが、knife-zeroは従来のワークフローを維持する簡単な拡張で済ませています。</p>
+
+<h2>
+<span id="インストールと実行" class="fragment"></span><a href="#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%A8%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>インストールと実行</h2>
+
+<p>GemなのでBundleで。既存のChef-Repoか、Chef-Repoにしていく予定のディレクトリで。</p>
+
+<div class="code-frame" data-lang="Gemfile"><div class="highlight"><pre>source "https://rubygems.org"
+
+gem 'chef'
+gem 'knife-zero'
+</pre></div></div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle install --path vendor/bundle --binstubs
+
+...
+
+Installing chef (11.14.6)
+Installing knife-zero (0.0.1)
+Your bundle is complete!
+It was installed into ./vendor/bundle
+</pre></div></div>
+
+<p>実行はChefの入っていないサーバに対して、<code>knife zero bootstrap FQDN(or IPaddress)</code>。</p>
+
+<p>(※Chef導入済みならインストールだけスキップされます)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife zero bootstrap zero.example.com
+WARN: No cookbooks directory found at or above current directory.  Assuming /Users/sawanoboriyu/Dev/worktmp/knife-zero01.  ## Soloと違い、Cookbooksディレクトリは無くてもよい
+
+INFO: Starting chef-zero on host localhost, port 8889 with repository at repository at /Users/sawanoboriyu/Dev/worktmp/knife-zero01 ## ChefZeroが一時的に起動
+  One version per cookbook
+
+Connecting to zero.example.com  ## リモートへ
+
+zero.example.com Installing Chef Client...  ## Chefが入ってなかったのでインストール
+
+...
+
+zero.example.com Thank you for installing Chef!
+
+
+zero.example.com Starting first Chef Client run...  ## 次にChefがClient/Serverモードで実行される
+zero.example.com Starting Chef Client, version 11.14.2
+zero.example.com resolving cookbooks for run list: []
+zero.example.com Synchronizing Cookbooks:
+zero.example.com Compiling Cookbooks...
+zero.example.com [2014-08-21T09:24:31+00:00] WARN: Node zero.example.com has an empty run list.
+zero.example.com Converging 0 resources
+zero.example.com 
+zero.example.com Running handlers:
+zero.example.com Running handlers complete
+zero.example.com Chef Client finished, 0/0 resources updated in 4.538956678 seconds
+</pre></div></div>
+
+<p>ローカルのChef-Repoがカラッポで、ランリストを特に指定していないのでChef-Clientが実行されただけです。</p>
+
+<p>ただNodeObjectはローカルのWorkStationに保存されました。<br>
+ファイルとしても見れるし、Server環境と同様のKnifeコマンド(LocalMode)で内容表示もOK.</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ls nodes/
+zero.example.com.json
+
+$ knife node show zero.example.com --local-mode
+WARN: No cookbooks directory found at or above current directory.  Assuming /Users/sawanoboriyu/Dev/worktmp/knife-zero01.
+Node Name:   zero.example.com
+Environment: _default
+FQDN:        zero.example.com
+IP:          210.xxx.xxx.xxx
+Run List:    
+Roles:       
+Recipes:     
+Platform:    ubuntu 14.04
+Tags:        
+</pre></div></div>
+
+<p>以降毎回<code>--local-mode</code>なので、コンフィグに書いてしまうとちょっと楽です。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">chef/knife.rb</span></div>
+<div class="highlight"><pre><span class="n">local_mode</span> <span class="kp">true</span>
+</pre></div>
+</div>
+
+<p>CookbookなどもSoloのように分岐せずにちゃんと使えます。</p>
+
+<h2>
+<span id="knife-zero-bootstrapとlocalmodeのchefzero挙動" class="fragment"></span><a href="#knife-zero-bootstrap%E3%81%A8localmode%E3%81%AEchefzero%E6%8C%99%E5%8B%95"><i class="fa fa-link"></i></a>Knife-Zero bootstrapとLocalModeのChefZero挙動</h2>
+
+<p>このへんで裏がどんなふうになっているのか図解。<br>
+流れを追っていくと、次のように動作しています。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3f265e4f-f30f-3d3c-224c-4601b8b40de2.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=be6d74d289178edde768cdade98c5f66" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3f265e4f-f30f-3d3c-224c-4601b8b40de2.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=be6d74d289178edde768cdade98c5f66" alt="knfe-zero.004.png" title="knfe-zero.004.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/3f265e4f-f30f-3d3c-224c-4601b8b40de2.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3f265e4f-f30f-3d3c-224c-4601b8b40de2.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=32a36e4da087edaa0295330b50ad4f67 1x" loading="lazy"></a></p>
+
+<p><code>knife zero bootstrap</code>を実行します。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F979fc157-ef53-4dc8-5841-0c05c10f1255.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=111909b9a647ab562982758be51dbe06" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F979fc157-ef53-4dc8-5841-0c05c10f1255.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=111909b9a647ab562982758be51dbe06" alt="knfe-zero.005.png" title="knfe-zero.005.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/979fc157-ef53-4dc8-5841-0c05c10f1255.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F979fc157-ef53-4dc8-5841-0c05c10f1255.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=79be0514a58d93062e202ea4a3959ae8 1x" loading="lazy"></a></p>
+
+<p>ローカル側にChefZeroサーバ。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdd049b55-8e25-b7db-9d67-406f5f05c3ac.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7e6803beaa4418f92e1a7c7a9e7d127e" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdd049b55-8e25-b7db-9d67-406f5f05c3ac.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7e6803beaa4418f92e1a7c7a9e7d127e" alt="knfe-zero.006.png" title="knfe-zero.006.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/dd049b55-8e25-b7db-9d67-406f5f05c3ac.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdd049b55-8e25-b7db-9d67-406f5f05c3ac.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=b2f3827e3aefb8c29b260f15c3543176 1x" loading="lazy"></a></p>
+
+<p>Bootstrapなので、リモートサーバにSSHセッションを確立します。s</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd7acda4c-8c85-1f06-3062-d3b1f5876b33.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a823e85be02d0b0b004f0d6315b3d127" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd7acda4c-8c85-1f06-3062-d3b1f5876b33.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a823e85be02d0b0b004f0d6315b3d127" alt="knfe-zero.007.png" title="knfe-zero.007.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d7acda4c-8c85-1f06-3062-d3b1f5876b33.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd7acda4c-8c85-1f06-3062-d3b1f5876b33.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=693ccded767c8915f86d211f5d91a809 1x" loading="lazy"></a></p>
+
+<p>このSSHセッションは<code>-R 8889:127.0.0.1:8889</code>オプション相当ということですね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F84777892-18be-1de5-39b6-10dea8cbc224.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=70286a4daf5c70bb479933766e70ffca" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F84777892-18be-1de5-39b6-10dea8cbc224.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=70286a4daf5c70bb479933766e70ffca" alt="knfe-zero.008.png" title="knfe-zero.008.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/84777892-18be-1de5-39b6-10dea8cbc224.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F84777892-18be-1de5-39b6-10dea8cbc224.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=be22e1557845e1a291704370fd244daf 1x" loading="lazy"></a></p>
+
+<p>以降は通常のbootstrap処理です。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F50099ea2-a02e-ea45-e8ba-d13fb949963e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ad08cc41f40c160fe06fce5cff682d6e" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F50099ea2-a02e-ea45-e8ba-d13fb949963e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ad08cc41f40c160fe06fce5cff682d6e" alt="knfe-zero.009.png" title="knfe-zero.009.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/50099ea2-a02e-ea45-e8ba-d13fb949963e.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F50099ea2-a02e-ea45-e8ba-d13fb949963e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=88e9f5e36a705fbca99ca6a02d5982a5 1x" loading="lazy"></a></p>
+
+<p>ただし、chef-clientの実行オプションで、ChefServerを<code>http://127.0.0.1:8889</code>と指定(<code>-S http://127.0.0.1:8889</code>)して実行。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F7a4507c4-9255-21cc-41f9-f9c881264f45.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a108978fa8c20c7cbfd7e5bff6586f3a" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F7a4507c4-9255-21cc-41f9-f9c881264f45.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a108978fa8c20c7cbfd7e5bff6586f3a" alt="knfe-zero.010.png" title="knfe-zero.010.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/7a4507c4-9255-21cc-41f9-f9c881264f45.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F7a4507c4-9255-21cc-41f9-f9c881264f45.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=7f43ed998a3613d0c248f48d0cd4bd4d 1x" loading="lazy"></a></p>
+
+<p>Chef-Clientが終了処理としてChef-Server(Zero)にNode情報をPOST。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F009ce5af-850f-d090-1fb9-7492528edaf6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4d38217cec65a123b4fda864fb0785e9" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F009ce5af-850f-d090-1fb9-7492528edaf6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4d38217cec65a123b4fda864fb0785e9" alt="knfe-zero.011.png" title="knfe-zero.011.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/009ce5af-850f-d090-1fb9-7492528edaf6.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F009ce5af-850f-d090-1fb9-7492528edaf6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=75925d2793d6162f56a18667be156f6c 1x" loading="lazy"></a></p>
+
+<p>POSTされたデータはChefZeroがバックエンドのファイルシステムに保存します。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb7de6df7-193f-d417-ade3-95c1957a9d67.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e0ef92cf54cb4bf1b1a1ac6c87433b9b" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb7de6df7-193f-d417-ade3-95c1957a9d67.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e0ef92cf54cb4bf1b1a1ac6c87433b9b" alt="knfe-zero.012.png" title="knfe-zero.012.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/b7de6df7-193f-d417-ade3-95c1957a9d67.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb7de6df7-193f-d417-ade3-95c1957a9d67.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=81dce35fb5450a55917b4e760f8c9195 1x" loading="lazy"></a></p>
+
+<p>Knifeコマンド終了時には、SSHセッションを閉じ、ChefZeroもいなくなります。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F618f7071-a06f-ae40-9f22-16b7524f8c34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8fb49e634780eefc6de2e6076a7ead6e" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F618f7071-a06f-ae40-9f22-16b7524f8c34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8fb49e634780eefc6de2e6076a7ead6e" alt="knfe-zero.013.png" title="knfe-zero.013.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/618f7071-a06f-ae40-9f22-16b7524f8c34.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F618f7071-a06f-ae40-9f22-16b7524f8c34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=a1b5a747f9df0ee99edf51262200736a 1x" loading="lazy"></a></p>
+
+<p>単純な仕組みですね。</p>
+
+<h2>
+<span id="適当なレシピを適用してみる" class="fragment"></span><a href="#%E9%81%A9%E5%BD%93%E3%81%AA%E3%83%AC%E3%82%B7%E3%83%94%E3%82%92%E9%81%A9%E7%94%A8%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>適当なレシピを適用してみる</h2>
+
+<p>Cookbook管理ライブラリを利用して適当なCookbookを調達しましょう。</p>
+
+<p>今回はlibrarian-chefで、<code>fluentd_bundle</code>(<code>/opt/fluentd</code>にfluentdをインストール)のCookbookでも。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Cheffile</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="c1">#^syntax detection</span>
+
+<span class="n">site</span> <span class="s1">'https://supermarket.getchef.com/api/v1'</span>
+
+<span class="n">cookbook</span> <span class="s1">'fluentd_bundle'</span>
+</pre></div>
+</div>
+
+<p><code>librarian-chef install</code>で調達。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/librarian-chef install
+Installing apt (2.5.2)
+Installing build-essential (2.0.6)
+Installing chef_handler (1.1.6)
+Installing dmg (2.2.0)
+Installing yum (3.2.4)
+Installing yum-epel (0.4.0)
+Installing runit (1.5.10)
+Installing windows (1.34.2)
+Installing git (4.0.2)
+Installing ohai (2.0.1)
+Installing rbenv (1.7.1)
+Installing fluentd_bundle (0.2.0)
+
+
+$ ./bin/knife recipe list fluentd  --local-mode
+fluentd_bundle
+fluentd_bundle::default
+fluentd_bundle::depends_smartos
+fluentd_bundle::depends_ubuntu
+fluentd_bundle::rbenv
+</pre></div></div>
+
+<p>依存を含めてCookbookが揃ったら、適用してみます。</p>
+
+<p>現在のバージョンだと、もう一度<code>knife zero bootstrap</code>コマンドです。更新はもう少し丁度いい名前を付けてサブコマンドを独立させたいとこですが。</p>
+
+<p>ランリストに<code>fluentd_bundle::default</code>を付けて実行。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife zero bootstrap zero.example.com -r fluentd_bundle::default
+Connecting to zero.example.com
+zero.example.com Starting first Chef Client run...
+
+...
+
+zero.example.com Starting Chef Client, version 11.14.2
+zero.example.com resolving cookbooks for run list: ["fluentd_bundle::default"]  ## HTTP over SSH経由で取得
+zero.example.com Synchronizing Cookbooks:
+zero.example.com   - fluentd_bundle
+zero.example.com   - rbenv
+zero.example.com   - build-essential
+zero.example.com   - git
+zero.example.com   - apt
+zero.example.com   - ohai
+zero.example.com   - dmg
+zero.example.com   - windows
+zero.example.com   - runit
+zero.example.com   - yum
+zero.example.com   - yum-epel
+zero.example.com   - chef_handler
+zero.example.com Compiling Cookbooks...
+
+
+zero.example.com Running handlers:
+zero.example.com Running handlers complete
+zero.example.com Chef Client finished, 46/59 resources updated in 934.061999439 seconds
+</pre></div></div>
+
+<p>ちょっと時間のかかるサンプルを選んでしまった気がしますが。。 きっちり動く事の確認になりました。</p>
+
+<p>もう一度<code>knife node show</code>で、ローカルのNode Objectに状態が反映されていることが確認できます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife node show zero.example.com --local-mode
+Node Name:   zero.example.com
+Environment: _default
+FQDN:        zero.example.com
+IP:          210.xxx.xxx.xxx
+Run List:    recipe[fluentd_bundle::default]  ## さっき実行したランリストが反映されている
+Roles:       
+Recipes:     fluentd_bundle::default, fluentd_bundle::rbenv, rbenv::default, apt::default, build-essential::default, build-essential::_debian, git::default, rbenv::ruby_build, fluentd_bundle::depends_ubuntu
+Platform:    ubuntu 14.04
+Tags:        
+</pre></div></div>
+
+<h2>
+<span id="他のknifeコマンドもローカルモードで違和感なし" class="fragment"></span><a href="#%E4%BB%96%E3%81%AEknife%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E3%82%82%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%83%A2%E3%83%BC%E3%83%89%E3%81%A7%E9%81%95%E5%92%8C%E6%84%9F%E3%81%AA%E3%81%97"><i class="fa fa-link"></i></a>他のKnifeコマンドもローカルモードで違和感なし</h2>
+
+<p>ちなみにKnife+LocalModeならChef-Server必須だったコマンドも違和感なく使えます。</p>
+
+<h3>
+<span id="knife-sshをする例" class="fragment"></span><a href="#knife-ssh%E3%82%92%E3%81%99%E3%82%8B%E4%BE%8B"><i class="fa fa-link"></i></a><code>knife ssh</code>をする例</h3>
+
+<p>nodeは１つ追加してます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>knife ssh <span class="s1">'hostname:*'</span> <span class="nt">--local-mode</span> <span class="nb">uptime</span> <span class="nt">--attribute</span> ipaddress 
+210.xxx.xxx.xxx  08:44:09 up  1:06,  1 user,  load average: 0.00, 0.01, 0.01
+210.xxx.xxx.xxx  08:44:10 up 143 days,  2:34,  4 <span class="nb">users</span>,  load average: 0.02, 0.02, 0.05
+</pre></div></div>
+
+<p>普通にできるね。</p>
+
+<h3>
+<span id="node-editなどでランリストを編集後適用したい時" class="fragment"></span><a href="#node-edit%E3%81%AA%E3%81%A9%E3%81%A7%E3%83%A9%E3%83%B3%E3%83%AA%E3%82%B9%E3%83%88%E3%82%92%E7%B7%A8%E9%9B%86%E5%BE%8C%E9%81%A9%E7%94%A8%E3%81%97%E3%81%9F%E3%81%84%E6%99%82"><i class="fa fa-link"></i></a><code>node edit</code>などでランリストを編集後、適用したい時。</h3>
+
+<blockquote>
+<p>※追記も参照のこと</p>
+</blockquote>
+
+<p>この運用はプラグインにそのうち実装しておきたいけど、<code>knife exec</code>でちょっと工夫すればKnife-Zero不要で最初から可能だったりする。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>knife <span class="nb">exec</span> <span class="nt">--local-mode</span> <span class="nt">-E</span> <span class="s1">'nodes.all {
+  |n| system "ssh -R8889:127.0.0.1:8889 #{n.ipaddress} chef-client -S http://127.0.0.1:8889" 
+}'</span>
+</pre></div></div>
+
+<p><code>nodes</code>で拾ったノード全部に対して、tcpフォワード付きのSSHを繋ぎつつChef-Clientを実行すればOK。</p>
+
+<p>ちなみにどうやらChefIncの事例でよくあげられるFacebookでも<a href="https://github.com/opscode/chef-zero/issues/86" rel="nofollow noopener" target="_blank">同じような運用を目指しているくさい</a>。</p>
+
+<hr>
+
+<h4>
+<span id="追記v010でknife-zero-chef_client実装しまして14くらいでconvergeと別名をつけました" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98v010%E3%81%A7knife-zero-chef_client%E5%AE%9F%E8%A3%85%E3%81%97%E3%81%BE%E3%81%97%E3%81%A614%E3%81%8F%E3%82%89%E3%81%84%E3%81%A7converge%E3%81%A8%E5%88%A5%E5%90%8D%E3%82%92%E3%81%A4%E3%81%91%E3%81%BE%E3%81%97%E3%81%9F"><i class="fa fa-link"></i></a>追記：v0.1.0で<code>knife zero chef_client</code>実装しまして、1.4くらいでconvergeと別名をつけました。</h4>
+
+<p><code>knife zero converge QUERY (options)</code></p>
+
+<p>サーチに引っかかったノードに対して、ChefZero+SSH tcp-forwardつきでChef-Clientを実行してきます。</p>
+
+<p>GithubのREADMEから使い方を転載。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>## add recipe to run_list of host.example.com
+$ knife node run_list add host.example.com hogehoge::default --local-mode
+host.example.com:
+  run_list: recipe[hogehoge::default]
+
+
+$ knife zero converge 'name:*' --attribute ipaddress 
+
+## host.example.com was converged by run_list.
+host.example.com Starting Chef Client, version 11.14.6
+host.example.com resolving cookbooks for run list: ["hogehoge::default"]
+host.example.com Synchronizing Cookbooks:
+host.example.com   - hogehoge
+host.example.com Compiling Cookbooks...
+host.example.com Converging 0 resources
+
+(以下略)
+</pre></div></div>
+
+<p>サーチ結果が複数あった場合は直列実行です。</p>
+
+<h2>
+<span id="現状をふまえたその他" class="fragment"></span><a href="#%E7%8F%BE%E7%8A%B6%E3%82%92%E3%81%B5%E3%81%BE%E3%81%88%E3%81%9F%E3%81%9D%E3%81%AE%E4%BB%96"><i class="fa fa-link"></i></a>現状をふまえたその他</h2>
+
+<ul>
+<li>結局リモートサーバにChefが入る
+
+<ul>
+<li>パッケージだし多めに見てもらえると。</li>
+<li>徹底リモートでやるよりは、構成情報の収集が早く済むという利点も</li>
+</ul>
+</li>
+<li>実行中はリモートサーバでlocalhost:8889がListen状態になるのってどうなん
+
+<ul>
+<li>認証がダミーなので、誰でもリソース取り放題といえばそう。実行が一瞬で終わらない場合に共有サーバだとちょっと嫌かも。</li>
+<li>ポート変えるとか、ちょっと認証つけとくとか(<a href="https://github.com/opscode/chef-zero/pull/88" rel="nofollow noopener" target="_blank">プルリク中</a>)まあなんとかなるしょ</li>
+</ul>
+</li>
+<li>Cookbookのキャッシュはリモートに残る
+
+<ul>
+<li>Chef C/S環境の差し替えなんで。</li>
+<li>ディレクトリ丸ごとアップよりは誤動作も無いはず</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="まとめ" class="fragment"></span><a href="#%E3%81%BE%E3%81%A8%E3%82%81"><i class="fa fa-link"></i></a>まとめ</h2>
+
+<p>他のインフラ構成用ツールや、Knifeのクラウド調達系プラグインなどとあわせればインフラの現状もほぼコードで管理できていい感じかも。</p>

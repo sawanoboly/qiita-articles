@@ -1,0 +1,29 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>単純なxmlのパースをshellからもやりたい場合、gawk(awk)でやってみる。</p>
+
+<p>タグの中だけ取りたい例。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold"></span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">echo</span> <span class="s2">"&lt;url&gt;http://www.example.com&lt;/url&gt;"</span> | gawk <span class="s1">'match($0, /&lt;url&gt;(.*)&lt;\/url&gt;/, a) {print a[1]}'</span>
+http://www.example.com
+</pre></div>
+</div>
+
+<p>gawkのマッチ部分について</p>
+
+<ol>
+<li>$0は貰った文字列</li>
+<li>// で正規表現</li>
+<li>元の文字列とマッチグループを 配列<code>a</code>に格納</li>
+</ol>
+
+<p>で、<code>a[0]</code>が元の文字、<code>a[1]</code>にマッチグループの一番目。</p>
+
+<p>solaris系ならawkでも可。<br>
+スクリプト内なら<code>BASH_REMACH</code>を使っても出来るけど、ちょっと長くなる。</p>

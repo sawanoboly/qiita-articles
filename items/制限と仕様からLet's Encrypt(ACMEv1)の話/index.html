@@ -1,0 +1,418 @@
+<p>現行のACMEv1を使ったLet's Encryptのお話。</p>
+
+<p>(<a href="https://letsencrypt.org" rel="nofollow noopener" target="_blank">https://letsencrypt.org</a>)</p>
+
+<blockquote>
+<p>V1は終わりましたが、V2でも概ね同じです。一応V2はひとつ制限が追加されてます、追記の3を参照。</p>
+</blockquote>
+
+<p>個人が手持ちのドメインで利用するにはあまり気にすることもないですが、何度も証明書を発行しようとすると制限に引っかかってくることがあります。</p>
+
+<ul>
+<li><a href="https://letsencrypt.org/docs/rate-limits/" class="autolink" rel="nofollow noopener" target="_blank">https://letsencrypt.org/docs/rate-limits/</a></li>
+</ul>
+
+<p>先日<a href="https://tech.pepabo.com/amp/2017/08/22/lolipop-free-ssl/" rel="nofollow noopener" target="_blank">Encryptを少し多めにLet'sした機会</a>があったので、その時に色々気を使ったことをまとめておきます。</p>
+
+<h2>
+<span id="lets-encryptにかかる制限rate-limits" class="fragment"></span><a href="#lets-encrypt%E3%81%AB%E3%81%8B%E3%81%8B%E3%82%8B%E5%88%B6%E9%99%90rate-limits"><i class="fa fa-link"></i></a>Let's Encryptにかかる制限(rate-limits)</h2>
+
+<p>といっても、(ドメインの所有さえ確認できれば)ACMEの仕様としてかかる制限はありません。<br>
+ほとんどはACMEのプロバイダによる、証明書の発行やそれにまつわるリクエストへの量的な制限となります。</p>
+
+<p>例えば、Let's Encryptが証明書を管理するAPIの実装、<a href="https://github.com/letsencrypt/boulder" rel="nofollow noopener" target="_blank">boulder</a>では、次のように設定ファイルで制限ルールを管理しています。</p>
+
+<p><a href="https://github.com/letsencrypt/boulder/blob/master/test/rate-limit-policies.yml" rel="nofollow noopener" target="_blank">boulder/test/rate-limit-policies.yml</a></p>
+
+<p>ほとんどが <code>期間(window)</code> X <code>回数による閾値(threshold)</code> です。</p>
+
+<p>ちなみにこちら、実際にLet's Encryptの本番(有効なCA)で利用されている設定値とは違います。実際の値を確認することはできないので、公表されている文書から判断しましょう。<br>
+制限はわりとよく変更されていますので、この記事の内容は公開時点の制限がベースになります。</p>
+
+<p>以下、 <strong>Let's EncryptはLEと略して表記</strong> します。</p>
+
+<h2>
+<span id="制限のかかるドメインの単位---public-suffix" class="fragment"></span><a href="#%E5%88%B6%E9%99%90%E3%81%AE%E3%81%8B%E3%81%8B%E3%82%8B%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E3%81%AE%E5%8D%98%E4%BD%8D---public-suffix"><i class="fa fa-link"></i></a>制限のかかるドメインの単位 - public suffix</h2>
+
+<p>LEでは、</p>
+
+<ul>
+<li>同じ<code>ドメイン</code>での証明書発行は週あたり20証明書まで</li>
+</ul>
+
+<p>という制限があります。さて、このドメインとはどこまでを対象とするのか。</p>
+
+<p>たとえばFQDNではラベルを複数つけて、<code>www.sawanoboly.net</code>とか<code>xxx.yyy.sawanoboly.net</code>とか、それなりに長いドメイン(いわゆるサブドメイン)を付与できて、それぞれにLEで証明書を発行することができます。</p>
+
+<p>LEではこの判断に、Mozilla主導の <strong>public suffix</strong> をつかっているようです。</p>
+
+<ul>
+<li><a href="https://publicsuffix.org" class="autolink" rel="nofollow noopener" target="_blank">https://publicsuffix.org</a></li>
+</ul>
+
+<p><strong>public suffix</strong> の詳細は省きます。(私があまり詳しくない)</p>
+
+<p>LEでは、rate-limits対象の割り出しと、そのドメインが個人の持ちものとしておかしくないか？ という判断基準のような使いかたをしているという感じで理解しておけば十分そうです。<br>
+さらに大雑把に言うとレジストラ直轄のドメイン部分までが対象ってとこでしょうか。</p>
+
+<p><strong>public suffix</strong> を利用するためのライブラリもあります。</p>
+
+<ul>
+<li><a href="https://github.com/weppos/publicsuffix-go" rel="nofollow noopener" target="_blank">Goのライブラリ | weppos/publicsuffix-go</a></li>
+<li><a href="https://github.com/weppos/publicsuffix-ruby" rel="nofollow noopener" target="_blank">Rubyのライブラリ | weppos/publicsuffix-ruby</a></li>
+</ul>
+
+<p>ちょっとRubyのやつを使ってみましょう。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">pry</span><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'public_suffix'</span>
+
+<span class="n">pry</span><span class="o">&gt;</span> <span class="no">PublicSuffix</span><span class="p">.</span><span class="nf">domain</span><span class="p">(</span><span class="s1">'sawanoboly.net'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"sawanoboly.net"</span>
+
+<span class="n">pry</span><span class="o">&gt;</span> <span class="no">PublicSuffix</span><span class="p">.</span><span class="nf">domain</span><span class="p">(</span><span class="s1">'www.sawanoboly.net'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"sawanoboly.net"</span>
+
+<span class="n">pry</span><span class="o">&gt;</span> <span class="no">PublicSuffix</span><span class="p">.</span><span class="nf">domain</span><span class="p">(</span><span class="s1">'sub.www.sawanoboly.net'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"sawanoboly.net"</span>
+
+<span class="n">pry</span><span class="o">&gt;</span> <span class="no">PublicSuffix</span><span class="p">.</span><span class="nf">domain</span><span class="p">(</span><span class="s1">'kosub.sub.www.sawanoboly.net'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"sawanoboly.net"</span>
+</pre></div></div>
+
+<p>この例では<code>sawanoboly.net</code>が <strong>public suffix</strong> なので、サブドメインの証明書を含めて<code>sawanoboly.net</code>が週あたり20件のrate-limits対象です。</p>
+
+<h3>
+<span id="余談-not-public-のドメインを判断する" class="fragment"></span><a href="#%E4%BD%99%E8%AB%87-not-public-%E3%81%AE%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E3%82%92%E5%88%A4%E6%96%AD%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>余談: Not Public のドメインを判断する</h3>
+
+<p>PublicSuffixのライブラリは『こんなもん認証するまでもねーだろ』っていう申請を蹴るのにつかえたりします。</p>
+
+<p>たとえばAmazonEC2でインスタンスに払い出されるFQDNは<code>Not Public</code>として判断されます。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">pry</span><span class="o">&gt;</span> <span class="no">PublicSuffix</span><span class="p">.</span><span class="nf">domain</span><span class="p">(</span><span class="s1">'ec2-34-193-82-xxx.compute-1.amazonaws.com'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+</pre></div></div>
+
+<p>Rubyライブラリだと、<code>#parse</code>を使うと例外を出してくれます。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">pry</span><span class="o">&gt;</span> <span class="no">PublicSuffix</span><span class="p">.</span><span class="nf">parse</span><span class="p">(</span><span class="s1">'ec2-34-193-82-xxx.compute-1.amazonaws.com'</span><span class="p">)</span>
+<span class="no">PublicSuffix</span><span class="o">::</span><span class="no">DomainNotAllowed</span><span class="p">:</span> <span class="sb">`ec2-34-193-82-xxx.compute-1.amazonaws.com`</span> <span class="n">is</span> <span class="n">not</span> <span class="n">allowed</span> <span class="n">according</span> <span class="n">to</span> <span class="no">Registry</span> <span class="n">policy</span>
+</pre></div></div>
+
+<p>対象のリストはちょくちょく人力でアップデートしています。</p>
+
+<ul>
+<li><a href="https://github.com/publicsuffix/list/commits/master" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/publicsuffix/list/commits/master</a></li>
+</ul>
+
+<p>最新リストの追従度はgoのライブラリの方が自動でやっているぶん良い感じです。</p>
+
+<h3>
+<span id="publicsuffixとrate-limits" class="fragment"></span><a href="#publicsuffix%E3%81%A8rate-limits"><i class="fa fa-link"></i></a>PublicSuffixとrate-limits</h3>
+
+<p>ちなみにこのドメインであとどのくらい証明書を作成できるのか？という、要はrate-limitsを問い合わせるインターフェースはありません。<br>
+後述するクライアント識別のゆるやかさ維持にも関わってくるので、そんな野暮ったい機能はつけないのかもしれません。</p>
+
+<p>何かしらシステム化した証明書管理を行いつつ、rate-limitsを事前に知りたい場合は <strong>public suffix</strong> をベースに発行履歴を残しておき、履歴を元に計算するほかなさそうです。</p>
+
+<h2>
+<span id="common-namecnとsubject-alternative-namessans" class="fragment"></span><a href="#common-namecn%E3%81%A8subject-alternative-namessans"><i class="fa fa-link"></i></a>Common Name(CN)とSubject Alternative Name(s)(SANs)</h2>
+
+<p>前述の『週あたり20証明書』までという制限では、サブドメインを沢山使用している環境では一斉に証明書を発行できなくて不便です。<br>
+LEの証明書はCSRにSANsを入れて、<code>sawanoboly.net</code>と<code>www.sawanoboly.net</code>を1つの証明書で両方有効にするやつです。通称で2wayとかも呼ばれるやつですね。</p>
+
+<p>LEではFQDN100個まで証明書に含めてOKとしています。個別に発行して20件の制限にかかることがないよう、積極的につかうと良いと思います。</p>
+
+<h3>
+<span id="sansも個別にドメイン所有の確認authorizationsは必須" class="fragment"></span><a href="#sans%E3%82%82%E5%80%8B%E5%88%A5%E3%81%AB%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E6%89%80%E6%9C%89%E3%81%AE%E7%A2%BA%E8%AA%8Dauthorizations%E3%81%AF%E5%BF%85%E9%A0%88"><i class="fa fa-link"></i></a>SANsも個別にドメイン所有の確認(Authorizations)は必須</h3>
+
+<p>ACMEにおけるDNSやHTTPによるドメイン所有の確認(以降Authorizationsまたはチャレンジと呼びます。)はCN、SANsとわず全てのFQDNに対して必要です。<br>
+CNさえチャレンジとおればSANs付け放題、ということはないので地道に<code>.well-known/acme-challenge/</code>しましょう。</p>
+
+<h3>
+<span id="csrに含めるsansは99件-100件" class="fragment"></span><a href="#csr%E3%81%AB%E5%90%AB%E3%82%81%E3%82%8Bsans%E3%81%AF99%E4%BB%B6-100%E4%BB%B6"><i class="fa fa-link"></i></a>CSRに含めるSANsは99件? 100件？</h3>
+
+<p>LEでは一度の証明書に含めるFQDNの上限を100件としています。<br>
+これ、CSR視点ではぱっと見では迷うんですよね。</p>
+
+<ul>
+<li>CN + SANs で合計100？</li>
+<li>SANsに100入れていいの？</li>
+</ul>
+
+<p>こちら、LEのboulderではCSRでのCNもSANsに入れてから証明書を発行するので、申請に使用できるCSRはCNと違うFQDNのSANsを99件まで(※)です。</p>
+
+<p>boulderでは設定によってCNをSANsに含めるかを決めています。ソースを見たら次のような処理をしていました。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">boulder/csr/csr.go</span></div>
+<div class="highlight"><pre><span class="o">...</span>
+
+<span class="k">func</span> <span class="n">normalizeCSR</span><span class="p">(</span><span class="n">csr</span> <span class="o">*</span><span class="n">x509</span><span class="o">.</span><span class="n">CertificateRequest</span><span class="p">,</span> <span class="n">forceCNFromSAN</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="n">forceCNFromSAN</span> <span class="o">&amp;&amp;</span> <span class="n">csr</span><span class="o">.</span><span class="n">Subject</span><span class="o">.</span><span class="n">CommonName</span> <span class="o">==</span> <span class="s">""</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">csr</span><span class="o">.</span><span class="n">DNSNames</span><span class="p">)</span> <span class="o">&gt;</span> <span class="m">0</span> <span class="p">{</span>
+            <span class="n">csr</span><span class="o">.</span><span class="n">Subject</span><span class="o">.</span><span class="n">CommonName</span> <span class="o">=</span> <span class="n">csr</span><span class="o">.</span><span class="n">DNSNames</span><span class="p">[</span><span class="m">0</span><span class="p">]</span>
+        <span class="p">}</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="n">csr</span><span class="o">.</span><span class="n">Subject</span><span class="o">.</span><span class="n">CommonName</span> <span class="o">!=</span> <span class="s">""</span> <span class="p">{</span>
+        <span class="n">csr</span><span class="o">.</span><span class="n">DNSNames</span> <span class="o">=</span> <span class="nb">append</span><span class="p">(</span><span class="n">csr</span><span class="o">.</span><span class="n">DNSNames</span><span class="p">,</span> <span class="n">csr</span><span class="o">.</span><span class="n">Subject</span><span class="o">.</span><span class="n">CommonName</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="n">csr</span><span class="o">.</span><span class="n">Subject</span><span class="o">.</span><span class="n">CommonName</span> <span class="o">=</span> <span class="n">strings</span><span class="o">.</span><span class="n">ToLower</span><span class="p">(</span><span class="n">csr</span><span class="o">.</span><span class="n">Subject</span><span class="o">.</span><span class="n">CommonName</span><span class="p">)</span>
+    <span class="n">csr</span><span class="o">.</span><span class="n">DNSNames</span> <span class="o">=</span> <span class="n">core</span><span class="o">.</span><span class="n">UniqueLowerNames</span><span class="p">(</span><span class="n">csr</span><span class="o">.</span><span class="n">DNSNames</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="o">...</span>
+</pre></div>
+</div>
+
+<p>発行された証明書を確認してみるとよいでしょう。CNのFQDNはSANsにも入っているはずです。</p>
+
+<blockquote>
+<p>※) 実際に運用されているboulderでmaxNamesのパラメータが100であれば。</p>
+</blockquote>
+
+<p>あと、全く同じSANsの組み合わせでは週あたり5件という制限もあり、これはテストで作成する時とかに引っかかることがあるかな？というくらいです。一応SANsの組み合わせを変えれば無視(※20の方のルール適用)できます。</p>
+
+<h3>
+<span id="理論上はドメインあたり2万超のfqdnをtls保護が可能" class="fragment"></span><a href="#%E7%90%86%E8%AB%96%E4%B8%8A%E3%81%AF%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E3%81%82%E3%81%9F%E3%82%8A2%E4%B8%87%E8%B6%85%E3%81%AEfqdn%E3%82%92tls%E4%BF%9D%E8%AD%B7%E3%81%8C%E5%8F%AF%E8%83%BD"><i class="fa fa-link"></i></a>理論上はドメインあたり2万超のFQDNをTLS保護が可能</h3>
+
+<p>これもほぼ余談になります。これまで紹介した証明書発行数の制限を鑑みますと、</p>
+
+<ul>
+<li>1週間あたり20の証明書が発行できる。</li>
+<li>それぞれSANsとして100のFQDNを含めることができる。</li>
+<li>証明書は3ヶ月有効。</li>
+</ul>
+
+<p>12週で申請をローテーションすれば、2,000(週あたり) x 12週分で24,000のFQDNを有効な状態に保つことができる気がします。</p>
+
+<p>2018年にはACMEv2・ワイルドカード対応がありますが、気合い次第では手持ちサブドメインの全対応も大抵の環境では可能ですね。</p>
+
+<h2>
+<span id="authorizationsチャレンジの制限---pending放置ダメ絶対" class="fragment"></span><a href="#authorizations%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%81%AE%E5%88%B6%E9%99%90---pending%E6%94%BE%E7%BD%AE%E3%83%80%E3%83%A1%E7%B5%B6%E5%AF%BE"><i class="fa fa-link"></i></a>Authorizations(チャレンジ)の制限 - Pending放置ダメ絶対</h2>
+
+<p>ドメイン所有確認のAuthorizationsは、以下のフローでおこないます。まあ大体知っているかと思います。</p>
+
+<ol>
+<li>LEにFQDNを申請する =&gt; 認証に必要な情報を受け取る</li>
+<li>認証に必要な情報を元にセットアップ</li>
+<li>
+<strong>認証実行</strong> を申請する</li>
+<li>LEが認証してみた結果。。。
+
+<ul>
+<li>成功で<code>valid</code>
+</li>
+<li>失敗で<code>invalid</code>、 <strong>同じAuthorizationのリトライは不可能</strong>
+</li>
+</ul>
+</li>
+</ol>
+
+<p>ここで2の状態(<code>Pending</code>)で放置してはダメです。たとえばスクリプトにしているとして、2の処理中に例外で落ちるとかのケースで。<br>
+この<code>Pending</code>状態にあるAuthorizationは週あたり300までという制限があります。</p>
+
+<blockquote>
+<p>(昔はもうちょっと回数少なかった覚えがあります、5件くらい貯めたらアウトだったような...)</p>
+</blockquote>
+
+<p>この制限が曲者なのは<code>Pending</code>から他の状態に遷移する手段が <strong>認証実行</strong> を依頼する以外にないことです。<br>
+キャンセルは仕様になく、今自分がいくつのAuthorizationを申請したかを取得するインターフェースもありません。</p>
+
+<p>なので、1のFQDN申請をした場合、セットアップに失敗したとしてもステータスを <code>Pending</code> =&gt; <code>valid/invalid</code> に進めるため、3の <strong>認証実行</strong> までは必ず行いましょう。</p>
+
+<h3>
+<span id="authorizationsちょっと補足" class="fragment"></span><a href="#authorizations%E3%81%A1%E3%82%87%E3%81%A3%E3%81%A8%E8%A3%9C%E8%B6%B3"><i class="fa fa-link"></i></a>Authorizationsちょっと補足</h3>
+
+<p>この制限300は多いような気がしますが、<code>Pending</code>は放っておくと1週間カウントされるので、SANsで数件ずつとかの処理をする場合にクライアントの処理がまずいといつのまにか到達している数です。</p>
+
+<p>複数のSANsを含む証明書を作る場合、それぞれのFQDNでAuthorizationを <strong>認証実行</strong> までいくようにループするのをお勧めしています。<br>
+Authorization件数分作成してまとめて <strong>認証実行</strong> だと、やはりなんらかの異常があった時にまとめて<code>Pending</code>が残ってしまいます。</p>
+
+<p>なお、このPending Limitのカウントは申請時の認証に使うアカウントが基準です。<br>
+つまりアカウントを新しく作ってしまえばとりあえずなかったことにもできるので。緊急の手段として覚えておくとよいかも。</p>
+
+<h3>
+<span id="検証用にチャレンジ無視したboulderを使いたい" class="fragment"></span><a href="#%E6%A4%9C%E8%A8%BC%E7%94%A8%E3%81%AB%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E7%84%A1%E8%A6%96%E3%81%97%E3%81%9Fboulder%E3%82%92%E4%BD%BF%E3%81%84%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>検証用にチャレンジ無視したboulderを使いたい</h3>
+
+<p>LEのboulderはソースが丸ごとGithubで公開されているので、各自の手元などで簡単に動かすことができます。<br>
+そのまま使用すればCAがダミーなだけのLEテスト環境として開発用途などにも使えますし、CA証明書と秘密鍵を差し替えればACME対応プロバイダにすぐなれます。</p>
+
+<p>で、せっかく手元で動かすのだから、Authorizationsをやらずに証明書発行してしまいたいこともあります。<br>
+そういうときはva(ValidationAuthorityなのかな?)にちょいと手をいれるとノーチャレンジ(実際はチャレンジ失敗を無視)のboulderを稼働できます。</p>
+
+<div class="code-frame" data-lang="go">
+<div class="code-lang"><span class="bold">boulder/va/va.go</span></div>
+<div class="highlight"><pre><span class="o">...</span>
+
+    <span class="c">// Check for malformed ValidationRecords</span>
+    <span class="k">if</span> <span class="o">!</span><span class="n">challenge</span><span class="o">.</span><span class="n">RecordsSane</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="n">prob</span> <span class="o">==</span> <span class="no">nil</span> <span class="p">{</span>
+        <span class="n">prob</span> <span class="o">=</span> <span class="n">probs</span><span class="o">.</span><span class="n">ServerInternal</span><span class="p">(</span><span class="s">"Records for validation failed sanity check"</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c">// 問題を無かったことにする</span>
+    <span class="n">prob</span> <span class="o">=</span> <span class="no">nil</span>
+
+<span class="o">...</span>
+</pre></div>
+</div>
+
+<p>これでじゃんじゃんと好きなFQDNで証明書を作ることができるので、LEを大規模に扱うサービスの開発が捗るかも。<br>
+また、組織用CAによる証明書をACMEで発行しまくる、などの用途にもアリかなと思ってます。</p>
+
+<h2>
+<span id="クライアントの鍵アカウントの取り扱い" class="fragment"></span><a href="#%E3%82%AF%E3%83%A9%E3%82%A4%E3%82%A2%E3%83%B3%E3%83%88%E3%81%AE%E9%8D%B5%E3%82%A2%E3%82%AB%E3%82%A6%E3%83%B3%E3%83%88%E3%81%AE%E5%8F%96%E3%82%8A%E6%89%B1%E3%81%84"><i class="fa fa-link"></i></a>クライアントの鍵(≒アカウント)の取り扱い</h2>
+
+<p>ここは制限というよりは、むしろゆるいよという話。</p>
+
+<p>LEのアカウントは秘密鍵を使って作成します。<br>
+通常の有料サービスでは作成したアカウントを大事に使い回すことになりますが、LEでは次のような仕様であり、その存在感はなかなか希薄です。</p>
+
+<ul>
+<li>メールアドレス被りOK</li>
+<li>ドメイン認証の申請はどのアカウントからでもOK
+
+<ul>
+<li>証明書発行のrate-limitはあくまでドメイン(public suffix)がベース</li>
+</ul>
+</li>
+<li>アカウントの申請履歴など、紐づいた情報などは全く取れない</li>
+</ul>
+
+<p>もはやTOSに同意するためだけに存在するような気がします。</p>
+
+<h3>
+<span id="なんでこんなに緩いのか" class="fragment"></span><a href="#%E3%81%AA%E3%82%93%E3%81%A7%E3%81%93%E3%82%93%E3%81%AA%E3%81%AB%E7%B7%A9%E3%81%84%E3%81%AE%E3%81%8B"><i class="fa fa-link"></i></a>なんでこんなに緩いのか</h3>
+
+<p>とにかくドメインの所有を確認できればOKという姿勢からくる仕様だと思います。<br>
+煩わしい手順の省略や、管理の手間の軽減につながり、個人的には大歓迎です。</p>
+
+<p>例えば新規にサーバを構築するケースで、すでに何件か発行済みのドメイン配下のFQDNを割り当てるとします。<br>
+LEの証明書をHTTPの認証で発行して割り当てようとする際、もしアカウントとドメイン(public suffix)の紐付けが厳密な場合は次のいずれかの手段をとらなくてはいけません。</p>
+
+<ul>
+<li>アカウントの秘密鍵をサーバにアップロードして、certbotなどでAuthorizationを認証。</li>
+<li>共有端末などでAuthorizationを作成、サーバに必要情報をアップロードしてドメイン認証 -&gt; 証明書取得。
+
+<ul>
+<li>これには色々な手段があります。</li>
+<li>(注) DNS認証なら、どちらかというとこの手順が正攻法です。</li>
+</ul>
+</li>
+</ul>
+
+<p>アカウントとドメインの紐付きがないため、実際にはサーバでcertbotを実行するだけで済みます(※)。サーバ上で作成したアカウントの秘密鍵はそのまま置いといても良いし、別に捨ててもよいので非常に楽なもんです。</p>
+
+<p>※ もちろん上記の参考手段で同一のアカウントをつかってもよいです。</p>
+
+<h3>
+<span id="revokeとアカウント" class="fragment"></span><a href="#revoke%E3%81%A8%E3%82%A2%E3%82%AB%E3%82%A6%E3%83%B3%E3%83%88"><i class="fa fa-link"></i></a>Revokeとアカウント</h3>
+
+<p>アカウント秘密鍵のほぼ唯一といっていい再利用目的は証明書の失効(Revoke)です。<br>
+しかし、Revokeには次の2通りの手段があります。</p>
+
+<ul>
+<li>証明書と、LE作成時のアカウント秘密鍵</li>
+<li>証明書と、そのペアになる秘密鍵</li>
+</ul>
+
+<p>後者がつかえるため、結局アカウント秘密鍵は管理不要です。</p>
+
+<h3>
+<span id="証明書の更新とアカウント" class="fragment"></span><a href="#%E8%A8%BC%E6%98%8E%E6%9B%B8%E3%81%AE%E6%9B%B4%E6%96%B0%E3%81%A8%E3%82%A2%E3%82%AB%E3%82%A6%E3%83%B3%E3%83%88"><i class="fa fa-link"></i></a>証明書の更新とアカウント</h3>
+
+<p>更新、といいますが、もともとX.509の証明書に期限変更みたいな仕様があるわけでもなく、新規作成と手順はなんら変わりません。</p>
+
+<p>先にあげた次の仕様、</p>
+
+<ul>
+<li>ドメイン認証の申請はどのアカウントからでもOK</li>
+</ul>
+
+<p>からして、結局は前回作成した時のアカウントはなんの関係もないままに新しい証明書を作成することができます。</p>
+
+<h3>
+<span id="アカウント作成の制限---10-accounts-per-ip-address-per-3-hours" class="fragment"></span><a href="#%E3%82%A2%E3%82%AB%E3%82%A6%E3%83%B3%E3%83%88%E4%BD%9C%E6%88%90%E3%81%AE%E5%88%B6%E9%99%90---10-accounts-per-ip-address-per-3-hours"><i class="fa fa-link"></i></a>アカウント作成の制限 - 10 Accounts per IP Address per 3 hours</h3>
+
+<p>では、アカウントは証明書を作成するたびに毎回新規でよいのか？ というと、大量に作成する場合には注意が必要なこともあります。</p>
+
+<ul>
+<li>同一のIPアドレスから、3時間あたり10アカウントまで作成可</li>
+</ul>
+
+<p>この制限を避けるために、少なくともある程度の期間は使い回しをする必要があります。通常は秘密鍵をファイルに書き出しておけば良いので気にすることはないかもしれません。</p>
+
+<p>しかし例えば、 <strong>例外があったらとりあえずクライアントの作成からリトライしときゃいいっしょー</strong> みたいな安直な処理をするとこの制限に引っかかってお祭りになったりするので気をつけようぜ！</p>
+
+<p>...とにかく、LEな世界ではアカウントなんてとくに重要でなく、ドメインの所有だけが証明書発行への道なのですよということです。</p>
+
+<p>アカウント関連はもうひとつ制限がありますが、よっぼどでないと引っかかるようなものでもないので割愛します。</p>
+
+<h2>
+<span id="終わりに" class="fragment"></span><a href="#%E7%B5%82%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>終わりに</h2>
+
+<p>TLSで暗号化！ってよりは、HTTP/2に対応できるのが素敵だと思います。<br>
+エンドユーザのドメインをたくさんあつかうような事業者さんは、早速寄付しつつ全部のドメインでLEが使えるようにしていきましょう。</p>
+
+<hr>
+
+<h2>
+<span id="追記1-google-safe-browsingに引っかかったらダメ" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%981-google-safe-browsing%E3%81%AB%E5%BC%95%E3%81%A3%E3%81%8B%E3%81%8B%E3%81%A3%E3%81%9F%E3%82%89%E3%83%80%E3%83%A1"><i class="fa fa-link"></i></a><del>追記1: Google Safe Browsingに引っかかったらダメ。</del>
+</h2>
+
+<blockquote>
+<p>追記の追記: これは2019年2月くらいから制限されなくなっています。こういう視点でブロックするのはやっぱ駄目ということでしょう。</p>
+</blockquote>
+
+<p>ドメイン所有確認の際、申請するドメインは一定のルールによって拒否されることがあります。</p>
+
+<p>そのルールの1つとして、Google Safe Browsingによる<code>Unsafe</code>扱いされていないかがありました。</p>
+
+<ul>
+<li><a href="https://developers.google.com/safe-browsing/" rel="nofollow noopener" target="_blank">Google Safe Browsing  |  Google Developers</a></li>
+</ul>
+
+<p>これに引っかかると次のようなレスポンスでAuthorizationがハネられます。</p>
+
+<blockquote>
+<p>"${domain}" was considered an unsafe domain by a third-party API</p>
+</blockquote>
+
+<p>CLIの<code>sblookup</code>でドメインがどう扱われているか、手元で確認することができます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ echo 'http://sawanoboly.net' | sblookup -apikey=$APIKEY 2&gt; /dev/null 
+Safe URL: http://sawanoboly.net
+
+$ echo 'http://malware.testing.google.test/testing/malware/' | sblookup -apikey=$APIKEY 2&gt;/dev/null 
+Unsafe URL: [{malware.testing.google.test/testing/malware/ {MALWARE ANY_PLATFORM URL}} {malware.testing.google.test/testing/malware/ {SOCIAL_ENGINEERING ANY_PLATFORM URL}}]
+</pre></div></div>
+
+<p>もちろんこういったポリシーに関しては<a href="https://community.letsencrypt.org/t/certbot-not-able-to-issue-certificate-site-marked-as-unsafe-google-safe-browsing/33011/2" rel="nofollow noopener" target="_blank">賛否両論ある</a>でますよね。</p>
+
+<h2>
+<span id="追記2-デコード出来ないpunycode風文字列はダメ" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%982-%E3%83%87%E3%82%B3%E3%83%BC%E3%83%89%E5%87%BA%E6%9D%A5%E3%81%AA%E3%81%84punycode%E9%A2%A8%E6%96%87%E5%AD%97%E5%88%97%E3%81%AF%E3%83%80%E3%83%A1"><i class="fa fa-link"></i></a>追記2: デコード出来ないPunycode風文字列はダメ</h2>
+
+<p>ドメインに<code>xn--</code>のプレフィクスをつけると、いわゆるPunycodeとなってUnicodeの文字を使うことができますが、これがデコード出来ないとboulderがエラーを返してきます。</p>
+
+<blockquote>
+<p>Error creating new authz :: DNS label contains malformed punycode</p>
+</blockquote>
+
+<p>ただの文字列として扱ってはくれないということですね。</p>
+
+<p>例えば、<code>日本語.jp</code>のPunycodeから一文字削ると不正になります。 (例はRubyのSimpleIDNを使用)</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="p">(</span><span class="n">pry</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">SimpleIDN</span><span class="p">.</span><span class="nf">to_unicode</span><span class="p">(</span><span class="s1">'xn--wgv71a119e.jp'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"日本語.jp"</span>
+<span class="p">(</span><span class="n">pry</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">SimpleIDN</span><span class="p">.</span><span class="nf">to_unicode</span><span class="p">(</span><span class="s1">'xn--wgv71a119.jp'</span><span class="p">)</span>
+<span class="no">SimpleIDN</span><span class="o">::</span><span class="no">ConversionError</span><span class="p">:</span> <span class="n">punycode_bad_input</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</pre></div></div>
+
+<p>このケースでも証明書は発行できません。</p>
+
+<h2>
+<span id="追記3-acmev2で追加された制限" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%983-acmev2%E3%81%A7%E8%BF%BD%E5%8A%A0%E3%81%95%E3%82%8C%E3%81%9F%E5%88%B6%E9%99%90"><i class="fa fa-link"></i></a>追記3: ACMEv2で追加された制限</h2>
+
+<blockquote>
+<p>300 New Orders per account per 3 hours.</p>
+</blockquote>
+
+<p>ひとつのアカウントで3時間あたり300件の新規証明書発行でLimitとなってます。</p>

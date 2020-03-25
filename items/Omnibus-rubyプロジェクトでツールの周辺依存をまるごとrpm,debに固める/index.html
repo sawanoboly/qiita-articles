@@ -1,0 +1,736 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>ChefのOpscodeが公開している<a href="https://github.com/opscode/omnibus-ruby" rel="nofollow noopener" target="_blank">omnibus-ruby</a>というのがあります。<code>omnibus-chef</code>(/opt/chef`にRubyごとChefをインストール)のなんでも版ですね。</p>
+
+<p>libやincludeもまるごと、lddで拾える依存も全部パッケージにするので、実際Ruby関連に限らず使えると思います。</p>
+
+<blockquote>
+<p>ビルド環境については刷新したのでこちらをどうぞ。<br>
+<a href="http://qiita.com/sawanoboly/items/0902a97ef71d99ad60a6" id="reference-8348257e05e81e70824f">Omnibus[-ruby]プロジェクトのビルド環境をDockerで。Dockerhub公開中。</a></p>
+</blockquote>
+
+<h2>
+<span id="omnibusの準備" class="fragment"></span><a href="#omnibus%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>omnibusの準備</h2>
+
+<p>まずツール群を揃えます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s1">'omnibus'</span>
+</pre></div>
+</div>
+
+<p>一旦これで<code>bundle</code>します。</p>
+
+<p>Vagrantのプラグインを入れたらVM内でパッケージ作成が出来て便利、今回は<code>Vagrant-1.3.3</code>を使いました。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">vagrant_plugins</span></div>
+<div class="highlight"><pre>vagrant plugin <span class="nb">install </span>vagrant-berkshelf
+vagrant plugin <span class="nb">install </span>vagrant-omnibus
+</pre></div>
+</div>
+
+<h2>
+<span id="サンプルomnibus-godを作る" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%ABomnibus-god%E3%82%92%E4%BD%9C%E3%82%8B"><i class="fa fa-link"></i></a>サンプル、omnibus-godを作る</h2>
+
+<p>なんか作ってみましょう、Godがちょうどいいかな。</p>
+
+<ul>
+<li><a href="http://godrb.com" rel="nofollow noopener" target="_blank">God - A Process Monitoring Framework in Ruby</a></li>
+</ul>
+
+<h2>
+<span id="プロジェクトを作成" class="fragment"></span><a href="#%E3%83%97%E3%83%AD%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%82%92%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>プロジェクトを作成</h2>
+
+<p>omnibusは、<code>Project</code>というまとまりに、任意の<code>Software</code>をビルドして一つのパッケージにするという考え方で組まれています。</p>
+
+<p>まずプロジェクト。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">create_project</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>omnibus project god
+No configuration file <span class="sb">`</span>/Users/sawanoboriyu/worktemp/omnibus/omnibus.rb<span class="s1">', using defaults
+      create  omnibus-god/Gemfile
+      create  omnibus-god/.gitignore
+      create  omnibus-god/README.md
+      create  omnibus-god/omnibus.rb.example
+      create  omnibus-god/config/projects/god.rb
+      create  omnibus-god/config/software/c-example.rb
+      create  omnibus-god/config/software/erlang-example.rb
+      create  omnibus-god/config/software/ruby-example.rb
+      create  omnibus-god/Berksfile
+      create  omnibus-god/Vagrantfile
+      create  omnibus-god/package-scripts/god/makeselfinst
+      create  omnibus-god/package-scripts/god/postinst
+      create  omnibus-god/package-scripts/god/postrm
+</span></pre></div>
+</div>
+
+<p>そしてもう一度bundleです。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bundle_for_project</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">cd </span>omnibus-god
+<span class="nv">$ </span>bundle <span class="nb">install</span> <span class="nt">--binstubs</span>
+</pre></div>
+</div>
+
+<p>これで準備はOK。</p>
+
+<h2>
+<span id="vagrantのチェック" class="fragment"></span><a href="#vagrant%E3%81%AE%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>Vagrantのチェック</h2>
+
+<p>自動生成のVagrantfileに1.2のオプションが残っているので、1.3を使う場合は2つコメントアウトします。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Vagrantfile</span></div>
+<div class="highlight"><pre><span class="c1">#  config.ssh.max_tries = 40</span>
+<span class="c1">#  config.ssh.timeout   = 120</span>
+  <span class="n">config</span><span class="p">.</span><span class="nf">ssh</span><span class="p">.</span><span class="nf">forward_agent</span> <span class="o">=</span> <span class="kp">true</span>
+</pre></div>
+</div>
+
+<p>VMのリストを見てみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">vagrant_status-1</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>vagrant status
+Current machine states:
+
+ubuntu-10.04              not created <span class="o">(</span>virtualbox<span class="o">)</span>
+ubuntu-11.04              not created <span class="o">(</span>virtualbox<span class="o">)</span>
+ubuntu-12.04              not created <span class="o">(</span>virtualbox<span class="o">)</span>
+centos-5                  not created <span class="o">(</span>virtualbox<span class="o">)</span>
+centos-6                  not created <span class="o">(</span>virtualbox<span class="o">)</span>
+
+This environment represents multiple VMs. The VMs are all listed
+above with their current state. For more information about a specific
+VM, run <span class="sb">`</span>vagrant status NAME<span class="sb">`</span><span class="nb">.</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="softwareの定義をする" class="fragment"></span><a href="#software%E3%81%AE%E5%AE%9A%E7%BE%A9%E3%82%92%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Softwareの定義をする</h2>
+
+<p>godを入れるので、<code>config/projects/software/god.rb</code>を作成します。</p>
+
+<p>取り急ぎgithubから取ってきます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">config/projects/software/god.rb</span></div>
+<div class="highlight"><pre><span class="nb">name</span> <span class="s2">"god"</span>
+<span class="n">version</span> <span class="s2">"v0.13.2"</span>          <span class="c1"># git ref</span>
+<span class="n">gem_version</span> <span class="o">=</span> <span class="s1">'0.13.2'</span>  <span class="c1"># local_variable</span>
+
+<span class="n">dependency</span> <span class="s2">"ruby"</span>
+<span class="n">dependency</span> <span class="s2">"rubygems"</span>
+<span class="n">dependency</span> <span class="s2">"bundler"</span>
+
+<span class="n">source</span> <span class="ss">:git</span> <span class="o">=&gt;</span> <span class="s2">"https://github.com/mojombo/god.git"</span>
+<span class="n">relative_path</span> <span class="s2">"god"</span>
+
+<span class="n">env</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="s2">"PATH"</span> <span class="o">=&gt;</span> <span class="s2">"</span><span class="si">#{</span><span class="n">install_dir</span><span class="si">}</span><span class="s2">/embedded/bin:</span><span class="si">#{</span><span class="no">ENV</span><span class="p">[</span><span class="s2">"PATH"</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+<span class="p">}</span>
+
+<span class="n">build</span> <span class="k">do</span>
+  <span class="n">command</span> <span class="s2">"rake build"</span><span class="p">,</span> <span class="ss">:env</span> <span class="o">=&gt;</span> <span class="n">env</span>
+  <span class="n">command</span> <span class="s2">"sudo </span><span class="si">#{</span><span class="n">install_dir</span><span class="si">}</span><span class="s2">/embedded/bin/gem install --no-ri --no-rdoc -l pkg/god-</span><span class="si">#{</span><span class="n">gem_version</span><span class="si">}</span><span class="s2">.gem"</span><span class="p">,</span> <span class="ss">:env</span> <span class="o">=&gt;</span> <span class="n">env</span>
+  <span class="n">command</span> <span class="s2">"sudo ln -fs </span><span class="si">#{</span><span class="n">install_dir</span><span class="si">}</span><span class="s2">/embedded/bin/god </span><span class="si">#{</span><span class="n">install_dir</span><span class="si">}</span><span class="s2">/bin/god"</span><span class="p">,</span> <span class="ss">:env</span> <span class="o">=&gt;</span> <span class="n">env</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>name, buildが必須なくらいで、ほかの注意点はこのくらいでしょうか。</p>
+
+<ul>
+<li>
+<code>version</code>がgitのタグ/ブランチになる</li>
+<li>
+<code>relative_path</code> はgit cloneした後にcdする先</li>
+<li>このdependencyの３つはプリセット、独自に使う場合は別途<code>software/</code>以下に定義も可能</li>
+<li>
+<code>command</code>2行目のgemコマンドは<code>dependency</code>にgemがあるから事前に準備される</li>
+</ul>
+
+<p>ほかにも<code>c-example</code>, <code>erlang-example</code>が付いているので参考にすると良いでしょう。</p>
+
+<h2>
+<span id="projectファイルを修正" class="fragment"></span><a href="#project%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E4%BF%AE%E6%AD%A3"><i class="fa fa-link"></i></a>Projectファイルを修正</h2>
+
+<p>初期ファイルから、<code>dependency "god"</code>の一文を加えます。さきほどsoftwareで定義したものがリストできます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">config/projects/god.rb</span></div>
+<div class="highlight"><pre><span class="nb">name</span> <span class="s2">"god"</span>
+<span class="n">maintainer</span> <span class="s2">"CHANGE ME"</span>
+<span class="n">homepage</span> <span class="s2">"CHANGEME.com"</span>
+
+<span class="n">replaces</span>        <span class="s2">"god"</span>
+<span class="n">install_path</span>    <span class="s2">"/opt/god"</span>
+<span class="n">build_version</span>   <span class="no">Omnibus</span><span class="o">::</span><span class="no">BuildVersion</span><span class="p">.</span><span class="nf">new</span><span class="p">.</span><span class="nf">semver</span>
+<span class="n">build_iteration</span> <span class="mi">1</span>
+
+<span class="c1"># creates required build directories</span>
+<span class="n">dependency</span> <span class="s2">"preparation"</span>
+
+<span class="c1"># god dependencies/components</span>
+<span class="n">dependency</span> <span class="s2">"god"</span>    <span class="c1">## add this line</span>
+
+<span class="c1"># version manifest file</span>
+<span class="n">dependency</span> <span class="s2">"version-manifest"</span>
+
+<span class="n">exclude</span> <span class="s2">"</span><span class="se">\.</span><span class="s2">git*"</span>
+<span class="n">exclude</span> <span class="s2">"bundler</span><span class="se">\/</span><span class="s2">git"</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="vagrant内でパッケージ作成" class="fragment"></span><a href="#vagrant%E5%86%85%E3%81%A7%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>Vagrant内でパッケージ作成</h2>
+
+<p>upしてひたすら待ちましょう。<code>omnibus::default</code>がChefで流れていきます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">vagrant_up_ubuntu</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>vagrant up ubuntu-12.04
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-09-23T09:05:11+00:00] INFO: Forking chef instance to converge...
+<span class="o">[</span>2013-09-23T09:05:11+00:00] INFO: <span class="k">***</span> Chef 11.6.0 <span class="k">***</span>
+<span class="o">[</span>2013-09-23T09:05:11+00:00] INFO: Setting the run_list to <span class="o">[</span><span class="s2">"recipe[omnibus::default]"</span><span class="o">]</span> from JSON
+<span class="o">[</span>2013-09-23T09:05:11+00:00] INFO: Run List is <span class="o">[</span>recipe[omnibus::default]]
+<span class="o">[</span>2013-09-23T09:05:11+00:00] INFO: Run List expands to <span class="o">[</span>omnibus::default]
+<span class="o">[</span>2013-09-23T09:05:11+00:00] INFO: Starting Chef Run <span class="k">for </span>god-omnibus-build-lab
+<span class="o">[</span>2013-09-23T09:05:11+00:00] INFO: Running start handlers
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+<span class="o">[</span>builder:god] building god
+<span class="o">[</span>builder:god] Executing: <span class="sb">`</span>rake build<span class="sb">`</span> with <span class="nv">cwd</span><span class="o">=</span>/var/cache/omnibus/src/god,timeout<span class="o">=</span>5400,env<span class="o">=</span><span class="s2">"PATH=/opt/god/embedded/bin:/opt/ruby1.9/lib/ruby/gems/1.9.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games"</span>
+<span class="o">[</span>builder:god] rake <span class="nb">command </span>succeeded, 0.537102291s
+
+<span class="o">[</span>builder:god] Executing: <span class="sb">`</span><span class="nb">sudo</span> /opt/god/embedded/bin/gem <span class="nb">install</span> <span class="nt">--no-ri</span> <span class="nt">--no-rdoc</span> <span class="nt">-l</span> pkg/god-0.13.2.gem<span class="sb">`</span> with <span class="nv">cwd</span><span class="o">=</span>/var/cache/omnibus/src/god,timeout<span class="o">=</span>5400,env<span class="o">=</span><span class="s2">"PATH=/opt/god/embedded/bin:/opt/ruby1.9/lib/ruby/gems/1.9.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games"</span>
+<span class="o">[</span>builder:god] <span class="nb">sudo command </span>succeeded, 0.557560365s
+
+<span class="o">[</span>builder:god] Executing: <span class="sb">`</span><span class="nb">sudo ln</span> <span class="nt">-fs</span> /opt/god/embedded/bin/god /opt/god/bin/god<span class="sb">`</span> with <span class="nv">cwd</span><span class="o">=</span>/var/cache/omnibus/src/god,timeout<span class="o">=</span>5400,env<span class="o">=</span><span class="s2">"PATH=/opt/god/embedded/bin:/opt/ruby1.9/lib/ruby/gems/1.9.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games"</span>
+<span class="o">[</span>builder:god] <span class="nb">sudo command </span>succeeded, 0.045231982s
+
+<span class="o">[</span>builder:god] god build succeeded, 1.141283219s
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+<span class="o">[</span>health_check] Executing <span class="sb">`</span>find /opt/god/ <span class="nt">-type</span> f | xargs ldd <span class="o">&gt;</span> ldd.out 2&gt;/dev/null<span class="sb">`</span>
+<span class="o">{</span>:timestamp<span class="o">=&gt;</span><span class="s2">"2013-09-23T09:19:38.647119+0000"</span>, :message<span class="o">=&gt;</span><span class="s2">"Created deb package"</span>, :path<span class="o">=&gt;</span><span class="s2">"god_0.0.0+20130923091221-1.ubuntu.12.04_amd64.deb"</span><span class="o">}</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="debパッケージを確認" class="fragment"></span><a href="#deb%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%82%92%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>debパッケージを確認</h3>
+
+<p>vagrantのVM内で作られたdebパケージは手元に来ます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">ls_pkg-1</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">ls</span> <span class="nt">-1</span> pkg/
+god_0.0.0+20130923091221-1.ubuntu.12.04_amd64.deb
+god_0.0.0+20130923091221-1.ubuntu.12.04_amd64.deb.metadata.json
+</pre></div>
+</div>
+
+<h3>
+<span id="rpmもつくれる" class="fragment"></span><a href="#rpm%E3%82%82%E3%81%A4%E3%81%8F%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a>rpmもつくれる</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ vagrant up centos-6 
+-- snip --
+
+[health_check] Executing `find /opt/god/ -type f | xargs ldd &gt; ldd.out 2&gt;/dev/null`
+{:timestamp=&gt;"2013-09-23T09:50:53.418506+0000", :message=&gt;"no value for epoch is set, defaulting to nil", :level=&gt;:warn}
+{:timestamp=&gt;"2013-09-23T09:50:53.424771+0000", :message=&gt;"no value for epoch is set, defaulting to nil", :level=&gt;:warn}
+{:timestamp=&gt;"2013-09-23T09:51:27.379855+0000", :message=&gt;"Created rpm", :path=&gt;"god-0.0.0+20130923094240-1.el6.x86_64.rpm"}
+</pre></div></div>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">ls_pkg-2</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">ls</span> <span class="nt">-1</span> pkg/
+god-0.0.0+20130923094240-1.el6.x86_64.rpm
+god-0.0.0+20130923094240-1.el6.x86_64.rpm.metadata.json
+god_0.0.0+20130923091221-1.ubuntu.12.04_amd64.deb
+god_0.0.0+20130923091221-1.ubuntu.12.04_amd64.deb.metadata.json
+</pre></div>
+</div>
+
+<h2>
+<span id="debrpmパッケージの中身" class="fragment"></span><a href="#debrpm%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%81%AE%E4%B8%AD%E8%BA%AB"><i class="fa fa-link"></i></a>deb,rpmパッケージの中身</h2>
+
+<p>出来上がったdebの中身を見てみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">dpkg</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>dpkg <span class="nt">--info</span> /var/cache/omnibus/pkg/god_0.0.0+20130923091221-1.ubuntu.12.04_amd64.deb  
+ new debian package, version 2.0.
+ size 19872738 bytes: control <span class="nv">archive</span><span class="o">=</span> 142079 bytes.
+     282 bytes,    12 lines      control              
+  527865 bytes,  5746 lines      md5sums              
+     236 bytes,    17 lines   <span class="k">*</span>  postinst             <span class="c">#!/bin/bash</span>
+     128 bytes,     9 lines   <span class="k">*</span>  postrm               <span class="c">#!/bin/bash</span>
+ Package: god
+ Version: 0.0.0+20130923091221-1.ubuntu.12.04
+ License: unknown
+ Vendor: vagrant@god-omnibus-build-lab
+ Architecture: amd64
+ Maintainer: CHANGE ME
+ Installed-Size: 70592
+ Replaces: god
+ Section: default
+ Priority: extra
+ Homepage: CHANGEME.com
+ Description: The full stack of god
+
+<span class="nv">$ </span>dpkg <span class="nt">--contents</span> /var/cache/omnibus/pkg/god_0.0.0+20130923091221-1.ubuntu.12.04_amd64.deb | <span class="nb">head
+</span>drwx------ vagrant/vagrant   0 2013-09-23 09:19 ./
+drwxrwxr-x vagrant/vagrant   0 2013-09-23 09:19 ./opt/
+drwxr-xr-x vagrant/vagrant   0 2013-09-23 09:19 ./opt/god/
+drwxrwxr-x vagrant/vagrant   0 2013-09-23 09:19 ./opt/god/bin/
+lrwxrwxrwx vagrant/vagrant   0 2013-09-23 09:19 ./opt/god/bin/god -&gt; /opt/god/embedded/bin/god
+<span class="nt">-rw-rw-r--</span> vagrant/vagrant 1278 2013-09-23 09:19 ./opt/god/version-manifest.txt
+drwxrwxr-x vagrant/vagrant    0 2013-09-23 09:19 ./opt/god/embedded/
+drwxrwxr-x vagrant/vagrant    0 2013-09-23 09:19 ./opt/god/embedded/ssl/
+lrwxrwxrwx vagrant/vagrant    0 2013-09-23 09:13 ./opt/god/embedded/ssl/cert.pem -&gt; /opt/god/embedded/ssl/certs/cacert.pem
+<span class="nt">-rw-r--r--</span> vagrant/vagrant 10835 2013-09-23 09:15 ./opt/god/embedded/ssl/openssl.cnf
+</pre></div>
+</div>
+
+<p>ざっと8,000ファイル！ほどありました、展開するとこのように全部入りであることがわかります。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">tree_of_omnibus_god</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>tree opt/ <span class="nt">-d</span>
+opt/
+└── god
+    ├── bin
+    └── embedded
+        ├── bin
+        ├── include
+        │   ├── editline
+        │   ├── openssl
+        │   └── ruby-1.9.1
+        │       ├── ruby
+        │       │   └── backward
+        │       └── x86_64-linux
+        │           └── ruby
+        ├── lib
+        │   ├── engines
+        │   ├── pkgconfig
+        │   ├── ruby
+        │   │   ├── 1.9.1
+        │   │   │   ├── bigdecimal
+        │   │   │   ├── cgi
+        │   │   │   │   └── session
+        │   │   │   ├── <span class="nb">date</span>
+        │   │   │   ├── digest
+        │   │   │   ├── dl
+        │   │   │   ├── drb
+        │   │   │   ├── io
+        │   │   │   │   └── console
+        │   │   │   ├── irb
+        │   │   │   │   ├── cmd
+        │   │   │   │   ├── ext
+        │   │   │   │   └── lc
+        │   │   │   │       └── ja
+        │   │   │   ├── json
+        │   │   │   │   └── add
+        │   │   │   ├── matrix
+        │   │   │   ├── minitest
+        │   │   │   ├── net
+        │   │   │   ├── openssl
+        │   │   │   ├── optparse
+        │   │   │   ├── psych
+        │   │   │   │   ├── handlers
+        │   │   │   │   ├── json
+        │   │   │   │   ├── nodes
+        │   │   │   │   └── visitors
+        │   │   │   ├── racc
+        │   │   │   ├── rake
+        │   │   │   │   ├── contrib
+        │   │   │   │   ├── ext
+        │   │   │   │   ├── lib
+        │   │   │   │   └── loaders
+        │   │   │   ├── rbconfig
+        │   │   │   ├── rdoc
+        │   │   │   │   ├── generator
+        │   │   │   │   │   └── template
+        │   │   │   │   │       └── darkfish
+        │   │   │   │   │           ├── images
+        │   │   │   │   │           └── js
+        │   │   │   │   ├── markup
+        │   │   │   │   ├── parser
+        │   │   │   │   ├── ri
+        │   │   │   │   └── stats
+        │   │   │   ├── rexml
+        │   │   │   │   ├── dtd
+        │   │   │   │   ├── formatters
+        │   │   │   │   ├── light
+        │   │   │   │   ├── parsers
+        │   │   │   │   └── validation
+        │   │   │   ├── rinda
+        │   │   │   ├── ripper
+        │   │   │   ├── rss
+        │   │   │   │   ├── content
+        │   │   │   │   ├── dublincore
+        │   │   │   │   └── maker
+        │   │   │   ├── rubygems
+        │   │   │   │   ├── commands
+        │   │   │   │   ├── ext
+        │   │   │   │   ├── package
+        │   │   │   │   │   └── tar_reader
+        │   │   │   │   └── ssl_certs
+        │   │   │   ├── shell
+        │   │   │   ├── syck
+        │   │   │   ├── <span class="nb">test</span>
+        │   │   │   │   └── unit
+        │   │   │   ├── uri
+        │   │   │   ├── webrick
+        │   │   │   │   ├── httpauth
+        │   │   │   │   └── httpservlet
+        │   │   │   ├── x86_64-linux
+        │   │   │   │   ├── digest
+        │   │   │   │   ├── dl
+        │   │   │   │   ├── enc
+        │   │   │   │   │   └── trans
+        │   │   │   │   ├── io
+        │   │   │   │   ├── json
+        │   │   │   │   │   └── ext
+        │   │   │   │   ├── mathn
+        │   │   │   │   └── racc
+        │   │   │   ├── xmlrpc
+        │   │   │   └── yaml
+        │   │   ├── gems
+        │   │   │   └── 1.9.1
+        │   │   │       ├── cache
+        │   │   │       ├── doc
+        │   │   │       │   └── rubygems-1.8.24
+        │   │   │       │       ├── rdoc
+        │   │   │       │       │   ├── Gem
+        │   │   │       │       │   │   ├── Commands
+        │   │   │       │       │   │   ├── Ext
+        │   │   │       │       │   │   ├── Installer
+        │   │   │       │       │   │   ├── MockGemUi
+        │   │   │       │       │   │   ├── Package
+        │   │   │       │       │   │   ├── RemoteFetcher
+        │   │   │       │       │   │   ├── Security
+        │   │   │       │       │   │   └── StreamUI
+        │   │   │       │       │   ├── images
+        │   │   │       │       │   ├── js
+        │   │   │       │       │   ├── lib
+        │   │   │       │       │   │   ├── rbconfig
+        │   │   │       │       │   │   └── rubygems
+        │   │   │       │       │   │       ├── commands
+        │   │   │       │       │   │       ├── ext
+        │   │   │       │       │   │       └── package
+        │   │   │       │       │   ├── OpenSSL
+        │   │   │       │       │   │   └── X509
+        │   │   │       │       │   └── Psych
+        │   │   │       │       └── ri
+        │   │   │       │           ├── Date
+        │   │   │       │           ├── DefaultKey
+        │   │   │       │           ├── Gem
+        │   │   │       │           │   ├── Builder
+        │   │   │       │           │   ├── Command
+        │   │   │       │           │   ├── CommandLineError
+        │   │   │       │           │   ├── CommandManager
+        │   │   │       │           │   ├── Commands
+        │   │   │       │           │   │   ├── BuildCommand
+        │   │   │       │           │   │   ├── CertCommand
+        │   │   │       │           │   │   ├── CheckCommand
+        │   │   │       │           │   │   ├── CleanupCommand
+        │   │   │       │           │   │   ├── ContentsCommand
+        │   │   │       │           │   │   ├── DependencyCommand
+        │   │   │       │           │   │   ├── EnvironmentCommand
+        │   │   │       │           │   │   ├── FetchCommand
+        │   │   │       │           │   │   ├── GenerateIndexCommand
+        │   │   │       │           │   │   ├── HelpCommand
+        │   │   │       │           │   │   ├── InstallCommand
+        │   │   │       │           │   │   ├── ListCommand
+        │   │   │       │           │   │   ├── LockCommand
+        │   │   │       │           │   │   ├── OutdatedCommand
+        │   │   │       │           │   │   ├── OwnerCommand
+        │   │   │       │           │   │   ├── PristineCommand
+        │   │   │       │           │   │   ├── PushCommand
+        │   │   │       │           │   │   ├── QueryCommand
+        │   │   │       │           │   │   ├── RdocCommand
+        │   │   │       │           │   │   ├── SearchCommand
+        │   │   │       │           │   │   ├── ServerCommand
+        │   │   │       │           │   │   ├── SetupCommand
+        │   │   │       │           │   │   ├── SourcesCommand
+        │   │   │       │           │   │   ├── SpecificationCommand
+        │   │   │       │           │   │   ├── StaleCommand
+        │   │   │       │           │   │   ├── UninstallCommand
+        │   │   │       │           │   │   ├── UnpackCommand
+        │   │   │       │           │   │   ├── UpdateCommand
+        │   │   │       │           │   │   └── WhichCommand
+        │   │   │       │           │   ├── ConfigFile
+        │   │   │       │           │   ├── ConsoleUI
+        │   │   │       │           │   ├── DefaultUserInteraction
+        │   │   │       │           │   ├── Dependency
+        │   │   │       │           │   ├── DependencyError
+        │   │   │       │           │   ├── DependencyInstaller
+        │   │   │       │           │   ├── DependencyList
+        │   │   │       │           │   ├── DependencyRemovalException
+        │   │   │       │           │   ├── Deprecate
+        │   │   │       │           │   ├── DocManager
+        │   │   │       │           │   ├── DocumentError
+        │   │   │       │           │   ├── EndOfYAMLException
+        │   │   │       │           │   ├── ErrorReason
+        │   │   │       │           │   ├── Exception
+        │   │   │       │           │   ├── Ext
+        │   │   │       │           │   │   ├── Builder
+        │   │   │       │           │   │   ├── ConfigureBuilder
+        │   │   │       │           │   │   ├── ExtConfBuilder
+        │   │   │       │           │   │   └── RakeBuilder
+        │   │   │       │           │   ├── FakeFetcher
+        │   │   │       │           │   ├── FilePermissionError
+        │   │   │       │           │   ├── Format
+        │   │   │       │           │   ├── FormatException
+        │   │   │       │           │   ├── GemcutterUtilities
+        │   │   │       │           │   ├── GemNotFoundException
+        │   │   │       │           │   ├── GemNotInHomeException
+        │   │   │       │           │   ├── GemPathSearcher
+        │   │   │       │           │   ├── GemRunner
+        │   │   │       │           │   ├── Indexer
+        │   │   │       │           │   ├── Installer
+        │   │   │       │           │   │   └── ExtensionBuildError
+        │   │   │       │           │   ├── InstallError
+        │   │   │       │           │   ├── InstallerTestCase
+        │   │   │       │           │   ├── InstallUpdateOptions
+        │   │   │       │           │   ├── InvalidSpecificationException
+        │   │   │       │           │   ├── LoadError
+        │   │   │       │           │   ├── LocalRemoteOptions
+        │   │   │       │           │   ├── MockGemUi
+        │   │   │       │           │   │   ├── SystemExitException
+        │   │   │       │           │   │   ├── TermError
+        │   │   │       │           │   │   └── TTY
+        │   │   │       │           │   ├── NoAliasYAMLTree
+        │   │   │       │           │   ├── OldFormat
+        │   │   │       │           │   ├── OperationNotSupportedError
+        │   │   │       │           │   ├── Package
+        │   │   │       │           │   │   └── TarTestCase
+        │   │   │       │           │   ├── PackageTask
+        │   │   │       │           │   ├── PathSupport
+        │   │   │       │           │   ├── Platform
+        │   │   │       │           │   ├── PlatformMismatch
+        │   │   │       │           │   ├── RemoteError
+        │   │   │       │           │   ├── RemoteFetcher
+        │   │   │       │           │   │   └── FetchError
+        │   │   │       │           │   ├── RemoteInstallationCancelled
+        │   │   │       │           │   ├── RemoteInstallationSkipped
+        │   │   │       │           │   ├── RemoteSourceException
+        │   │   │       │           │   ├── Requirement
+        │   │   │       │           │   ├── RequirePathsBuilder
+        │   │   │       │           │   ├── Security
+        │   │   │       │           │   │   ├── Exception
+        │   │   │       │           │   │   ├── Policy
+        │   │   │       │           │   │   └── Signer
+        │   │   │       │           │   ├── Server
+        │   │   │       │           │   ├── SilentUI
+        │   │   │       │           │   ├── SourceIndex
+        │   │   │       │           │   ├── SpecFetcher
+        │   │   │       │           │   ├── Specification
+        │   │   │       │           │   ├── StreamUI
+        │   │   │       │           │   │   ├── SilentDownloadReporter
+        │   │   │       │           │   │   ├── SilentProgressReporter
+        │   │   │       │           │   │   ├── SimpleProgressReporter
+        │   │   │       │           │   │   ├── VerboseDownloadReporter
+        │   │   │       │           │   │   └── VerboseProgressReporter
+        │   │   │       │           │   ├── SystemExitException
+        │   │   │       │           │   ├── TestCase
+        │   │   │       │           │   ├── Text
+        │   │   │       │           │   ├── Uninstaller
+        │   │   │       │           │   ├── UserInteraction
+        │   │   │       │           │   ├── Validator
+        │   │   │       │           │   ├── VerificationError
+        │   │   │       │           │   ├── Version
+        │   │   │       │           │   └── VersionOption
+        │   │   │       │           ├── GemGauntlet
+        │   │   │       │           ├── Kernel
+        │   │   │       │           ├── Object
+        │   │   │       │           ├── OpenSSL
+        │   │   │       │           │   └── X509
+        │   │   │       │           │       └── Certificate
+        │   │   │       │           ├── Psych
+        │   │   │       │           │   └── PrivateType
+        │   │   │       │           ├── RbConfig
+        │   │   │       │           └── TempIO
+        │   │   │       ├── gems
+        │   │   │       │   ├── bundler-1.1.5
+        │   │   │       │   │   ├── bin
+        │   │   │       │   │   ├── lib
+        │   │   │       │   │   │   └── bundler
+        │   │   │       │   │   │       ├── man
+        │   │   │       │   │   │       ├── templates
+        │   │   │       │   │   │       │   └── newgem
+        │   │   │       │   │   │       │       ├── bin
+        │   │   │       │   │   │       │       └── lib
+        │   │   │       │   │   │       │           └── newgem
+        │   │   │       │   │   │       └── vendor
+        │   │   │       │   │   │           ├── net
+        │   │   │       │   │   │           │   └── http
+        │   │   │       │   │   │           └── thor
+        │   │   │       │   │   │               ├── actions
+        │   │   │       │   │   │               ├── core_ext
+        │   │   │       │   │   │               ├── parser
+        │   │   │       │   │   │               └── shell
+        │   │   │       │   │   ├── man
+        │   │   │       │   │   └── spec
+        │   │   │       │   │       ├── bundler
+        │   │   │       │   │       ├── cache
+        │   │   │       │   │       ├── <span class="nb">install</span>
+        │   │   │       │   │       │   └── gems
+        │   │   │       │   │       ├── lock
+        │   │   │       │   │       ├── other
+        │   │   │       │   │       ├── realworld
+        │   │   │       │   │       ├── resolver
+        │   │   │       │   │       ├── runtime
+        │   │   │       │   │       ├── support
+        │   │   │       │   │       │   ├── artifice
+        │   │   │       │   │       │   ├── fakeweb
+        │   │   │       │   │       │   └── rubygems_hax
+        │   │   │       │   │       └── update
+        │   │   │       │   ├── god-0.13.2
+        │   │   │       │   │   ├── bin
+        │   │   │       │   │   ├── doc
+        │   │   │       │   │   ├── ext
+        │   │   │       │   │   │   └── god
+        │   │   │       │   │   ├── lib
+        │   │   │       │   │   │   └── god
+        │   │   │       │   │   │       ├── behaviors
+        │   │   │       │   │   │       ├── cli
+        │   │   │       │   │   │       ├── conditions
+        │   │   │       │   │   │       ├── contacts
+        │   │   │       │   │   │       ├── event_handlers
+        │   │   │       │   │   │       └── system
+        │   │   │       │   │   └── <span class="nb">test</span>
+        │   │   │       │   │       └── configs
+        │   │   │       │   │           ├── child_events
+        │   │   │       │   │           ├── child_polls
+        │   │   │       │   │           ├── complex
+        │   │   │       │   │           ├── contact
+        │   │   │       │   │           ├── daemon_events
+        │   │   │       │   │           ├── daemon_polls
+        │   │   │       │   │           ├── degrading_lambda
+        │   │   │       │   │           ├── keepalive
+        │   │   │       │   │           ├── lifecycle
+        │   │   │       │   │           ├── matias
+        │   │   │       │   │           ├── running_load
+        │   │   │       │   │           ├── stop_options
+        │   │   │       │   │           ├── stress
+        │   │   │       │   │           └── task
+        │   │   │       │   │               └── logs
+        │   │   │       │   ├── rake-0.9.2.2
+        │   │   │       │   │   └── bin
+        │   │   │       │   └── rdoc-3.9.5
+        │   │   │       │       └── bin
+        │   │   │       └── specifications
+        │   │   ├── site_ruby
+        │   │   │   └── 1.9.1
+        │   │   │       ├── rbconfig
+        │   │   │       ├── rubygems
+        │   │   │       │   ├── commands
+        │   │   │       │   ├── ext
+        │   │   │       │   ├── package
+        │   │   │       │   │   └── tar_reader
+        │   │   │       │   └── ssl_certs
+        │   │   │       └── x86_64-linux
+        │   │   └── vendor_ruby
+        │   │       └── 1.9.1
+        │   │           └── x86_64-linux
+        │   └── terminfo -&gt; ../share/terminfo
+        ├── man
+        │   ├── man1
+        │   ├── man3
+        │   ├── man5
+        │   └── man7
+        ├── share
+        │   ├── man
+        │   │   ├── man1
+        │   │   ├── man3
+        │   │   └── man5
+        │   ├── tabset
+        │   └── terminfo
+        │       ├── 1
+        │       ├── 2
+        │       ├── 3
+        │       ├── 4
+        │       ├── 5
+        │       ├── 6
+        │       ├── 7
+        │       ├── 8
+        │       ├── 9
+        │       ├── a
+        │       ├── A
+        │       ├── b
+        │       ├── c
+        │       ├── d
+        │       ├── e
+        │       ├── E
+        │       ├── f
+        │       ├── g
+        │       ├── h
+        │       ├── i
+        │       ├── j
+        │       ├── k
+        │       ├── l
+        │       ├── L
+        │       ├── m
+        │       ├── M
+        │       ├── n
+        │       ├── N
+        │       ├── o
+        │       ├── p
+        │       ├── P
+        │       ├── q
+        │       ├── Q
+        │       ├── r
+        │       ├── s
+        │       ├── t
+        │       ├── u
+        │       ├── v
+        │       ├── w
+        │       ├── x
+        │       ├── X
+        │       └── z
+        └── ssl
+            ├── certs
+            ├── man
+            │   ├── man1
+            │   ├── man3
+            │   ├── man5
+            │   └── man7
+            ├── misc
+            └── private
+
+401 directories
+</pre></div>
+</div>
+
+<h2>
+<span id="godのインストール" class="fragment"></span><a href="#god%E3%81%AE%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>godのインストール</h2>
+
+<p>もちろんこのパッケージをインストールすればgodが利用できます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">god_version</span></div>
+<div class="highlight"><pre><span class="c"># /opt/god/bin/god -V</span>
+Version: 0.13.2
+Polls: enabled
+Events: netlink
+</pre></div>
+</div>
+
+<h2>
+<span id="終わりに" class="fragment"></span><a href="#%E7%B5%82%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>終わりに</h2>
+
+<p>サービスのコアコンポーネントを独自で作ったりしているけど配布にお悩みの場合、このような富豪的デプロイもありですね。</p>

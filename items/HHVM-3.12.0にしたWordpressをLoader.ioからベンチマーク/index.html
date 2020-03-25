@@ -1,0 +1,129 @@
+<p>以前HHVM3.6がリリースされた頃、こんなことをやった。<a href="http://qiita.com/sawanoboly/items/e422b366439f67bfb01c" id="reference-c3b32ff27b3c0a438047">Loader.ioを使ってWordPressのバックエンド構成を変えつつ性能を測ってみる、php-fpmとHHVM</a></p>
+
+<p>で、HHVMのLTSとされる3.12.0がリリースされたので、またベンチを取ってみようという試み。前回とはWordPressおよびMySQLのバージョンも違うので、直接参考にはならないけど。</p>
+
+<h2>
+<span id="まず通常のベンチマーク" class="fragment"></span><a href="#%E3%81%BE%E3%81%9A%E9%80%9A%E5%B8%B8%E3%81%AE%E3%83%99%E3%83%B3%E3%83%81%E3%83%9E%E3%83%BC%E3%82%AF"><i class="fa fa-link"></i></a>まず通常のベンチマーク</h2>
+
+<p>AMIはこちら。<a href="https://aws.amazon.com/marketplace/pp/B00V5JYXTO" rel="nofollow noopener" target="_blank">WordPress Powered by AMIMOTO (HHVM)</a> インスタンスはc3.large。</p>
+
+<p>ルールは前回と一緒。トップページと、管理パネルの記事一覧表示。</p>
+
+<h3>
+<span id="トップページ" class="fragment"></span><a href="#%E3%83%88%E3%83%83%E3%83%97%E3%83%9A%E3%83%BC%E3%82%B8"><i class="fa fa-link"></i></a>トップページ</h3>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbdc9370d-4e24-b575-458d-6b8b80098922.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bef0748ddd6bf05ccd42d0d69927d65c" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbdc9370d-4e24-b575-458d-6b8b80098922.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bef0748ddd6bf05ccd42d0d69927d65c" alt="normal_top.jpg" title="normal_top.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/bdc9370d-4e24-b575-458d-6b8b80098922.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbdc9370d-4e24-b575-458d-6b8b80098922.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=124ef4eee3ff104ff75522d31c497c22 1x" loading="lazy"></a></p>
+
+<p>前回と比較。</p>
+
+<table>
+<thead>
+<tr>
+<th>-</th>
+<th>HHVM3.6</th>
+<th>HHVM3.12</th>
+<th>(参考)Nginx Cache</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平均レスポンスタイム</td>
+<td>1566ms</td>
+<td>1405ms</td>
+<td>25ms</td>
+</tr>
+<tr>
+<td>リクエスト処理数</td>
+<td>5387</td>
+<td>5995</td>
+<td>346791</td>
+</tr>
+</tbody>
+</table>
+
+<p>ちょっとだけ速い。。？ 誤差程度かな。そもそもキャッシュするしこんなもんで。</p>
+
+<h3>
+<span id="管理パネル" class="fragment"></span><a href="#%E7%AE%A1%E7%90%86%E3%83%91%E3%83%8D%E3%83%AB"><i class="fa fa-link"></i></a>管理パネル</h3>
+
+<p>ログイン状態でも比較してみる。これも条件は前回と同じ。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2eed8313-9f71-71f0-20f5-1fd261d07ac1.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=27f036ffd77c14c2443b5c64d270b0b3" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2eed8313-9f71-71f0-20f5-1fd261d07ac1.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=27f036ffd77c14c2443b5c64d270b0b3" alt="Admin.jpg" title="Admin.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/2eed8313-9f71-71f0-20f5-1fd261d07ac1.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2eed8313-9f71-71f0-20f5-1fd261d07ac1.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=52ec7ee6573787c803406f810b934446 1x" loading="lazy"></a></p>
+
+<table>
+<thead>
+<tr>
+<th>-</th>
+<th>HHVM3.6</th>
+<th>HHVM3.12</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平均レスポンスタイム</td>
+<td>8866ms</td>
+<td>4652ms</td>
+</tr>
+<tr>
+<td>リクエスト処理数</td>
+<td>1429</td>
+<td>3273</td>
+</tr>
+</tbody>
+</table>
+
+<p>おや、倍くらい速いぞこれ。何かしら効率が上がったとか、WordPressがそもそも早くなったのかは不明だが良いことだ。<br>
+Failも無いしね。</p>
+
+<h2>
+<span id="補足repoauthoritative" class="fragment"></span><a href="#%E8%A3%9C%E8%B6%B3repoauthoritative"><i class="fa fa-link"></i></a>補足:RepoAuthoritative</h2>
+
+<p>HHVM3.8以降でPHPのコードを事前にバイトコードに変換するRepoAuthoritativeという機能がついた。</p>
+
+<ul>
+<li><a href="https://github.com/facebook/hhvm/wiki/performance-tuning" rel="nofollow noopener" target="_blank">Use RepoAuthoritative</a></li>
+</ul>
+
+<blockquote>
+<p>Enabling RepoAuthoritative mode involves pre-compiling all of your source code into a bytecode repo.</p>
+</blockquote>
+
+<p>通常はリクエストに応じて生成するバイトコードのを、ウォームアップ代わりに事前に生成したい時に使う。</p>
+
+<p>変換には<code>hhvm-repo-mode</code>コマンドをつかう。</p>
+
+<p>※ <code>hhvm-repo-mode</code>コマンド、ソースでは<code>hphp/tools/oss-repo-mode</code>に入っている。binに無い場合でも、大抵パッケージのどこかに入っています。</p>
+
+<p>これ、HHVMを止めないといけないので注意。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ time sudo hhvm-repo-mode enable /var/www/vhosts/
+Stopping hhvm:                                             [  OK  ]
+running hphp...
+parsing inputs...
+
+...中略
+
+analyzeProgram...
+analyzeProgram took 0'00" (786762 us) wall time
+parsing inputs took 0'02" (2681877 us) wall time
+pre-optimizing...
+pre-optimizing took 0'00" (614471 us) wall time
+creating binary HHBC files...
+creating binary HHBC files took 0'17" (17448057 us) wall time
+all files saved in /tmp ...
+running hphp took 0'21" (21824534 us) wall time
+Starting hhvm:                                             [  OK  ]
+
+Success!
+
+real    0m21.997s
+user    0m36.008s
+sys 0m1.400s
+</pre></div></div>
+
+<p>先日microでやったらいつまでも終わらなかったが、c3.largeでは21秒で終わった。リソースはに余裕が必要そうだ。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>HHVM3.12は、以前からかわらない安定度が保たれていた。どうやら高速になった部分もあるのかなー。</p>

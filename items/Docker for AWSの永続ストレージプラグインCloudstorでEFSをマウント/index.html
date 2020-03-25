@@ -1,0 +1,141 @@
+<p>Docker for AWS(以下D4a)はGAの際、永続化ストレージをサポートするCloudstorというプラグインを添付するようになりました。</p>
+
+<p><a href="https://docs.docker.com/docker-for-aws/persistent-data-volumes/" class="autolink" rel="nofollow noopener" target="_blank">https://docs.docker.com/docker-for-aws/persistent-data-volumes/</a></p>
+
+<p>D4aの<code>17.06.0-ce</code>でどのように使うのか試して見たので使用感など。</p>
+
+<h2>
+<span id="cloudstorがサポートするストレージのタイプ" class="fragment"></span><a href="#cloudstor%E3%81%8C%E3%82%B5%E3%83%9D%E3%83%BC%E3%83%88%E3%81%99%E3%82%8B%E3%82%B9%E3%83%88%E3%83%AC%E3%83%BC%E3%82%B8%E3%81%AE%E3%82%BF%E3%82%A4%E3%83%97"><i class="fa fa-link"></i></a>Cloudstorがサポートするストレージのタイプ</h2>
+
+<ul>
+<li>EBSにデバイスを作成してマウント
+
+<ul>
+<li>k8sでのPersistent Volumesのような感じ。</li>
+<li>複数コンテナからの同時利用ははなし。</li>
+</ul>
+</li>
+<li>EFSで任意のディレクトリをマウント
+
+<ul>
+<li>対象のEFSはテンプレートパラメータで自動作成。</li>
+<li>dockerdが環境変数<code>EFS_ID_REGULAR</code>, <code>EFS_ID_MAXIO</code>で対象を決めるので、一応既存のEFSも使えなくはない。</li>
+<li>複数コンテナからの同時利用OK。</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="つかってみる" class="fragment"></span><a href="#%E3%81%A4%E3%81%8B%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>つかってみる</h2>
+
+<p>ドキュメントではswarmモード(service)での使い方しか出ていませんが、単発の<code>docker run</code>でも普通に機能します。</p>
+
+<p>次のようにvolume-driverに<code>cloudstor:aws</code>を指定、デフォルトはEFS。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-it</span> <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">--volume-driver</span><span class="o">=</span>cloudstor:aws <span class="se">\</span>
+  <span class="nt">-v</span> sharedvol1:/shareddata <span class="se">\</span>
+  alpine:latest
+</pre></div></div>
+
+<p>これで、EFSに<code>sharedvol1</code>ディレクトリが作成され、Dockerコンテナからは<code>/shareddata</code>で参照できます。</p>
+
+<p>EFS側に親ディレクトリがない場合もソース指定可能です。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-it</span> <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">--volume-driver</span><span class="o">=</span>cloudstor:aws <span class="se">\</span>
+  <span class="nt">-v</span> sharedvol5/1/2/3:/shareddata <span class="se">\</span>
+  alpine:latest <span class="nb">touch</span> /shareddata/touchfile
+</pre></div></div>
+
+<p>この場合、Dockerコンテナ起動時にEFSに対して<code>sharedvol5/1/2/3</code>というディレクトリを作ります。</p>
+
+<p>なおマウント時にサブディレクトリを指定した場合も、VOLUME名はトップのディレクトリが使われます。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker volume <span class="nb">ls
+</span>DRIVER              VOLUME NAME
+cloudstor:aws       sharedvol1
+cloudstor:aws       sharedvol2
+cloudstor:aws       sharedvol5
+<span class="nb">local               </span>sshkey
+</pre></div></div>
+
+<p>挙動はこんな感じです。基本的には<code>docker service/volume</code>で作成し、全ノードで参照できるようにしておくとよいでしょう。</p>
+
+<h3>
+<span id="このときefsの中身" class="fragment"></span><a href="#%E3%81%93%E3%81%AE%E3%81%A8%E3%81%8Defs%E3%81%AE%E4%B8%AD%E8%BA%AB"><i class="fa fa-link"></i></a>このとき、EFSの中身</h3>
+
+<p>他のEC2インスタンスから<code>/mnt/efs</code>にEFSをマウントして、中の様子を見てみます。<br>
+VOLUME名のディレクトリが作られているだけでした。シンプルですね。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>find /mnt/efs
+/mnt/efs
+/mnt/efs/sharedvol2
+/mnt/efs/sharedvol1
+/mnt/efs/sharedvol1/testfile
+/mnt/efs/sharedvol5
+/mnt/efs/sharedvol5/1
+/mnt/efs/sharedvol5/1/2
+/mnt/efs/sharedvol5/1/2/3/touchfile
+/mnt/efs/fs-ef07xxxx:sharedvol1
+</pre></div></div>
+
+<p>一番下にあるやつは、EFSのID指定できないかなと考えたけど、とりあえずやってみて失敗に終わったディレクトリです。<br>
+Cloudstorはソースが非公開なので、<code>-v fs-ef07xxxx:sharedvol1:/shareddata</code>などと実行したらこんなことに。</p>
+
+<h3>
+<span id="docker-volume-rm-でデータも消える" class="fragment"></span><a href="#docker-volume-rm-%E3%81%A7%E3%83%87%E3%83%BC%E3%82%BF%E3%82%82%E6%B6%88%E3%81%88%E3%82%8B"><i class="fa fa-link"></i></a>docker volume rm で、データも消える</h3>
+
+<p>volumeの詳細をチェック。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker volume inspect sharedvol5
+<span class="o">[</span>
+    <span class="o">{</span>
+        <span class="s2">"Driver"</span>: <span class="s2">"cloudstor:aws"</span>,
+        <span class="s2">"Labels"</span>: null,
+        <span class="s2">"Mountpoint"</span>: <span class="s2">"/mnt/efs/reg/sharedvol5"</span>,
+        <span class="s2">"Name"</span>: <span class="s2">"sharedvol5"</span>,
+        <span class="s2">"Options"</span>: <span class="o">{}</span>,
+        <span class="s2">"Scope"</span>: <span class="s2">"local"</span>
+    <span class="o">}</span>
+<span class="o">]</span>
+</pre></div></div>
+
+<p>いたって普通です。EFSレギュラー/MAXIO用の親ディレクトリを作り、そこにマウントと。<br>
+D4aではちょっとわからないけども、ホストから見るとEFSをマウントしっぱなのでしょうね。</p>
+
+<p>最後に消したらどうなるのかと、<code>docker volume rm sharedvol5</code>してみました。<br>
+まずdocker管理下のvolumeは消えます、そしてEFS側も綺麗さっぱりです。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="c"># 他インスタンスからEFSの中身を参照</span>
+<span class="nv">$ </span>find /mnt/efs
+/mnt/efs
+/mnt/efs/sharedvol2
+/mnt/efs/sharedvol1
+/mnt/efs/sharedvol1/testfile
+/mnt/efs/fs-ef07xxxx:sharedvol1
+</pre></div></div>
+
+<p>ここ連動して消えちゃうのか。。Docker視点ならそれでよいけど、コンフィグの共有とかでマウントするとかのNFSな視点だと違和感はあります。<br>
+マウントが外れるだけという選択肢があってもよいとおもって、<a href="https://forums.docker.com/t/how-to-keep-files-on-efs-after-volume-rm/35234" rel="nofollow noopener" target="_blank">フォーラムに投稿</a>しておきました。</p>
+
+<h2>
+<span id="終わりに" class="fragment"></span><a href="#%E7%B5%82%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>終わりに</h2>
+
+<p>Docker Swarmが安定していればこの作りでも維持していけそうな気はしますが、なんだかんだでまだ不安定になったりします。<br>
+なにか手当をして回復するよりたいてい作り直した方が早いのですが、そういう運用ではvolumeのエントリーが巻き込まれてデータを消しそうな予感がしているため、(自分の用途では)フィードバックしつつもう少し様子見かなあ。</p>
+
+<h2>
+<span id="ebsも少しだけ触って見る" class="fragment"></span><a href="#ebs%E3%82%82%E5%B0%91%E3%81%97%E3%81%A0%E3%81%91%E8%A7%A6%E3%81%A3%E3%81%A6%E8%A6%8B%E3%82%8B"><i class="fa fa-link"></i></a>EBSも少しだけ触って見る</h2>
+
+<p>volume-optに<code>backing=relocatable</code>を渡すと単体コンテナ用のEBSボリュームを作れます。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker volume create <span class="nt">-d</span> cloudstor:aws <span class="se">\</span>
+  <span class="nt">--opt</span> <span class="nv">backing</span><span class="o">=</span>relocatable <span class="se">\</span>
+  <span class="nt">--opt</span> <span class="nv">size</span><span class="o">=</span>8 ebs1
+
+<span class="o">=&gt;</span> ebs1
+</pre></div></div>
+
+<p>コマンド実行すると、ちゃんとEBSができていました。最初の紹介の通り、k8sのpvみたい。<br>
+こちらも<code>docker volume rm ebs1</code>などとすると、EBSごと消えます。</p>

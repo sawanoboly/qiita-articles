@@ -1,0 +1,21 @@
+
+
+<p>『サーバの証明書更新してください！ファイルはこれ』と、鍵セットだけ貰った時。いやそれどこ発行でいつまで有効やねんと。</p>
+
+<p>とりあえずベンダをチェック。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>openssl x509 <span class="nt">-in</span> ssl.example.com <span class="nt">-text</span> | <span class="nb">grep</span> <span class="nt">-i</span> Issuer
+        Issuer: <span class="nv">C</span><span class="o">=</span>JP, <span class="nv">O</span><span class="o">=</span>Cybertrust Japan Co., Ltd., <span class="nv">CN</span><span class="o">=</span>Cybertrust Japan Public CA G3
+                CA Issuers - URI:http://sureseries-crl.cybertrust.ne.jp/SureServer/ctjpubcag3/ctjpubcag3.crt
+</pre></div></div>
+
+<p>発行者が<code>Cybertrust Japan Public CA G3</code>だ。<br>
+ほな中間証明書いるので、 <a href="https://www.cybertrust.ne.jp/ssl/support/download_ca.html#02" class="autolink" rel="nofollow noopener" target="_blank">https://www.cybertrust.ne.jp/ssl/support/download_ca.html#02</a> から取ってくるか。。。</p>
+
+<p>ついでに期限をチェック。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre> <span class="nv">$ </span>openssl x509 <span class="nt">-in</span> ssl.example.com.cert.pem <span class="nt">-text</span> | <span class="nb">grep</span> <span class="nt">-i</span> after
+            Not After : Sep 30 14:59:00 2015 GMT
+</pre></div></div>
+
+<p>リマインダにでも登録しとくか。</p>

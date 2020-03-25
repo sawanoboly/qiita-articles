@@ -1,0 +1,34 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Opscode Chefではレシピをランリスト(run_list)としてコマンドラインクライアントに渡したり、Role等に記述します。</p>
+
+<p>あれって結局どういう書式が有効なんでしょうかと思いまとめました。</p>
+
+<h2>
+<span id="有効な書式一覧" class="fragment"></span><a href="#%E6%9C%89%E5%8A%B9%E3%81%AA%E6%9B%B8%E5%BC%8F%E4%B8%80%E8%A6%A7"><i class="fa fa-link"></i></a>有効な書式一覧</h2>
+
+<p>ｰ <code>recipe[recipe_name]</code><br>
+- <code>recipe[recipe_name@1.0.0]</code><br>
+- <code>role[role_name]</code><br>
+- <code>recipe_name@1.0.0</code><br>
+- <code>recipe_name</code></p>
+
+<p>引用元はは<a href="https://github.com/opscode/chef/blob/master/lib/chef/run_list/run_list_item.rb" rel="nofollow noopener" target="_blank">こちらのソース</a>、MasterなのでChef11ですね。</p>
+
+<p>目を引くのは@ですね、実はランリストで直接バージョン指定ができるんですね。</p>
+
+<h2>
+<span id="recipe_nameについて" class="fragment"></span><a href="#recipe_name%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6"><i class="fa fa-link"></i></a><code>recipe_name</code>について</h2>
+
+<p>さて、<code>recipe_name</code>を更に分解すると<code>cookbook_name::recipe_name</code>、または<code>recipe_name</code>という書式になります。<br>
+バージョン指定もつける時は、<code>mysql::default@1.2.1</code>のように@より前にレシピの名前をつければOKです。</p>
+
+<h2>
+<span id="ちなみにsoloでは" class="fragment"></span><a href="#%E3%81%A1%E3%81%AA%E3%81%BF%E3%81%ABsolo%E3%81%A7%E3%81%AF"><i class="fa fa-link"></i></a>ちなみにsoloでは</h2>
+
+<p>@でのバージョンは無視されるようです？<br>
+ディレクトリを分けるという対応があります、soloならmetadata.rbの<code>name</code>はかぶってOK。</p>

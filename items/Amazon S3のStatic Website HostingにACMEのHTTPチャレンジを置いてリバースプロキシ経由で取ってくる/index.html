@@ -1,0 +1,118 @@
+<p>もう<a href="https://letsencrypt.jp/" rel="nofollow noopener" target="_blank">Let's Encrypt</a>もすっかり普及したね！</p>
+
+<p>さて、証明書を発行するためには、いくつか用意された手段でドメインの所有を確認してもらう(チャレンジ)必要があります。<br>
+手段の中でも最もサクサクなのはHTTPかな、と思っています。</p>
+
+<p>でも環境によってはコンテンツをいちいちHTTPサーバのローカルに置くのが面倒だ。証明書ペアだけ作って、一旦手元に欲しいケースもあるのだ。</p>
+
+<p>そうだプロキシしよう。</p>
+
+<h2>
+<span id="なんでs3に置いてみるの" class="fragment"></span><a href="#%E3%81%AA%E3%82%93%E3%81%A7s3%E3%81%AB%E7%BD%AE%E3%81%84%E3%81%A6%E3%81%BF%E3%82%8B%E3%81%AE"><i class="fa fa-link"></i></a>なんでS3に置いてみるの？</h2>
+
+<p>このHTTPチャレンジは基本的に使い捨てなので、次のように管理できるとまあまあ都合がよいのです。</p>
+
+<ul>
+<li>キーバリューストア的使い勝手で、出し入れ簡単</li>
+<li>コンテンツ掃除が面倒なので、寿命つき
+
+<ul>
+<li>そもそも一回取れればいいだけ</li>
+</ul>
+</li>
+</ul>
+
+<p>なかでもS3は、</p>
+
+<ul>
+<li>オブジェクトストレージ(キーバリュー)
+
+<ul>
+<li>トークンはまず被らないのでキーの重複も無い</li>
+</ul>
+</li>
+<li>Lyfecycleを使えば最短1dayで勝手に消せるので掃除いらず</li>
+<li>たいてい稼働している。</li>
+<li>この用途なら月あたり数円かかる？ という感じ</li>
+</ul>
+
+<p>という、なかなかマッチした環境。</p>
+
+<p>s3が禁止されたら、<code>ngx_mruby + redis</code>ででもやってみるかなあ。<br>
+POSTしたらそのままGET(1回レスポンスしたら消す)できるだけのアプリを<a href="http://www.sinatrarb.com/" rel="nofollow noopener" target="_blank">sinatra</a>あたり書いたりでも良いけど。</p>
+
+<h2>
+<span id="s3の仕込み" class="fragment"></span><a href="#s3%E3%81%AE%E4%BB%95%E8%BE%BC%E3%81%BF"><i class="fa fa-link"></i></a>S3の仕込み</h2>
+
+<ul>
+<li>バケットを<code>your-token-bucket</code>などで作成。</li>
+<li>static web hosting有効</li>
+<li>Lifecycle =&gt; delete 1day</li>
+</ul>
+
+<p>最低限でこのくらい。</p>
+
+<h2>
+<span id="リバースプロキシの仕込みnginx" class="fragment"></span><a href="#%E3%83%AA%E3%83%90%E3%83%BC%E3%82%B9%E3%83%97%E3%83%AD%E3%82%AD%E3%82%B7%E3%81%AE%E4%BB%95%E8%BE%BC%E3%81%BFnginx"><i class="fa fa-link"></i></a>リバースプロキシの仕込み(Nginx)</h2>
+
+<p>単純に、<code>/.well-known/acme-challenge/</code>に来たらS3のバケットにリクエストすればよい。</p>
+
+<p>これで十分、このやり取りは暗号で行なう必要すら無いし。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>location /.well-known/acme-challenge/ {
+    proxy_pass   http://your-token-bucket.s3-website-ap-northeast-1.amazonaws.com/;
+}
+</pre></div></div>
+
+<p>AutoScaleとかでHTTPサーバが並んでしまっているとかの環境でも、同じ設定にしておけば大丈夫なのがよいね。</p>
+
+<h2>
+<span id="httpチャレンジを通してみた" class="fragment"></span><a href="#http%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%82%92%E9%80%9A%E3%81%97%E3%81%A6%E3%81%BF%E3%81%9F"><i class="fa fa-link"></i></a>HTTPチャレンジを通してみた</h2>
+
+<p>じゃあ手元のPry(Ruby)で。</p>
+
+<p><a href="http://qiita.com/sawanoboly/items/f23e73c613e9454076b8" title="letsencrypt - RubyでLet's Encryptのスクリプト - Qiita" id="reference-bcb72367e2ae4e81abbf">letsencrypt - RubyでLet's Encryptのスクリプト - Qiita</a></p>
+
+<p>ドメインのチャレンジを発行してもらいます。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="p">(</span><span class="err">略</span><span class="p">)</span><span class="err">クライアント作成とか、</span><span class="no">Auth</span><span class="err">とかをすませて。</span>
+
+<span class="c1"># チャレンジ内容の取得</span>
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span>
+<span class="o">=&gt;</span> <span class="s2">".well-known/acme-challenge/-oiuJqnLwVNitQlAKQfoX5cw0SpOKk8Y5ErRwFtG_d0"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">file_content</span>
+<span class="o">=&gt;</span> <span class="s2">"-oiuJqnLwVNitQlAKQfoX5cw0SpOKk8Y5ErRwFtG_d0.7HGvevoQOzBU7mTxRBHr572hhPEd_Hx-ugxK_mF13yI"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">content_type</span>
+<span class="o">=&gt;</span> <span class="s2">"text/plain"</span>
+</pre></div></div>
+
+<p>上記の内容を元に、s3にオブジェクトを作成しましょう。</p>
+
+<p>そのあと<code>request_verification</code>。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; challenge.request_verification
+=&gt; true
+</pre></div></div>
+
+<p>すぐにboulderからリクエストが来た、バッチリ200で返せたね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>66.133.109.36 - - [05/Jan/2016:04:53:32 +0000] "GET /.well-known/acme-challenge/-oiuJqnLwVNitQlAKQfoX5cw0SpOKk8Y5ErRwFtG_d0 HTTP/1.1" 200 88 "-" "Mozilla/5.0 (compatible; Let's Encrypt validation server; +https://www.letsencrypt.org)"
+</pre></div></div>
+
+<p>チャレンジ<code>valid</code>、と。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">verify_status</span>
+<span class="o">=&gt;</span> <span class="s2">"valid"</span>
+</pre></div></div>
+
+<p>これでcsrを作って送信すれば手元に証明書作成完了と。メールで担当者に送るとか、ロードバランサに適用するため、AWSにアップするとかできるね。</p>
+
+<h2>
+<span id="気になること" class="fragment"></span><a href="#%E6%B0%97%E3%81%AB%E3%81%AA%E3%82%8B%E3%81%93%E3%81%A8"><i class="fa fa-link"></i></a>気になること</h2>
+
+<p>引けたレコードと応答するサーバが全然関係無くても、共通のバックエンドを指定しているサーバにさえリクエストがくれば普通にチャレンジ成功します。<br>
+なのでドメインを持っていることが前提で、とりあえず<code>*</code>なAレコードを用意してあれば結構自由につくれる。</p>
+
+<p>まあ、ドメイン1つにつき、証明書上限10ヶくらいのようだし、DV認証なんてそのくらい手軽でよいよね。</p>

@@ -1,0 +1,21 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>適当なサーバに<code>knife bootstrap</code>したあと、<code>knife ssh</code>などでなにかコマンド実行させよう。</p>
+
+<p><code>knife ssh</code>はデフォルトではホスト名で接続に行くので、IPが引けないとこうなる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>knife ssh "hostname:hogehoge" "uptime"
+FATAL: 1 node found, but do not have the required attribute to stablish the connection. Try setting another attribute to open the connection using --attribute.
+</pre></div></div>
+
+<p>この場合、ohaiで取れる別の<code>attribute</code>を使うことが出来る。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>knife ssh "hostname:hogehoge" "uptime" --attribute ipaddress
+210.xxx.xxx.xxx  02:03:11 up 33 min,  2 users,  load average: 0.00, 0.00, 0.00
+</pre></div></div>
+
+<p>OK.</p>

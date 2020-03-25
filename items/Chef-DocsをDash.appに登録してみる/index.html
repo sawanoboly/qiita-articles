@@ -1,0 +1,90 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>が、イマイチだった。</p>
+
+<p>MacのアプリDashというドキュメントビュワーで、<a href="http://docs.opscode.com" rel="nofollow noopener" target="_blank">OpscodeのChef Docs</a>が読めるといいかもしれないと思い挑戦。<br>
+Dash.appについてはこの辺で紹介されてます。 =&gt; <a href="http://d.hatena.ne.jp/naoya/20130218/1361171277" rel="nofollow noopener" target="_blank">Dash | naoyaのはてなダイアリー</a></p>
+
+<h2>
+<span id="doc2dashのセットアップ" class="fragment"></span><a href="#doc2dash%E3%81%AE%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a><code>doc2dash</code>のセットアップ</h2>
+
+<p>ChefDocsはSphinxプロジェクトなので、Dashが用意している<a href="https://pypi.python.org/pypi/doc2dash" rel="nofollow noopener" target="_blank">doc2dash</a>ユーティリティを使えるようセットアップ。</p>
+
+<p>OSX標準で長らく触ってなかったpip(1.0.2)がマトモに動かなかったのでとりあえずbrewのを使うことに。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">install_doc2dash</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>brew <span class="nb">install </span>python
+<span class="nv">$ </span>brew <span class="nb">link</span> <span class="nt">--overwrite</span> python
+
+<span class="nv">$ </span>/usr/local/bin/pip <span class="nb">install</span> <span class="nt">--user</span> doc2dash
+<span class="nv">$ </span>/usr/local/bin/pip <span class="nb">install</span> <span class="nt">--user</span> sphinx
+
+<span class="nv">$ </span>doc2dash <span class="nt">--version</span>
+doc2dash 1.1.0
+</pre></div>
+</div>
+
+<p>OK。</p>
+
+<h2>
+<span id="chefdocsをローカルでビルドする" class="fragment"></span><a href="#chefdocs%E3%82%92%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%A7%E3%83%93%E3%83%AB%E3%83%89%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ChefDocsをローカルでビルドする</h2>
+
+<p>GithubからChefDocsを取ってきます。</p>
+
+<p><code>$ git clone --depth 1 https://github.com/opscode/chef-docs.git</code></p>
+
+<p>たまに<code>sphinx-build</code>がFailするコミットがあるようなので、一応コミットログをみて安定してそうなリビジョンをCheckOutしましょう。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span><span class="nb">cd </span>chef-doc
+<span class="nv">$ </span><span class="nb">export </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"/usr/local/share/python:</span><span class="nv">$PATH</span><span class="s2">"</span>
+<span class="nv">$ </span>make master
+</pre></div></div>
+
+<p>ビルドは時間がかかるので、しばらくほっときましょう。</p>
+
+<h3>
+<span id="genindexの捏造" class="fragment"></span><a href="#genindex%E3%81%AE%E6%8D%8F%E9%80%A0"><i class="fa fa-link"></i></a>genindexの捏造</h3>
+
+<p><code>doc2dash</code>ユーティリティでsphinxプロジェクトをdashに取り込むためには索引の<code>genindex.html</code>が必要ですが、Chef Docsのプロジェクトではこれを生成するようになっていません。<br>
+<code>conf.py</code>を編集すれば<code>genindex.html</code>を作れるのですが、元々のファイルがindexに登録する単語を定義してないので、生成しても空っぽです。</p>
+
+<p>仕方ないので一旦トップページを使いまわすことにしてコピーします。</p>
+
+<p><code>$ cp build/index.html build/genindex.html</code></p>
+
+<h2>
+<span id="dashに登録" class="fragment"></span><a href="#dash%E3%81%AB%E7%99%BB%E9%8C%B2"><i class="fa fa-link"></i></a>Dashに登録</h2>
+
+<p><code>build/</code>以下に出力されたhtml達を<code>doc2dash</code>ユーティリティを使用してDashに登録します。</p>
+
+<p><code>$ doc2dash --name 'Chef Docs' -A build --icon ./images/opscode_chef_html_logo.png</code></p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F60c02423-bec3-d28b-126c-e4d4b6477425.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c5278e6c7c9c4aebdd3f968b353d4cad" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F60c02423-bec3-d28b-126c-e4d4b6477425.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c5278e6c7c9c4aebdd3f968b353d4cad" alt="Dash.jpg" title="Dash.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/60c02423-bec3-d28b-126c-e4d4b6477425.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F60c02423-bec3-d28b-126c-e4d4b6477425.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=14ead753430dd8712e454828b5a02a70 1x" loading="lazy"></a></p>
+
+<p>Okayです。</p>
+
+<h2>
+<span id="dashで閲覧" class="fragment"></span><a href="#dash%E3%81%A7%E9%96%B2%E8%A6%A7"><i class="fa fa-link"></i></a>Dashで閲覧</h2>
+
+<p>登録されたドキュメントをDashで開いてみます、見た目は良い感じです。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F92cc8916-2976-a67e-3d47-af3b533576e1.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fc79858e6ddce36491684f3ba062b841" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F92cc8916-2976-a67e-3d47-af3b533576e1.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fc79858e6ddce36491684f3ba062b841" alt="Dash2.jpg" title="Dash2.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/92cc8916-2976-a67e-3d47-af3b533576e1.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F92cc8916-2976-a67e-3d47-af3b533576e1.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=7768ba207c4b713ecfd3673bda433318 1x" loading="lazy"></a></p>
+
+<h3>
+<span id="既知の残念" class="fragment"></span><a href="#%E6%97%A2%E7%9F%A5%E3%81%AE%E6%AE%8B%E5%BF%B5"><i class="fa fa-link"></i></a>既知の残念</h3>
+
+<p>ローカルなので閲覧はサクサクですが、Dashならではというところまでは至らず。 変換時に何か仕込めば良いのでしょうが。</p>
+
+<ul>
+<li>検索不可</li>
+<li>モジュール一覧なし</li>
+<li>クリックしたらWebに飛んじゃう箇所がいくつか</li>
+</ul>
+
+<p>要はhtmlファイルをブラウザで見るのと変わらないので、docsetsの作り方を理解してもう少し便利にしたいところ。<br>
+とりあえず右上の<code>index</code>から索引を開く運用でなら使えるかも。</p>

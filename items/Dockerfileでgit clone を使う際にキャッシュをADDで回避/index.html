@@ -1,0 +1,262 @@
+<p>Dockerfile内で<code>RUN git clone</code>な行を入れておいて、『ああキャッシュ使われた』ってなるのをどうしよう。<br>
+<code>--no-cache</code>もあるけど、毎回全ビルドはさすがになあと。</p>
+
+<ul>
+<li>参考
+
+<ul>
+<li><a href="https://github.com/docker/docker/issues/1996" title="New feature request: Selectively disable caching for specific RUN commands in Dockerfile · Issue #1996 · docker/docker" rel="nofollow noopener" target="_blank">New feature request: Selectively disable caching for specific RUN commands in Dockerfile · Issue #1996 · docker/docker</a></li>
+<li><a href="https://groups.google.com/forum/#!topic/docker-user/FQ5RufTfG-k" title="Dockerfile cache on a git repo - Google グループ" rel="nofollow noopener" target="_blank">Dockerfile cache on a git repo - Google グループ</a></li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="サンプルdockerイメージ" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%ABdocker%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B8"><i class="fa fa-link"></i></a>サンプルDockerイメージ</h2>
+
+<p>適当なsinatraアプリでDockerfileのサンプルを作った。</p>
+
+<ul>
+<li>rubyコンテナベース</li>
+<li>Githubからコードを落とす</li>
+<li>bundlerでライブラリ(Rubygems)を入れる</li>
+<li>公開先は<a href="https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB" rel="nofollow noopener" target="_blank">ココ</a>
+</li>
+</ul>
+
+<div class="code-frame" data-lang="Dockerfile">
+<div class="code-lang"><span class="bold">Dockerfile</span></div>
+<div class="highlight"><pre><span class="k">FROM</span><span class="s"> ruby</span>
+<span class="k">MAINTAINER</span><span class="s"> SAWANOBORI Yukihiko &lt;sawanoboriyu@higanworks.com&gt;</span>
+
+<span class="k">RUN </span>git clone <span class="nt">--depth</span> 1 https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB.git
+<span class="k">WORKDIR</span><span class="s"> eb_nginxBrockRubyviaELB</span>
+<span class="k">RUN </span>bundle <span class="nb">install</span>
+
+<span class="k">EXPOSE</span><span class="s"> 9292</span>
+<span class="k">ENTRYPOINT</span><span class="s"> ["bundle", "exec", "rackup"]</span>
+</pre></div>
+</div>
+
+<p>ビルドしてみる。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">docker_build</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker build <span class="nt">--rm</span> <span class="nt">-t</span> ebn:latest <span class="nb">.</span>
+Sending build context to Docker daemon 3.906 MB
+Sending build context to Docker daemon 
+Step 0 : FROM ruby
+ <span class="nt">---</span><span class="o">&gt;</span> 51473a2975de
+Step 1 : MAINTAINER SAWANOBORI Yukihiko &lt;sawanoboriyu@higanworks.com&gt;
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> a1814396dbf3
+Step 2 : RUN git clone <span class="nt">--depth</span> 1 https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB.git
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> 272d8729ebbe
+Step 3 : WORKDIR eb_nginxBrockRubyviaELB
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> 33929ab00ff0
+Step 4 : RUN bundle <span class="nb">install</span>
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> 08d07d381eb6
+Step 5 : EXPOSE 9292
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> f5f072ffc73e
+Step 6 : ENTRYPOINT bundle <span class="nb">exec </span>rackup <span class="nt">-o</span> 0.0.0.0
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> b39745296053
+Successfully built b39745296053
+</pre></div>
+</div>
+
+<p>ここまでは普通。</p>
+
+<h3>
+<span id="キャッシュ効いたら困る時がある行" class="fragment"></span><a href="#%E3%82%AD%E3%83%A3%E3%83%83%E3%82%B7%E3%83%A5%E5%8A%B9%E3%81%84%E3%81%9F%E3%82%89%E5%9B%B0%E3%82%8B%E6%99%82%E3%81%8C%E3%81%82%E3%82%8B%E8%A1%8C"><i class="fa fa-link"></i></a>キャッシュ効いたら困る時がある行</h3>
+
+<p>これだ。</p>
+
+<ul>
+<li><code>RUN git clone --depth 1 https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB.git</code></li>
+</ul>
+
+<p>リモート側の更新があっても、buildの際に調べたりはしない。<br>
+そもそもDockerのイメージにgitとか入れるべきではないという話もあるけど、選択肢の１つとしてね。</p>
+
+<h2>
+<span id="add" class="fragment"></span><a href="#add"><i class="fa fa-link"></i></a>ADD</h2>
+
+<p>冒頭の参考リンクでは色々議論があって、<code>ADD</code>も奨められていた。</p>
+
+<p><a href="https://docs.docker.com/articles/dockerfile_best-practices/#build-cache" title="Best practices for writing Dockerfiles - Docker Documentation" rel="nofollow noopener" target="_blank">Best practices for writing Dockerfiles - Docker Documentation</a></p>
+
+<p>じゃあ<code>RUN git clone</code>の前にADDを入れてみよう。</p>
+
+<div class="code-frame" data-lang="Dockerfile">
+<div class="code-lang"><span class="bold">Dockerfile</span></div>
+<div class="highlight"><pre><span class="k">FROM</span><span class="s"> ruby</span>
+<span class="k">MAINTAINER</span><span class="s"> SAWANOBORI Yukihiko &lt;sawanoboriyu@higanworks.com&gt;</span>
+
+<span class="k">ADD</span><span class="s"> dummyfile /data/   ## これを追加。</span>
+<span class="k">RUN </span>git clone <span class="nt">--depth</span> 1 https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB.git
+<span class="k">WORKDIR</span><span class="s"> eb_nginxBrockRubyviaELB</span>
+<span class="k">RUN </span>bundle <span class="nb">install</span>
+
+<span class="k">EXPOSE</span><span class="s"> 9292</span>
+<span class="k">ENTRYPOINT</span><span class="s"> ["bundle", "exec", "rackup"]</span>
+</pre></div>
+</div>
+
+<p>ADDにおけるキャッシュ条件判断では<a href="http://golang.org/pkg/os/#FileInfo" rel="nofollow noopener" target="_blank">FileInfo</a>のオブジェクト全体からsumを生成してる？っぽかった。<br>
+ModTimeを含むので、例えばtouchすればキャッシュと違うという判断をされるのかなと。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">docker_build_with_add</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">touch </span>dummyfile <span class="o">&amp;&amp;</span> docker build <span class="nt">--rm</span> <span class="nt">-t</span> ebn:latest <span class="nb">.</span>
+Sending build context to Docker daemon 
+Step 0 : FROM ruby
+ <span class="nt">---</span><span class="o">&gt;</span> 51473a2975de
+Step 1 : MAINTAINER SAWANOBORI Yukihiko &lt;sawanoboriyu@higanworks.com&gt;
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> a1814396dbf3
+Step 2 : ADD dummyfile /data/       <span class="c">## ここからキャッシュじゃなくなる</span>
+ <span class="nt">---</span><span class="o">&gt;</span> 0572e2f222c5
+Removing intermediate container f2b365e473ad
+Step 3 : RUN git clone <span class="nt">--depth</span> 1 https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB.git
+ <span class="nt">---</span><span class="o">&gt;</span> Running <span class="k">in </span>35f2bc462d1e
+Cloning into <span class="s1">'eb_nginxBrockRubyviaELB'</span>...
+ <span class="nt">---</span><span class="o">&gt;</span> 2bfaa75326d2
+Removing intermediate container 35f2bc462d1e
+Step 4 : WORKDIR eb_nginxBrockRubyviaELB
+ <span class="nt">---</span><span class="o">&gt;</span> Running <span class="k">in </span>b3781281f1f7
+ <span class="nt">---</span><span class="o">&gt;</span> a8fb39ad4ca0
+Removing intermediate container b3781281f1f7
+Step 5 : RUN bundle <span class="nb">install</span>
+ <span class="nt">---</span><span class="o">&gt;</span> Running <span class="k">in </span>b51e6bc8f546
+Don<span class="s1">'t run Bundler as root. Bundler can ask for sudo if it is needed, and
+installing your bundle as root will break this application for all non-root
+users on this machine.
+Fetching gem metadata from https://rubygems.org/..........
+Installing rack 1.6.0
+
+-- 以下省略
+</span></pre></div>
+</div>
+
+<p><code>toucn &amp;&amp; build</code>は何度繰り返してもADD以降をビルドするようになった。</p>
+
+<h3>
+<span id="addの対象" class="fragment"></span><a href="#add%E3%81%AE%E5%AF%BE%E8%B1%A1"><i class="fa fa-link"></i></a>ADDの対象</h3>
+
+<p>Docker buildを起動するワーキングディレクトリ次第で選ぶ。<br>
+gitリポジトリの場合はこのへんのファイルをADDにすると、更新の必要がないときはキャッシュも効くし丁度いいかもしれない。</p>
+
+<ul>
+<li>.git/index</li>
+<li>.git/logs/HEAD</li>
+</ul>
+
+<p>他のケースでは、たとえばElasticBeanstalkのDockerタイプにebコマンドでデプロイするなら、ワーキングディレクトリが毎回作られるので<code>ADD dummyfile /data/</code>は毎回別ハッシュになる。要はtouchの必要が無い。<br>
+逆に<code>.git/</code>が無くなるのでそこは使えない。</p>
+
+<p>ADDはfromに適当なURLも指定できるので、<a href="https://github.com/docker/docker/issues/1996#issuecomment-51292997" rel="nofollow noopener" target="_blank">Issueにあったサンプル</a>ではランダム文字列を生成するWEBサービスを呼んでいた。</p>
+
+<h2>
+<span id="add以降" class="fragment"></span><a href="#add%E4%BB%A5%E9%99%8D"><i class="fa fa-link"></i></a>ADD以降</h2>
+
+<p>ADD以降全部やり直し、になるのもそれはそれで勿体無い。<br>
+アプリの場合大抵後にライブラリのインストール、<code>bundler</code>(Ruby)や<code>npm install</code>(node.js)が必要で、場合によっては結構時間がかかる。</p>
+
+<h3>
+<span id="ライブラリ用に親ホストまたは別コンテナを使う" class="fragment"></span><a href="#%E3%83%A9%E3%82%A4%E3%83%96%E3%83%A9%E3%83%AA%E7%94%A8%E3%81%AB%E8%A6%AA%E3%83%9B%E3%82%B9%E3%83%88%E3%81%BE%E3%81%9F%E3%81%AF%E5%88%A5%E3%82%B3%E3%83%B3%E3%83%86%E3%83%8A%E3%82%92%E4%BD%BF%E3%81%86"><i class="fa fa-link"></i></a>ライブラリ用に親ホスト(または別コンテナ)を使う</h3>
+
+<p>とりあえずbundlerならgemを置くパスが選べるので、Rubygemsのインストール先をマウントしてみることにした。Capistranoの要領だ。<br>
+条件が限定されるものの時間が短縮できそう。</p>
+
+<p><code>bundle install</code>の先がbuild時には使えないため、Dockerfileから出してスクリプトに。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bin/run_on_docker.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+bundle <span class="nb">install</span> <span class="nt">--path</span><span class="o">=</span>/data/shared/tmp_myapp/vendor
+bundle <span class="nb">exec </span>rackup <span class="nt">-o</span> 0.0.0.0
+</pre></div>
+</div>
+
+<p><code>ENTRYPOINT</code>も追って変更。</p>
+
+<div class="code-frame" data-lang="Dockerfile">
+<div class="code-lang"><span class="bold">Dockerfile</span></div>
+<div class="highlight"><pre><span class="k">FROM</span><span class="s"> ruby</span>
+<span class="k">MAINTAINER</span><span class="s"> SAWANOBORI Yukihiko &lt;sawanoboriyu@higanworks.com&gt;</span>
+
+<span class="k">ADD</span><span class="s"> dummyfile /data/</span>
+<span class="k">RUN </span>git clone <span class="nt">--depth</span> 1 https://github.com/ZCloud-Firstserver/eb_nginxBrockRubyviaELB.git
+<span class="k">WORKDIR</span><span class="s"> eb_nginxBrockRubyviaELB</span>
+
+<span class="k">EXPOSE</span><span class="s"> 9292</span>
+<span class="k">ENTRYPOINT</span><span class="s"> ["./bin/run_on_docker.sh"]</span>
+</pre></div>
+</div>
+
+<p>そして<code>docker run</code>すると初回は<code>Installing ...</code>でbundle.</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">docker_run1</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-v</span> /tmp:/data/shared <span class="nt">--rm</span> <span class="nt">-p</span> 9292:9292 <span class="nt">-ti</span> ebn:latest 
+Don<span class="s1">'t run Bundler as root. Bundler can ask for sudo if it is needed, and installing your bundle as root will break this application for all non-root users on this machine.
+Fetching gem metadata from https://rubygems.org/..........
+Installing rack 1.6.0
+Installing puma 2.11.0
+Installing rack-protection 1.5.3
+Installing tilt 1.4.1
+Installing sinatra 1.4.5
+Using bundler 1.7.12
+Your bundle is complete!
+It was installed into /data/shared/tmp_myapp/vendor
+Puma 2.11.0 starting...
+* Min threads: 0, max threads: 16
+* Environment: development
+* Listening on tcp://0.0.0.0:9292
+</span></pre></div>
+</div>
+
+<p>止めてもう一度<code>docker run</code>するとGemfile.lockに沿って<code>Using ...</code>でbundle.</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">docker_run2</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-v</span> /tmp:/data/shared <span class="nt">--rm</span> <span class="nt">-p</span> 9292:9292 <span class="nt">-ti</span> ebn:latest 
+Don<span class="s1">'t run Bundler as root. Bundler can ask for sudo if it is needed, and installing your bundle as root will break this application for all non-root users on this machine.
+Using rack 1.6.0
+Using puma 2.11.0
+Using rack-protection 1.5.3
+Using tilt 1.4.1
+Using sinatra 1.4.5
+Using bundler 1.7.12
+Your bundle is complete!
+It was installed into /data/shared/tmp_myapp/vendor
+Puma 2.11.0 starting...
+* Min threads: 0, max threads: 16
+* Environment: development
+* Listening on tcp://0.0.0.0:9292
+</span></pre></div>
+</div>
+
+<p>コンテナを止めた後、親(boot2docker)からマウントしていた所にはRubygemsが残されている。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">show_cached_gems</span></div>
+<div class="highlight"><pre><span class="o">(</span>docker@boot2docker<span class="o">)</span> <span class="nv">$ </span>ll /tmp/tmp_myapp/vendor/ruby/2.2.0/
+
+total 28
+drwxr-xr-x    2 root     root          4096 Feb  2 07:03 bin/
+drwxr-xr-x    2 root     root          4096 Feb  2 07:03 build_info/
+drwxr-xr-x    2 root     root          4096 Feb  2 07:03 cache/
+drwxr-xr-x    2 root     root          4096 Feb  2 07:03 doc/
+drwxr-xr-x    3 root     root          4096 Feb  2 07:03 extensions/
+drwxr-xr-x    7 root     root          4096 Feb  2 07:03 gems/
+drwxr-xr-x    2 root     root          4096 Feb  2 07:03 specifications/
+</pre></div>
+</div>
+
+<p>ベストとまでは思わないけど、色々と回避することができた。</p>

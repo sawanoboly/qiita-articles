@@ -1,0 +1,118 @@
+
+
+<p>古めのJoyent SmartOSでTest-Kitchenをしようとしたら、Ohai7.2以上,Chef11.8以上がさくっとインストール出来ない状態だった。<br>
+Omnibusにも対応してないのでプラグインを作ってRubyGemsからChefを入れていたけど、バージョン指定の処理を実装しておらず困ったので、とりあえずモンキーパッチすることにした。</p>
+
+<h2>
+<span id="rubyコマンドでrequireする" class="fragment"></span><a href="#ruby%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E3%81%A7require%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>rubyコマンドでrequireする。</h2>
+
+<p>実行時に適当なRubyファイルを読ませるには-<code>r(require)</code>オプションを付けてRubyを実行すればよい。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">monkey_patch/hoge.rb</span></div>
+<div class="highlight"><pre><span class="nb">puts</span> <span class="s1">'hogehoge'</span>
+</pre></div>
+</div>
+
+<p>ファイルを用意して<code>-r</code></p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>ruby <span class="nt">-r</span> ./monkey_patch/hoge ./bin/kitchen <span class="nt">-v</span>
+hogehoge
+Test Kitchen version 1.2.1
+</pre></div></div>
+
+<p>ただ毎回rubyコマンドからkitchenするのは面倒。</p>
+
+<h2>
+<span id="じゃあkitchenymlに書いちゃう" class="fragment"></span><a href="#%E3%81%98%E3%82%83%E3%81%82kitchenyml%E3%81%AB%E6%9B%B8%E3%81%84%E3%81%A1%E3%82%83%E3%81%86"><i class="fa fa-link"></i></a>じゃあ.kitchen.ymlに書いちゃう</h2>
+
+<p>driverで<code>ohai_version</code>、<code>chef_version</code>を指定したら、<code>gem install</code>時に指定するようにしたかったので、応急処置として<code>.kitchen.yml</code>でクラスをオープンしてしまうことにした。<code>def install_chef_for_smartos</code>をまるっとオーバーライド。</p>
+
+<p>なんか色々と酷い気がするので常用はおすすめしません。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver_plugin</span><span class="pi">:</span> <span class="s">zcloudjp</span>
+<span class="na">driver_config</span><span class="pi">:</span>
+  <span class="na">api_key</span><span class="pi">:</span> <span class="s">PLEASE_REPLACE_IT_BY.kitchen.local.yml</span>
+  <span class="na">ohai_version</span><span class="pi">:</span> <span class="s">7.0.4</span>
+  <span class="na">chef_version</span><span class="pi">:</span> <span class="s">11.6.2</span>
+
+<span class="na">provisioner</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">chef_solo</span>
+  <span class="na">require_chef_omnibus</span><span class="pi">:</span> <span class="no">false</span>
+  <span class="na">data_path</span><span class="pi">:</span> <span class="s">&lt;%= ENV['NO_DATA'] ? "null"</span> <span class="pi">:</span> <span class="s2">"</span><span class="s">data"</span> <span class="err">%</span><span class="pi">&gt;</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">sm-base64</span>
+  <span class="na">driver_config</span><span class="pi">:</span>
+    <span class="na">username</span><span class="pi">:</span> <span class="s">root</span>
+    <span class="na">metadata_file</span><span class="pi">:</span> <span class="s">tk/metadata.json</span>
+    <span class="na">dataset</span><span class="pi">:</span> <span class="s2">"</span><span class="s">sdc:sdc:base64:1.9.1"</span>
+    <span class="na">package</span><span class="pi">:</span> <span class="s">xxx_xxx</span>
+    <span class="na">with_gcc</span><span class="pi">:</span> <span class="no">true</span>
+
+<span class="na">suites</span><span class="pi">:</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">default</span>
+  <span class="na">use_sudo</span><span class="pi">:</span> <span class="no">false</span>
+  <span class="na">run_list</span><span class="pi">:</span>
+  <span class="na">attributes</span><span class="pi">:</span> <span class="pi">{}</span>
+
+
+<span class="s">&lt;%</span>
+<span class="c1">## Monkey Patch for SmartOS 1.9.1</span>
+<span class="s">require 'kitchen/driver/zcloudjp'</span>
+
+<span class="s">module Kitchen</span>
+  <span class="s">module Driver</span>
+    <span class="s">class Zcloudjp</span>
+      <span class="s">class_eval do</span>
+        <span class="s">def install_chef_for_smartos(ssh_args)</span>
+          <span class="s">if config[:with_gcc]</span>
+            <span class="s">install_pkgs = "gcc47 gcc47-runtime scmgit-base scmgit-docs gmake ruby193-base ruby193-yajl ruby193-nokogiri ruby193-readline pkg-config"</span>
+          <span class="s">else</span>
+            <span class="s">install_pkgs = "scmgit-base scmgit-docs ruby193-base ruby193-yajl ruby193-nokogiri ruby193-readline"</span>
+          <span class="s">end</span>
+
+          <span class="s">ssh(ssh_args, &lt;&lt;-INSTALL.gsub(/^ {10}/, ''))</span>
+            <span class="s">if [ ! -f /opt/local/bin/chef-client ]; then</span>
+              <span class="s">pkgin -y install</span> <span class="c1">#{install_pkgs}</span>
+
+            <span class="c1">## for smf cookbook</span>
+              <span class="s">pkgin -y install libxslt</span>
+
+            <span class="s">## install chef</span>
+              <span class="s">gem update --system --no-ri --no-rdoc</span>
+              <span class="s">gem install --no-ri --no-rdoc ohai</span> <span class="c1">#{config[:ohai_version] ? '--version ' + %Q{'=  #{config[:ohai_version]}'} : nil }</span>
+              <span class="s">gem install --no-ri --no-rdoc chef</span> <span class="c1">#{config[:chef_version] ? '--version ' + %Q{'=  #{config[:chef_version]}'} : nil }</span>
+              <span class="s">gem install --no-ri --no-rdoc rb-readline</span>
+            <span class="s">fi</span>
+          <span class="s">INSTALL</span>
+        <span class="s">end</span>
+      <span class="s">end</span>
+    <span class="s">end</span>
+  <span class="s">end</span>
+<span class="s">end</span>
+<span class="err">%</span><span class="pi">&gt;</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="外部ファイルにしてkitchenymlでロード" class="fragment"></span><a href="#%E5%A4%96%E9%83%A8%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AB%E3%81%97%E3%81%A6kitchenyml%E3%81%A7%E3%83%AD%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>外部ファイルにして.kitchen.ymlでロード</h3>
+
+<p>流石に<code>.kitchen.yml</code>が読みにくいのでloadにした。<code>SafeYAML::OPTIONS[:default_mode]</code>は警告の抑制。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.yml</span></div>
+<div class="highlight"><pre><span class="nn">...</span>
+
+<span class="s">&lt;%</span>
+<span class="c1">## Monkey Patch for SmartOS 1.9.1</span>
+<span class="s">SafeYAML::OPTIONS[:default_mode] = :unsafe</span>
+<span class="s">load File.expand_path('../monkey_patch/fix_install_for191.rb', __FILE__)</span>
+<span class="err">%</span><span class="pi">&gt;</span>
+</pre></div>
+</div>
+
+<p>なお、後日Gemのほうに反映してモンキーパッチは消しました。</p>

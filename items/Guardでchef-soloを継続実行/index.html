@@ -1,0 +1,330 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://github.com/guard/guard" rel="nofollow noopener" target="_blank">Guard</a>はファイルの変更をチェックして任意のタスクを実行するツール。</p>
+
+<p>この手のものはテストを実行して開発・リファクタリングする用途に使うツールですが、<code>chef-solo</code>とレシピでやってもよいじゃないかと。</p>
+
+<h2>
+<span id="概要" class="fragment"></span><a href="#%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>概要</h2>
+
+<p>さてこれから何をするか</p>
+
+<ul>
+<li>Guardに attributes/recipes以下の<code>default.rb</code>を監視してもらう。</li>
+<li>対象のファイルに変更があったらchef-soloを実行する。</li>
+<li>ついでに<code>node.json</code>ファイルも監視。</li>
+</ul>
+
+<p>このTipを手軽に再現するために<a href="https://github.com/higanworks/guard_chefsolo_example" rel="nofollow noopener" target="_blank">githubにコードを公開</a>してます。</p>
+
+<h2>
+<span id="guardのインストール" class="fragment"></span><a href="#guard%E3%81%AE%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>Guardのインストール</h2>
+
+<p><code>bundler</code>を使おう、<code>guard-shell</code>はシェルスクリプトを実行する雛形を作るためのプラグインだ。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="no">Gemfile</span>
+<span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s1">'chef'</span>
+<span class="n">gem</span> <span class="s1">'guard'</span>
+<span class="n">gem</span> <span class="s1">'guard-shell'</span>
+</pre></div>
+</div>
+
+<p>こんな感じでbundle.</p>
+
+<h2>
+<span id="guard-shellの初期化" class="fragment"></span><a href="#guard-shell%E3%81%AE%E5%88%9D%E6%9C%9F%E5%8C%96"><i class="fa fa-link"></i></a>Guard-shellの初期化</h2>
+
+<p><code>guard</code>のサブコマンドで初期化する、<code>shell</code>オプションをつかう。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">shell-out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>guard init shell
+14:37:52 - INFO - Guard here! It looks like your project has a Gemfile, yet you are running
+14:37:52 - INFO - Writing new Guardfile to /root/github/guard_chefsolo_example/Guardfile
+14:37:52 - INFO - shell guard added to Guardfile, feel free to edit it
+</pre></div>
+</div>
+
+<p>初期化で作成された<code>Guardfile</code>には監視対象と実行コマンドの例が書かれている。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Guardfile(sample)</span></div>
+<div class="highlight"><pre><span class="c1"># A sample Guardfile</span>
+<span class="c1"># More info at https://github.com/guard/guard#readme</span>
+
+<span class="c1"># Add files and commands to this file, like the example:</span>
+<span class="c1">#   watch(%r{file/path}) { `command(s)` }</span>
+<span class="c1">#</span>
+<span class="n">guard</span> <span class="s1">'shell'</span> <span class="k">do</span>
+  <span class="n">watch</span><span class="p">(</span><span class="sr">/(.*).txt/</span><span class="p">)</span> <span class="p">{</span><span class="o">|</span><span class="n">m</span><span class="o">|</span> <span class="sb">`tail </span><span class="si">#{</span><span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="sb">`</span> <span class="p">}</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>ぱっと見で<code>*.txt</code>ファイルが更新されたら<code>tail</code>を実行と分かるね。</p>
+
+<h2>
+<span id="chef-soloの準備" class="fragment"></span><a href="#chef-solo%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>Chef-soloの準備</h2>
+
+<p>chef-solo実行のため必要なファイルを用意します。</p>
+
+<h3>
+<span id="solorbとnodejson" class="fragment"></span><a href="#solorb%E3%81%A8nodejson"><i class="fa fa-link"></i></a>solo.rbとnode.json</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">solo.rb</span></div>
+<div class="highlight"><pre><span class="n">cookbook_path</span> <span class="p">[</span>
+  <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../cookbooks"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">node.json</span></div>
+<div class="highlight"><pre><span class="p">{}</span><span class="w">
+</span></pre></div>
+</div>
+
+<p>jsonは<code>run_list</code>を並べたり<code>attributes</code>をoverrideするので空ですがひとまず作成。</p>
+
+<h3>
+<span id="guardfileへの反映" class="fragment"></span><a href="#guardfile%E3%81%B8%E3%81%AE%E5%8F%8D%E6%98%A0"><i class="fa fa-link"></i></a>Guardfileへの反映</h3>
+
+<p>適当なCookBookとして<code>sandbox</code>というのを作ります、github参照。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Guardfile</span></div>
+<div class="highlight"><pre><span class="n">guard</span> <span class="s1">'shell'</span> <span class="k">do</span>
+  <span class="n">watch</span><span class="p">(</span><span class="s1">'cookbooks/sandbox/attributes/default.rb'</span><span class="p">)</span> <span class="p">{</span> <span class="sb">`chef-solo -c solo.rb -j node.json`</span> <span class="p">}</span>
+<span class="k">end</span>
+
+<span class="n">guard</span> <span class="s1">'shell'</span> <span class="k">do</span>
+  <span class="n">watch</span><span class="p">(</span><span class="s1">'cookbooks/sandbox/recipes/defaults.rb'</span><span class="p">)</span> <span class="p">{</span> <span class="sb">`chef-solo -c solo.rb -j node.json`</span> <span class="p">}</span>
+<span class="k">end</span>
+
+<span class="n">guard</span> <span class="s1">'shell'</span> <span class="k">do</span>
+  <span class="n">watch</span><span class="p">(</span><span class="s1">'node.json'</span><span class="p">)</span> <span class="p">{</span> <span class="sb">`chef-solo -c solo.rb -j node.json`</span> <span class="p">}</span>
+<span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>分かりやすさ重視で3つの単純なルールを作りました、watchのルールは正規表現などでもっと簡潔にかけます。</p>
+
+<p>この時点のファイル状態を<a href="https://github.com/higanworks/guard_chefsolo_example/tree/1_start" rel="nofollow noopener" target="_blank">1_start@github</a>というブランチにしています。お試しはcheckoutでどうぞ。</p>
+
+<h2>
+<span id="guard起動と動作チェック" class="fragment"></span><a href="#guard%E8%B5%B7%E5%8B%95%E3%81%A8%E5%8B%95%E4%BD%9C%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>Guard起動と動作チェック</h2>
+
+<p>では<code>guard</code>コマンドを実行します、専用のプロンプトが起動するので別のShellセッションを開いてそちらで。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>guard 
+15:08:01 - INFO - Guard here! It looks like your project has a Gemfile, yet you are running
+15:08:01 - INFO - Guard uses NotifySend to send notifications.
+15:08:01 - INFO - Guard uses TerminalTitle to send notifications.
+15:08:01 - INFO - Guard is now watching at <span class="s1">'/root/github/guard_chefsolo_example'</span>
+<span class="o">[</span>Listen warning]:
+  Listen will be polling <span class="k">for </span>changes. Learn more at https://github.com/guard/listen#polling-fallback.
+
+<span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> 
+</pre></div>
+</div>
+
+<p>ファイル監視の挙動は環境によります、ここでは<code>polling</code>が選択されました(joyent smartos)。</p>
+
+<p>抜ける時は<code>exit</code>です。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> <span class="nb">exit
+</span>15:22:13 - INFO - Bye bye...
+</pre></div>
+</div>
+
+<h3>
+<span id="ファイル変更の検知とコマンド実行" class="fragment"></span><a href="#%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E5%A4%89%E6%9B%B4%E3%81%AE%E6%A4%9C%E7%9F%A5%E3%81%A8%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>ファイル変更の検知とコマンド実行</h3>
+
+<p>早速監視対象の<code>node.json</code>を更新します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(main)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">touch </span>node.json
+</pre></div>
+</div>
+
+<p>程なくタスクが実行されます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="o">[</span>2013-04-22T15:12:34+00:00] INFO: <span class="k">***</span> Chef 11.4.0 <span class="k">***</span>
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Run List is <span class="o">[]</span>
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Run List expands to <span class="o">[]</span>
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Starting Chef Run <span class="k">for </span>ipf_test
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Running start handlers
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Start handlers complete.
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Chef Run <span class="nb">complete </span><span class="k">in </span>0.005674519 seconds
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Running report handlers
+<span class="o">[</span>2013-04-22T15:12:36+00:00] INFO: Report handlers <span class="nb">complete</span>
+<span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> 
+</pre></div>
+</div>
+
+<p><code>node.json</code>に<code>sandbox::default</code>の実行を記述してみます。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">node.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"run_list"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="s2">"sandbox::default"</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<p>エディタで開いて保存すると、またタスクが自動的に実行されます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="o">[</span>2013-04-22T15:19:33+00:00] INFO: <span class="k">***</span> Chef 11.4.0 <span class="k">***</span>
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Setting the run_list to <span class="o">[</span><span class="s2">"sandbox::default"</span><span class="o">]</span> from JSON
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Run List is <span class="o">[</span>recipe[sandbox::default]]
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Run List expands to <span class="o">[</span>sandbox::default]
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Starting Chef Run <span class="k">for </span>ipf_test
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Running start handlers
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Start handlers complete.
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Chef Run <span class="nb">complete </span><span class="k">in </span>0.00620992 seconds
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Running report handlers
+<span class="o">[</span>2013-04-22T15:19:36+00:00] INFO: Report handlers <span class="nb">complete</span>
+<span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> 
+</pre></div>
+</div>
+
+<p><code>run_list</code>に<code>["sandbox::default"]</code>が加わっています。</p>
+
+<p>そしてこの時点のファイル状態を<a href="https://github.com/higanworks/guard_chefsolo_example/tree/2_run_guard" rel="nofollow noopener" target="_blank">2_run_guard@github</a>というブランチにしています。こちらもお試しはcheckoutでどうぞ。</p>
+
+<h2>
+<span id="guardに追われるようにレシピを作成する" class="fragment"></span><a href="#guard%E3%81%AB%E8%BF%BD%E3%82%8F%E3%82%8C%E3%82%8B%E3%82%88%E3%81%86%E3%81%AB%E3%83%AC%E3%82%B7%E3%83%94%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Guardに追われるようにレシピを作成する</h2>
+
+<p>ではguardを起動させた状態で<strong>ファイル保存＝即コンバージョン</strong>という適度な緊張感のなかレシピを書いていきましょう。<br><br>
+この手法でのCookbook開発は<strong>危ないので</strong>クラウドIaaSの適当なインスタンスでやりましょう。</p>
+
+<h3>
+<span id="fileを作成する" class="fragment"></span><a href="#file%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>fileを作成する</h3>
+
+<p>手軽な所で<code>File</code>リソースをレシピに書いてみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/sandbox/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">file</span> <span class="s2">"/tmp/cha-ra.txt"</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="s2">"head-chara"</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>レシピを保存すると<code>Guard</code>によりchef-soloが実行されます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="o">[</span>2013-04-22T15:42:08+00:00] INFO: <span class="k">***</span> Chef 11.4.0 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-04-22T15:42:10+00:00] INFO: Processing file[/tmp/cha-ra.txt] action create <span class="o">(</span>sandbox::default line 11<span class="o">)</span>
+<span class="o">[</span>2013-04-22T15:42:11+00:00] INFO: entered create
+<span class="o">[</span>2013-04-22T15:42:11+00:00] INFO: file[/tmp/cha-ra.txt] created file /tmp/cha-ra.txt
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> 
+</pre></div>
+</div>
+
+<p>ちょっとパーミッションを追加してみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/sandbox/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">file</span> <span class="s2">"/tmp/cha-ra.txt"</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="s2">"head-chara"</span>
+  <span class="n">mode</span> <span class="s2">"0600"</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>早速コンバージョンされます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="o">[</span>2013-04-22T15:45:11+00:00] INFO: <span class="k">***</span> Chef 11.4.0 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-04-22T15:45:14+00:00] INFO: Processing file[/tmp/cha-ra.txt] action create <span class="o">(</span>sandbox::default line 11<span class="o">)</span>
+<span class="o">[</span>2013-04-22T15:45:14+00:00] INFO: file[/tmp/cha-ra.txt] mode changed to 600
+<span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> 
+<span class="nt">--</span> snip <span class="nt">--</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="attributesを追加してrecpieに反映" class="fragment"></span><a href="#attributes%E3%82%92%E8%BF%BD%E5%8A%A0%E3%81%97%E3%81%A6recpie%E3%81%AB%E5%8F%8D%E6%98%A0"><i class="fa fa-link"></i></a>attributesを追加して、recpieに反映</h3>
+
+<p>ファイルのコンテンツを<code>attributes</code>で管理するため、<code>attributes/default.rb</code>を作ってみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/sandbox/attributes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">default</span><span class="p">[</span><span class="s1">'text_contents'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'heno-kappa'</span>
+</pre></div>
+</div>
+
+<p><code>guard</code>が目ざとく<code>chef-solo</code>を走らせますが先ほどと変更がないため何も起こりません。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="o">[</span>2013-04-22T15:50:40+00:00] INFO: <span class="k">***</span> Chef 11.4.0 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-04-22T15:50:43+00:00] INFO: Processing file[/tmp/cha-ra.txt] action create <span class="o">(</span>sandbox::default line 11<span class="o">)</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> 
+</pre></div>
+</div>
+
+<p>ではレシピ側で<code>attributes</code>を使うように変更を入れます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/sandbox/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">file</span> <span class="s2">"/tmp/cha-ra.txt"</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="n">node</span><span class="p">[</span><span class="s1">'text_contents'</span><span class="p">]</span>
+  <span class="n">mode</span> <span class="s2">"0600"</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>chef-solo</code>が実行され、ファイルが更新されました。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">shell-out(guard)</span></div>
+<div class="highlight"><pre><span class="o">[</span>2013-04-22T15:55:15+00:00] INFO: <span class="k">***</span> Chef 11.4.0 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-04-22T15:55:17+00:00] INFO: Processing file[/tmp/cha-ra.txt] action create <span class="o">(</span>sandbox::default line 11<span class="o">)</span>
+<span class="o">[</span>2013-04-22T15:55:17+00:00] INFO: file[/tmp/cha-ra.txt] backed up to /var/chef/backup/tmp/cha-ra.txt.chef-20130422155517
+<span class="o">[</span>2013-04-22T15:55:17+00:00] INFO: file[/tmp/cha-ra.txt] contents updated
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>1] guard<span class="o">(</span>main<span class="o">)&gt;</span> 
+</pre></div>
+</div>
+
+<p>最後の状態は<a href="https://github.com/higanworks/guard_chefsolo_example" rel="nofollow noopener" target="_blank">masterブランチ</a>です。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>通常<code>guard</code>や<code>watchr</code>というツールは<code>RSpec</code>や<code>Chefspec</code>を実行するようにしてテストの手間を減らすものです。  </p>
+
+<p>しかしサーバインスタンスの調達も簡単な今日ではOpsによるこのような強引なインフラ開発もいいんじゃないでしょうか。</p>
+
+<p>ついでにこの手法は冪等を意識してレシピを書かないとサーバがどんどん壊れていくはずなのでChef勘が養える．．．かも。</p>

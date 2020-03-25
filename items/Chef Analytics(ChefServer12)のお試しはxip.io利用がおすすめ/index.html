@@ -1,0 +1,109 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://www.getchef.com/blog/2014/07/15/meet-the-chef-analytics-platform/" rel="nofollow noopener" target="_blank">Chef Analytics</a>はChefServer上のオブジェクト変更や、Chef-ManageやKnifeといったクライアント達が何をしたか見やすく記録する、情シス臭あふれるコンポーネントです。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fa5b26475-6c97-547f-bdb1-23b0f47cf3de.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=d3b83ca7b532368d2afb9053d60892a3" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fa5b26475-6c97-547f-bdb1-23b0f47cf3de.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=d3b83ca7b532368d2afb9053d60892a3" alt="Chef_Analytics.png" title="Chef_Analytics.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/a5b26475-6c97-547f-bdb1-23b0f47cf3de.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fa5b26475-6c97-547f-bdb1-23b0f47cf3de.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=d41d3e2dcc94659f005f859ccee2ace4 1x" loading="lazy"></a></p>
+
+<p>基本はChef-Serverに到達可能な別の場所に構築すべし(Standalone)なのですが、既存Chef-Server12と同じサーバにインストールする(Combined)ことも可能です。</p>
+
+<p><a href="https://docs.getchef.com/install_analytics.html" title="Install Chef Analytics — Chef Docs" rel="nofollow noopener" target="_blank">Install Chef Analytics — Chef Docs</a></p>
+
+<p>ただしChef-Server12と共存させる場合、次の仕様になります。</p>
+
+<blockquote>
+<p>Chef-Server12がRC3の時点での仕様なので、このへんは変わるかもしれません。</p>
+</blockquote>
+
+<ul>
+<li>Chef-Server APIと同じIP/PortでListen</li>
+<li>ネームベースでChef-ServerAPIとChef Analyticsが振り分けられる
+
+<ul>
+<li>Servernameを一緒にしちゃうと、Chef Analyticsが優先</li>
+</ul>
+</li>
+</ul>
+
+<p>この仕様から、うかつにCombinedでインストールすると、Chef-Server本体のエンドポイントが乗っ取られる悲劇が待っています。</p>
+
+<h2>
+<span id="安全にcombinedでインストールしよう" class="fragment"></span><a href="#%E5%AE%89%E5%85%A8%E3%81%ABcombined%E3%81%A7%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>安全にCombinedでインストールしよう</h2>
+
+<p>関連パッケージの<code>chef-server-core</code>, <code>opscode-manage</code>, <code>opscode-analytics</code>はrpm/dpkgでインストール済みとします。</p>
+
+<p>まずは公式の案内通りに<code>/etc/opscode/private-chef.rb</code>を編集します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">/etc/opscode/private-chef.rb</span></div>
+<div class="highlight"><pre><span class="n">dark_launch</span><span class="p">[</span><span class="s1">'actions'</span><span class="p">]</span> <span class="o">=</span> <span class="kp">true</span>
+</pre></div>
+</div>
+
+<p>analyticsとインテグレーションするため、reconfigure時に<code>private-chef/recipes/actions.rb</code>レシピを呼びます。<br>
+※ 一応案内通り、デフォルトで<code>true</code>な気がするんだけど...</p>
+
+<p>で、一回<code>chef-server-ctl reconfigure</code>しておきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># chef-server-ctl reconfigure
+
+...
+
+Chef Client finished, 31/384 resources updated in 19.674226684 seconds
+opscode Reconfigured!
+</pre></div></div>
+
+<h3>
+<span id="ホスト名にxipioを利用しよう" class="fragment"></span><a href="#%E3%83%9B%E3%82%B9%E3%83%88%E5%90%8D%E3%81%ABxipio%E3%82%92%E5%88%A9%E7%94%A8%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>ホスト名にxip.ioを利用しよう</h3>
+
+<p>次に<code>/etc/opscode-analytics/opscode-analytics.rb</code>を作成します。</p>
+
+<p>ここで名前ベースのホスト名に、<a href="http://xip.io/" title="xip.io: wildcard DNS for everyone" rel="nofollow noopener" target="_blank">xip.io</a>を使います。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">/etc/opscode-analytics/opscode-analytics.rb</span></div>
+<div class="highlight"><pre><span class="n">analytics_fqdn</span> <span class="s2">"54.199.xx.xxx.xip.io"</span>
+</pre></div>
+</div>
+
+<p>ちなみに、このファイルもRubyで書いてOKなうえ、Ohaiのアトリビュートもそのまあ使えるので、次のように書いてもOK。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">/etc/opscode-analytics/opscode-analytics.rb</span></div>
+<div class="highlight"><pre><span class="n">analytics_fqdn</span> <span class="s2">"</span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="ss">:cloud_v2</span><span class="p">][</span><span class="ss">:public_ipv4</span><span class="p">]</span><span class="si">}</span><span class="s2">.xip.io"</span>
+</pre></div>
+</div>
+
+<p>IaaSクラウドでEIPとか付け外ししても<code>reconfigure</code>すれば済むのでおすすめ。</p>
+
+<p>編集したら <strong>opscode-analytics-ctl</strong> で<code>reconfigure</code>します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># opscode-analytics-ctl reconfigure
+
+...
+
+
+Chef Client finished, 104/114 resources updated in 36.144560204 seconds
+opscode-analytics Reconfigured!
+</pre></div></div>
+
+<p>あとはパブリックIPとxip.ioでブラウザからアクセスすればChef Analyticsを使って見る事ができます。<br>
+xip.ioなので、オンプレミスでChef-Server12にプライベートIPしか付与してないという状態でも特に問題ないのはいいですね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ab317fc-0acc-bec7-a1be-d833d07df243.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=6de41a23130acfeefecf59f97a763743" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ab317fc-0acc-bec7-a1be-d833d07df243.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=6de41a23130acfeefecf59f97a763743" alt="Chef_Analytics.png" title="Chef_Analytics.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/4ab317fc-0acc-bec7-a1be-d833d07df243.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F4ab317fc-0acc-bec7-a1be-d833d07df243.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=2715a308eb6c89c84213803b7f20c24a 1x" loading="lazy"></a></p>
+
+<p>ログインはChef-Serverに登録済みのユーザで、関連付けられたOrgに関する情報を見ることができます。<br>
+Analyticsを有効にした後で色々と操作をしていくと、アクティビティが表示されていきます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe408ad6f-1da4-ceed-56a8-e3c70762faef.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=db924816f389ddfa6cb033a39927a014" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe408ad6f-1da4-ceed-56a8-e3c70762faef.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=db924816f389ddfa6cb033a39927a014" alt="Chef_Analytics.png" title="Chef_Analytics.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/e408ad6f-1da4-ceed-56a8-e3c70762faef.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe408ad6f-1da4-ceed-56a8-e3c70762faef.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=36ee7715003cabd1f894002555a5612f 1x" loading="lazy"></a></p>
+
+<p>止めたくなったら<code>opscode-analytics-ctl stop</code>で止めときましょう。<br>
+本格運用したくなったらStandAloneを検討するか、自ドメインのホスト名くらいは付けてあげたほうが良いかも。</p>
+
+<h2>
+<span id="さいごに" class="fragment"></span><a href="#%E3%81%95%E3%81%84%E3%81%94%E3%81%AB"><i class="fa fa-link"></i></a>さいごに</h2>
+
+<p>Node内のChef-Clientの挙動はReporting, 操作ログ(オペログ)はChef Analyticsと役割が分かれていますね。</p>

@@ -1,0 +1,148 @@
+
+
+<p>IssueとPRベースのタスク管理は利用者にとって楽なものだけど、デプロイだけやる人などがまとめて見るにはちと追いづらかったりする。</p>
+
+<p>そんな時にChangelogがしっかりしてると助かるので、バージョニングとマイルストーンの作成に一定の規約を設けて自動生成する運用を試しています。</p>
+
+<h2>
+<span id="マイルストーンとprのルール" class="fragment"></span><a href="#%E3%83%9E%E3%82%A4%E3%83%AB%E3%82%B9%E3%83%88%E3%83%BC%E3%83%B3%E3%81%A8pr%E3%81%AE%E3%83%AB%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>マイルストーンとPRのルール</h2>
+
+<p>自動生成のための要件はこちら。</p>
+
+<ul>
+<li>バージョン番号のマイルストーンを作成する
+
+<ul>
+<li>v0.0.1, v1.0.0.rc1 などセマンティックバージョニング風でつける。
+
+<ul>
+<li>一旦Gemのバージョンとしてソートするので、<code>0.0.9</code>と<code>0.0.10</code>がひっくり返らない</li>
+</ul>
+</li>
+<li>マイルストーンにDescriptionを書いておくと、blockquoteで取り込む。</li>
+</ul>
+</li>
+<li>変更は基本的にPRで取り込む
+
+<ul>
+<li>CHANGELOGに並ぶのはマイルストーンに紐付けたPRのタイトル</li>
+<li>それぞれ差分へのリンク付き</li>
+</ul>
+</li>
+<li>変更がIssueであっても、マイルストーンを付けるといちおう並ぶ</li>
+<li>ラベルを活用する
+
+<ul>
+<li>Bug, FeatureなどつけておくとPRの下に表示される</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="prやissueに対して次のような感じで対応する" class="fragment"></span><a href="#pr%E3%82%84issue%E3%81%AB%E5%AF%BE%E3%81%97%E3%81%A6%E6%AC%A1%E3%81%AE%E3%82%88%E3%81%86%E3%81%AA%E6%84%9F%E3%81%98%E3%81%A7%E5%AF%BE%E5%BF%9C%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>PRやIssueに対して、次のような感じで対応する。</h2>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F91540536-4063-dae9-85e4-63bb13cfae65.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4d0c9d80791bfb32eb8531806cec43c5" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F91540536-4063-dae9-85e4-63bb13cfae65.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4d0c9d80791bfb32eb8531806cec43c5" alt="ヘッダにRakeの注意書きを追加_by_sawanoboly_·_Pull_Request__1_·_higanworks_changelog_from_milestones.png" title="ヘッダにRakeの注意書きを追加_by_sawanoboly_·_Pull_Request__1_·_higanworks_changelog_from_milestones.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/91540536-4063-dae9-85e4-63bb13cfae65.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F91540536-4063-dae9-85e4-63bb13cfae65.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=557c61da604f68c25d0704eb978c91cb 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="コードと出力例" class="fragment"></span><a href="#%E3%82%B3%E3%83%BC%E3%83%89%E3%81%A8%E5%87%BA%E5%8A%9B%E4%BE%8B"><i class="fa fa-link"></i></a>コードと出力例</h2>
+
+<p><code>Rakefile</code>を含む出力例は下記Githubリポジトリに置いてます。<br>
+<a href="https://github.com/higanworks/changelog_from_milestones" rel="nofollow noopener" target="_blank">higanworks/changelog_from_milestones</a></p>
+
+<h3>
+<span id="rakeタスク" class="fragment"></span><a href="#rake%E3%82%BF%E3%82%B9%E3%82%AF"><i class="fa fa-link"></i></a>Rakeタスク</h3>
+
+<p>一応こんな感じ。とてもベタ書き。</p>
+
+<p><code>ENV['GITHUB_REPO']</code>でリポジトリ、プライベートの場合は<code>ENV['GITHUB_API_TOKEN']</code>をセットして使います。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'bundler'</span>
+<span class="no">Bundler</span><span class="p">.</span><span class="nf">setup</span>
+<span class="nb">require</span> <span class="s1">'octokit'</span>
+<span class="nb">require</span> <span class="s1">'sanitize'</span>
+<span class="c1"># @client = Octokit::Client.new(:access_token =&gt; ENV['GITHUB_API_TOKEN'], auto_paginate: true)</span>
+<span class="vi">@client</span> <span class="o">=</span> <span class="no">Octokit</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">auto_paginate: </span><span class="kp">true</span><span class="p">)</span>
+
+<span class="vi">@milestones</span> <span class="o">=</span> <span class="vi">@client</span><span class="p">.</span><span class="nf">milestones</span><span class="p">(</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'GITHUB_REPO'</span><span class="p">],</span> <span class="p">{</span><span class="ss">state: </span><span class="s1">'all'</span><span class="p">})</span>
+
+<span class="n">task</span> <span class="ss">:default</span> <span class="k">do</span>
+  <span class="nb">puts</span> <span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="s1">'./_templates/header.txt'</span><span class="p">)</span>
+  <span class="n">titles</span> <span class="o">=</span> <span class="n">create_array_of_milestone_titles</span>
+  <span class="n">titles</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">title</span><span class="o">|</span>
+    <span class="n">ms</span> <span class="o">=</span> <span class="n">get_milestone_by_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+    <span class="k">next</span> <span class="k">unless</span> <span class="n">ms</span>
+    <span class="nb">puts</span> <span class="s2">"## [</span><span class="si">#{</span><span class="n">ms</span><span class="p">.</span><span class="nf">title</span><span class="si">}</span><span class="s2">](</span><span class="si">#{</span><span class="n">ms</span><span class="p">.</span><span class="nf">url</span><span class="si">}</span><span class="s2">) (</span><span class="si">#{</span><span class="n">ms</span><span class="p">.</span><span class="nf">state</span><span class="si">}</span><span class="s2">)"</span>
+    <span class="nb">puts</span> <span class="s2">"created_at: </span><span class="si">#{</span><span class="n">ms</span><span class="p">.</span><span class="nf">created_at</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2">  "</span>
+    <span class="n">streak</span> <span class="o">=</span> <span class="s2">""</span>
+    <span class="k">if</span> <span class="n">ms</span><span class="p">.</span><span class="nf">closed_at</span>
+      <span class="p">((</span><span class="n">ms</span><span class="p">.</span><span class="nf">closed_at</span> <span class="o">-</span> <span class="n">ms</span><span class="p">.</span><span class="nf">created_at</span><span class="p">).</span><span class="nf">to_i</span> <span class="o">/</span> <span class="mi">60</span> <span class="o">/</span> <span class="mi">60</span> <span class="o">/</span> <span class="mi">24</span><span class="p">).</span><span class="nf">times</span> <span class="p">{</span><span class="n">streak</span> <span class="o">&lt;&lt;</span> <span class="s2">"■"</span><span class="p">}</span>
+      <span class="nb">puts</span> <span class="s2">"streak: </span><span class="si">#{</span><span class="n">streak</span><span class="si">}</span><span class="s2">  "</span>
+      <span class="nb">puts</span> <span class="s2">"closed_at: </span><span class="si">#{</span><span class="n">ms</span><span class="p">.</span><span class="nf">closed_at</span><span class="p">.</span><span class="nf">to_s</span> <span class="k">if</span> <span class="n">ms</span><span class="p">.</span><span class="nf">closed_at</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">end</span>
+    <span class="nb">puts</span> <span class="s2">"&lt;blockquote&gt;"</span>
+    <span class="k">if</span> <span class="n">ms</span><span class="p">.</span><span class="nf">description</span><span class="p">.</span><span class="nf">empty?</span>
+      <span class="nb">puts</span> <span class="s2">"No Description."</span>
+    <span class="k">else</span>
+      <span class="nb">puts</span> <span class="n">ms</span><span class="p">.</span><span class="nf">description</span>
+    <span class="k">end</span>
+    <span class="nb">puts</span> <span class="s2">"&lt;/blockquote&gt;"</span>
+    <span class="k">if</span> <span class="n">ms</span><span class="p">.</span><span class="nf">respond_to?</span><span class="p">(</span><span class="ss">:number</span><span class="p">)</span>
+      <span class="n">issues</span> <span class="o">=</span> <span class="n">collect_issues_by_ms</span><span class="p">(</span><span class="n">ms</span><span class="p">.</span><span class="nf">number</span><span class="p">)</span>
+      <span class="n">issues</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">issue</span><span class="o">|</span>
+        <span class="n">str</span> <span class="o">=</span> <span class="s2">"- "</span>
+        <span class="n">str</span> <span class="o">&lt;&lt;</span>  <span class="no">Sanitize</span><span class="p">.</span><span class="nf">fragment</span><span class="p">(</span><span class="n">issue</span><span class="p">.</span><span class="nf">title</span><span class="p">,</span> <span class="no">Sanitize</span><span class="o">::</span><span class="no">Config</span><span class="o">::</span><span class="no">RESTRICTED</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">issue</span><span class="p">.</span><span class="nf">assignee</span>
+          <span class="n">str</span> <span class="o">&lt;&lt;</span> <span class="s2">" by </span><span class="si">#{</span><span class="n">issue</span><span class="p">.</span><span class="nf">assignee</span><span class="p">.</span><span class="nf">login</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">end</span>
+        <span class="k">if</span> <span class="n">issue</span><span class="p">.</span><span class="nf">pull_request</span>
+          <span class="n">str</span> <span class="o">&lt;&lt;</span> <span class="s2">" at "</span>
+          <span class="n">str</span> <span class="o">&lt;&lt;</span> <span class="s2">"[PR-</span><span class="si">#{</span><span class="n">issue</span><span class="p">.</span><span class="nf">number</span><span class="si">}</span><span class="s2">](</span><span class="si">#{</span><span class="n">issue</span><span class="p">.</span><span class="nf">pull_request</span><span class="p">.</span><span class="nf">html_url</span><span class="si">}</span><span class="s2">/files)"</span>
+        <span class="k">end</span>
+        <span class="nb">puts</span> <span class="n">str</span>
+        <span class="n">label_cols</span> <span class="o">=</span> <span class="n">issue</span><span class="p">.</span><span class="nf">labels</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">label</span><span class="o">|</span>
+          <span class="sx">%Q{![</span><span class="si">#{</span><span class="n">label</span><span class="p">.</span><span class="nf">name</span><span class="si">}</span><span class="sx">](https://img.shields.io/badge/L-</span><span class="si">#{</span><span class="no">URI</span><span class="p">.</span><span class="nf">encode</span><span class="p">(</span><span class="n">label</span><span class="p">.</span><span class="nf">name</span><span class="p">)</span><span class="si">}</span><span class="sx">-</span><span class="si">#{</span><span class="n">label</span><span class="p">.</span><span class="nf">color</span><span class="si">}</span><span class="sx">.svg)}</span>
+        <span class="k">end</span>
+        <span class="nb">puts</span> <span class="s2">"    - </span><span class="si">#{</span><span class="n">label_cols</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="s1">' '</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span> <span class="k">unless</span> <span class="n">label_cols</span><span class="p">.</span><span class="nf">empty?</span>
+      <span class="k">end</span>
+    <span class="k">else</span>
+      <span class="nb">puts</span> <span class="s2">"- Nothing comment"</span>
+    <span class="k">end</span>
+
+    <span class="nb">puts</span> <span class="s2">""</span>
+    <span class="nb">puts</span> <span class="s2">"----"</span>
+  <span class="k">end</span>
+  <span class="nb">puts</span> <span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="s1">'./_templates/footer.txt'</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">create_array_of_milestone_titles</span>
+  <span class="n">tags</span> <span class="o">=</span> <span class="vi">@milestones</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">a</span><span class="o">|</span>
+    <span class="k">begin</span>
+      <span class="no">Gem</span><span class="o">::</span><span class="no">Version</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">a</span><span class="p">.</span><span class="nf">title</span><span class="p">.</span><span class="nf">delete</span><span class="p">(</span><span class="s1">'v'</span><span class="p">))</span>
+    <span class="k">rescue</span>
+      <span class="k">next</span>
+    <span class="k">end</span>
+  <span class="k">end</span><span class="p">.</span><span class="nf">sort</span><span class="p">.</span><span class="nf">reverse</span>
+
+  <span class="n">tags</span><span class="p">.</span><span class="nf">map</span> <span class="p">{</span><span class="o">|</span><span class="n">tag</span><span class="o">|</span> <span class="s2">"v"</span> <span class="o">+</span> <span class="n">tag</span><span class="p">.</span><span class="nf">to_s</span><span class="p">}</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">get_milestone_by_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+  <span class="vi">@milestones</span><span class="p">.</span><span class="nf">find</span> <span class="p">{</span><span class="o">|</span><span class="n">m</span><span class="o">|</span> <span class="n">m</span><span class="p">.</span><span class="nf">title</span> <span class="o">==</span> <span class="n">title</span><span class="p">}</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">collect_issues_by_ms</span><span class="p">(</span><span class="n">ms_number</span><span class="p">)</span>
+  <span class="vi">@client</span><span class="p">.</span><span class="nf">issues</span><span class="p">(</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'GITHUB_REPO'</span><span class="p">],</span> <span class="p">{</span><span class="ss">state: </span><span class="s1">'all'</span><span class="p">,</span> <span class="ss">milestone: </span><span class="n">ms_number</span><span class="p">})</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="出力例" class="fragment"></span><a href="#%E5%87%BA%E5%8A%9B%E4%BE%8B"><i class="fa fa-link"></i></a>出力例</h2>
+
+<p>IssueやPRはサンプルプロジェクト(<a href="https://github.com/higanworks/changelog_from_milestones" rel="nofollow noopener" target="_blank">higanworks/changelog_from_milestones</a>)で実際に作ったので、どんな様子か確認できるはず。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbf742187-9625-3206-85f2-0081ca953832.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=12cc04b6ea0fd1f2014925f0b2cbd608" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbf742187-9625-3206-85f2-0081ca953832.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=12cc04b6ea0fd1f2014925f0b2cbd608" alt="スクリーンショット_3_6_15__6_22_PM.png" title="スクリーンショット_3_6_15__6_22_PM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/bf742187-9625-3206-85f2-0081ca953832.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbf742187-9625-3206-85f2-0081ca953832.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=fb7800053d4f10c5db2ef5e5bba513a9 1x" loading="lazy"></a></p>
+
+<p>mdとして出力するので、今はプロジェクトのwikiに<code>CHANGELOG.md</code>を置いて運用中。</p>

@@ -1,0 +1,346 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://kitchen.ci/" rel="nofollow noopener" target="_blank">Test Kitchen</a>はChefのCookbookをテストする用途に使うのが一般的です。<br>
+が、実際やっていることを要素として抜き出すと次の通りです。</p>
+
+<ul>
+<li>テンポラリなインスタンスをつくる</li>
+<li>プロビジョナで何かする</li>
+<li>好きなテストスイート(主にRubyの)でテストする</li>
+</ul>
+
+<p>ということで、『プロビジョナで何かする』のフェーズでパッケージをビルドしてみましょう。</p>
+
+<p>ちなみにChef社が依存ライブラリ込みパッケージのクロスビルド用に保守している<a href="https://github.com/opscode/omnibus" rel="nofollow noopener" target="_blank">Omnibus</a>も、(便宜上の)バージョン3から内部ではTest-Kitchenを使っています。</p>
+
+<h2>
+<span id="サンプルの概要" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AE%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>サンプルの概要</h2>
+
+<blockquote>
+<p>この記事で使われているコードのリポジトリはこちら: <a href="https://github.com/OpsRockin/kitchen-build-example" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/kitchen-build-example</a></p>
+</blockquote>
+
+<p>次表のとおり作ってみました。</p>
+
+<table>
+<thead>
+<tr>
+<th>対象</th>
+<th>値</th>
+<th>余談</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>導入するプロダクト</td>
+<td>jemalloc(3.6.0)</td>
+<td>手軽だったのでチョイス。(※Ubuntuには<code>libjemalloc</code>がパッケージであるのは気にしないで。)</td>
+</tr>
+<tr>
+<td>ビルドするパッケージ</td>
+<td>debとrpm</td>
+<td>Ubuntu14.04とCentOS6.5上で、checkinstallを用いて作成</td>
+</tr>
+<tr>
+<td>プロビジョナ</td>
+<td>Ansible</td>
+<td>たまには私もAnsible。 (※Chef以外を使うことで、選べるプロビジョナを演出)</td>
+</tr>
+<tr>
+<td>テストスイート</td>
+<td>Serverspec</td>
+<td>デファクトスタンダード</td>
+</tr>
+</tbody>
+</table>
+
+<p><a href="http://www.ansible.com/home" rel="nofollow noopener" target="_blank">Ansible</a>でjemallocのパッケージをビルドして、ついでにインストールしてみた後に<a href="http://serverspec.org/" rel="nofollow noopener" target="_blank">Serverspec</a>でテストするというのを<code>Test-Kitchen</code>でやってみましょうかと。</p>
+
+<h2>
+<span id="解説" class="fragment"></span><a href="#%E8%A7%A3%E8%AA%AC"><i class="fa fa-link"></i></a>解説</h2>
+
+<blockquote>
+<p>この記事で使われているコードのリポジトリはこちら: <a href="https://github.com/OpsRockin/kitchen-build-example" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/kitchen-build-example</a></p>
+</blockquote>
+
+<p>まずはGemfileです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="c1"># A sample Gemfile</span>
+<span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s1">'test-kitchen'</span>
+<span class="n">gem</span> <span class="s1">'kitchen-ansible'</span>
+<span class="n">gem</span> <span class="s1">'kitchen-vagrant'</span>
+
+<span class="n">group</span> <span class="ss">:integration</span> <span class="k">do</span>
+  <span class="n">gem</span> <span class="s1">'serverspec'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>プロビジョナとしてAnsibleを使うため、<a href="https://github.com/neillturner/kitchen-ansible" rel="nofollow noopener" target="_blank">kitchen-ansible</a>が入っています。使い方は割愛、<a href="https://github.com/neillturner/kitchen-ansible" rel="nofollow noopener" target="_blank">kitchen-ansibleのGithubリポジトリ</a>や<a href="http://www.amazon.co.jp/dp/B00MALTGDY" rel="nofollow noopener" target="_blank">入門Ansible</a>あたりを見れば良いと思います。</p>
+
+<p><code>.kitchen.yml</code>はこんな感じです、リポジトリには無いけども、コメントを入れておきます。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">vagrant</span>
+  <span class="na">synced_folders</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="pi">[</span><span class="s2">"</span><span class="s">pkg"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">/opt/pkg"</span><span class="pi">]</span>  <span class="c1">## ローカルのMacなりと共有するディレクトリ</span>
+
+<span class="na">provisioner</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">ansible_playbook</span>   <span class="c1">## kitchen-ansibleを使う設定</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">all</span>
+  <span class="na">ansible_verbose</span><span class="pi">:</span> <span class="no">true</span>
+  <span class="na">extra_vars</span><span class="pi">:</span>
+    <span class="na">build_name</span><span class="pi">:</span> <span class="s">jemalloc</span>
+    <span class="na">build_vers</span><span class="pi">:</span> <span class="s">3.6.0</span>  <span class="c1">## group_varsの内容をここでも上書きOK</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">ubuntu-14.04</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">centos-6.5</span>
+
+<span class="na">suites</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">build</span>  <span class="c1">## パッケージをビルドするだけのSuite、デフォルトのsite.ymlが使われる。</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">test</span>   <span class="c1">## パッケージをインストールしてみて、Serverspecを流すSuite</span>
+    <span class="na">provisioner</span><span class="pi">:</span>
+      <span class="na">playbook</span><span class="pi">:</span> <span class="s">test.yml</span>
+
+</pre></div>
+</div>
+
+<p>この<code>.kitchen.yml</code>で、VagrantによってVirtualBoxにVMがが作られ、使いたいPlaybookが実行されるという塩梅です。</p>
+
+<h2>
+<span id="実行" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>実行</h2>
+
+<p><code>build</code>と名前をつけたSuiteを実行するため、<code>kitchen converge build</code>します。Ubuntu14.04とCentOS6.5でそれぞれ実行されます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen converge build
+-----&gt; Starting Kitchen (v1.2.1)
+-----&gt; Creating &lt;build-ubuntu-1404&gt;...
+
+-- sinp --
+
+PLAY [all] ********************************************************************        
+
+GATHERING FACTS ***************************************************************        
+ok: [localhost]       
+
+TASK: [prepare | debug ] ******************************************************        
+ok: [localhost] =&gt; {       
+    "item": "",        
+    "msg": "Hello Ubuntu"       
+}       
+
+TASK: [prepare | file path={{build_dir}} state=directory] *********************        
+changed: [localhost] =&gt; {"changed": true, "gid": 0, "group": "root", "item": "", "mode": "0755", "owner": "root", "path": "/opt/jemalloc", "size": 4096, "state": "directory", "uid": 0}       
+
+TASK: [prepare | apt name=] ***************************************************        
+changed: [localhost] =&gt; (省略)       
+
+TASK: [prepare | file path=/root/rpmbuild state=directory] ********************        
+skipping: [localhost]       
+
+TASK: [prepare | file path=/root/rpmbuild/SOURCES state=directory] ************        
+skipping: [localhost]       
+
+TASK: [prepare | yum name=] ***************************************************        
+skipping: [localhost]       
+
+       TASK: [jemalloc | get_url url={{source_url}} dest={{build_dir}}/{{source_file}}] *** 
+changed: [localhost] =&gt; {"changed": true, "dest": "/opt/jemalloc/jemalloc-3.6.0.tar.bz2", "gid": 0, "group": "root", "item": "", "md5sum": "e76665b63a8fddf4c9f26d2fa67afdf2", "mode": "0644", "msg": "OK (338964 bytes)", "owner": "root", "sha256sum": "", "size": 338964, "src": "/tmp/tmp6Lqcyg", "state": "file", "uid": 0, "url": "http://www.canonware.com/download/jemalloc/jemalloc-3.6.0.tar.bz2"}       
+
+TASK: [jemalloc | command tar xaf {{source_file}} chdir={{build_dir}} creates={{build_name}}-{{build_vers}}] ***        
+changed: [localhost] =&gt; {"changed": true, "cmd": ["tar", "xaf", "jemalloc-3.6.0.tar.bz2"], "delta": "0:00:00.085939", "end": "2014-08-13 15:34:41.330784", "item": "", "rc": 0, "start": "2014-08-13 15:34:41.244845", "stderr": "", "stdout": ""}       
+
+TASK: [jemalloc | command ./configure] ****************************************        
+changed: [localhost] =&gt; {省略}
+
+TASK: [jemalloc | command make] ***********************************************        
+changed: [localhost] =&gt; {省略}       
+
+TASK: [jemalloc | command checkinstall -y --nodoc --pakdir={{pkg_dir}}] *******        
+changed: [localhost] =&gt; {省略}       
+
+PLAY RECAP ********************************************************************        
+localhost                  : ok=9    changed=7    unreachable=0    failed=0          
+
+       Finished converging &lt;build-ubuntu-1404&gt; (2m57.43s).
+
+## ここからCnetOS
+
+-----&gt; Creating &lt;build-centos-65&gt;...
+
+-- snip --
+
+       PLAY [all] ******************************************************************** 
+
+       GATHERING FACTS *************************************************************** 
+       ok: [localhost]
+
+       TASK: [prepare | debug ] ****************************************************** 
+       ok: [localhost] =&gt; {
+           "msg": "Hello CentOS"
+       }
+
+       TASK: [prepare | file path={{build_dir}} state=directory] ********************* 
+       changed: [localhost] =&gt; {"changed": true, "gid": 0, "group": "root", "mode": "0755", "owner": "root", "path": "/opt/jemalloc", "size": 4096, "state": "directory", "uid": 0}
+
+       TASK: [prepare | apt name={{item}}] ******************************************* 
+       skipping: [localhost]
+
+       TASK: [prepare | file path=/root/rpmbuild state=directory] ******************** 
+       changed: [localhost] =&gt; {"changed": true, "gid": 0, "group": "root", "mode": "0755", "owner": "root", "path": "/root/rpmbuild", "size": 4096, "state": "directory", "uid": 0}
+
+       TASK: [prepare | file path=/root/rpmbuild/SOURCES state=directory] ************ 
+       changed: [localhost] =&gt; {"changed": true, "gid": 0, "group": "root", "mode": "0755", "owner": "root", "path": "/root/rpmbuild/SOURCES", "size": 4096, "state": "directory", "uid": 0}
+
+       TASK: [prepare | yum name={{item}}] ******************************************* 
+       changed: [localhost] =&gt; (省略}
+
+       TASK: [jemalloc | get_url url={{source_url}} dest={{build_dir}}/{{source_file}}] *** 
+       changed: [localhost] =&gt; {"changed": true, "dest": "/opt/jemalloc/jemalloc-3.6.0.tar.bz2", "gid": 0, "group": "root", "md5sum": "e76665b63a8fddf4c9f26d2fa67afdf2", "mode": "0644", "msg": "OK (338964 bytes)", "owner": "root", "sha256sum": "", "size": 338964, "src": "/tmp/tmpcUAwXP", "state": "file", "uid": 0, "url": "http://www.canonware.com/download/jemalloc/jemalloc-3.6.0.tar.bz2"}
+
+       TASK: [jemalloc | command tar xaf {{source_file}} chdir={{build_dir}} creates={{build_name}}-{{build_vers}}] *** 
+       changed: [localhost] =&gt; {"changed": true, "cmd": ["tar", "xaf", "jemalloc-3.6.0.tar.bz2"], "delta": "0:00:00.097923", "end": "2014-08-13 15:38:54.325594", "rc": 0, "start": "2014-08-13 15:38:54.227671", "stderr": "", "stdout": ""}
+
+       TASK: [jemalloc | command ./configure] **************************************** 
+changed: [localhost] =&gt; {省略}
+
+       TASK: [jemalloc | command make] *********************************************** 
+changed: [localhost] =&gt; {省略}
+
+       TASK: [jemalloc | command checkinstall -y --nodoc --pakdir={{pkg_dir}}] ******* 
+       changed: [localhost] =&gt; {省略}
+
+       PLAY RECAP ******************************************************************** 
+       localhost                  : ok=11   changed=9    unreachable=0    failed=0   
+
+       Finished converging &lt;build-centos-65&gt; (3m15.34s).
+-----&gt; Kitchen is finished. (7m43.64s)
+
+</pre></div></div>
+
+<p><code>kitchen</code>コマンドを実行したホストの<code>pkg/</code>には<code>checkinstall</code>で作成したパッケージができています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ls pkg/
+jemalloc-3.6.0-1.x86_64.rpm jemalloc_3.6.0-1_amd64.deb
+</pre></div></div>
+
+<h3>
+<span id="serverspecでテスト" class="fragment"></span><a href="#serverspec%E3%81%A7%E3%83%86%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>Serverspecでテスト</h3>
+
+<p><code>Test-Kitchen</code>のVerifyフェーズで、<code>test/</code>以下の内容を実行することができます。ちなみにconverge(Provisioning)とtestと、作る順番はどちらが先でも構いません。</p>
+
+<ul>
+<li>事前のタスクとして、作成済みのパッケージをインストール(rpm or deb)する。
+
+<ul>
+<li>これもPlaybookで。</li>
+</ul>
+</li>
+<li>パッケージのインストール後に確かめておきたい内容をServerspecで。</li>
+</ul>
+
+<p>スイート<code>test</code>で実行するPlaybookはこのように直接記述しました。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">test.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="pi">-</span> <span class="na">hosts</span><span class="pi">:</span> <span class="s">all</span>
+  <span class="na">sudo</span><span class="pi">:</span> <span class="s">yes</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">shell</span><span class="pi">:</span> <span class="s2">"</span><span class="s">ls</span><span class="nv"> </span><span class="s">-1</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">pkg_dir</span><span class="nv"> </span><span class="s">}}/*.deb</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">sort</span><span class="nv"> </span><span class="s">-r</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">head</span><span class="nv"> </span><span class="s">-n</span><span class="nv"> </span><span class="s">1"</span>
+      <span class="na">register</span><span class="pi">:</span> <span class="s">deb_file</span>
+      <span class="na">when</span><span class="pi">:</span> <span class="s">ansible_distribution == "Ubuntu"</span>
+    <span class="pi">-</span> <span class="na">command</span><span class="pi">:</span> <span class="s">dpkg -i {{ deb_file.stdout }}</span>
+      <span class="na">when</span><span class="pi">:</span> <span class="s">ansible_distribution == "Ubuntu"</span>
+    <span class="pi">-</span> <span class="na">shell</span><span class="pi">:</span> <span class="s2">"</span><span class="s">ls</span><span class="nv"> </span><span class="s">-1</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">pkg_dir</span><span class="nv"> </span><span class="s">}}/*.rpm</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">sort</span><span class="nv"> </span><span class="s">-r</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">head</span><span class="nv"> </span><span class="s">-n</span><span class="nv"> </span><span class="s">1"</span>
+      <span class="na">register</span><span class="pi">:</span> <span class="s">rpm_file</span>
+      <span class="na">when</span><span class="pi">:</span> <span class="s">ansible_distribution == "CentOS"</span>
+    <span class="pi">-</span> <span class="na">yum</span><span class="pi">:</span> <span class="s">name={{ rpm_file.stdout }}</span>
+      <span class="na">when</span><span class="pi">:</span> <span class="s">ansible_distribution == "CentOS"</span>
+</pre></div>
+</div>
+
+<p>で、パッケージインストール後の<a href="https://twitter.com/myb1126/status/499551825121402881" rel="nofollow noopener" target="_blank">spec</a>を簡単に記述してみます。</p>
+
+<div class="code-frame" data-lang="rspec">
+<div class="code-lang"><span class="bold">jemalloc_spec.rb</span></div>
+<div class="highlight"><pre>require 'spec_helper'
+
+describe package('jemalloc') do
+  it { should be_installed }
+end
+
+describe command('/usr/local/bin/jemalloc.sh env') do
+  it { should return_stdout /^LD_PRELOAD=.+libjemalloc.+/ }
+end
+</pre></div>
+</div>
+
+<p>そうしたらあとは<code>kitchen verify</code>です。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>kitchen verify <span class="nb">test</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Starting Kitchen <span class="o">(</span>v1.2.1<span class="o">)</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Creating &lt;test-ubuntu-1404&gt;...
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+<span class="c">## Ubuntuで</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Running serverspec <span class="nb">test </span>suite       
+/opt/chef/embedded/bin/ruby <span class="nt">-I</span>/tmp/busser/suites/serverspec <span class="nt">-S</span> /opt/chef/embedded/bin/rspec /tmp/busser/suites/serverspec/localhost/jemalloc_spec.rb <span class="nt">--color</span> <span class="nt">--format</span> documentation       
+
+Package <span class="s2">"jemalloc"</span>       
+  should be installed       
+
+Command <span class="s2">"/usr/local/bin/jemalloc.sh env"</span>       
+  should <span class="k">return </span>stdout /^LD_PRELOAD<span class="o">=</span>.+libjemalloc.+/       
+
+Finished <span class="k">in </span>0.08954 seconds       
+2 examples, 0 failures       
+       Finished verifying &lt;test-ubuntu-1404&gt; <span class="o">(</span>0m1.78s<span class="o">)</span><span class="nb">.</span>
+
+
+<span class="c">## CentOSで</span>
+
+<span class="nt">-----</span><span class="o">&gt;</span> Creating &lt;test-centos-65&gt;...
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+<span class="nt">-----</span><span class="o">&gt;</span> Running serverspec <span class="nb">test </span>suite
+       /opt/chef/embedded/bin/ruby <span class="nt">-I</span>/tmp/busser/suites/serverspec <span class="nt">-S</span> /opt/chef/embedded/bin/rspec /tmp/busser/suites/serverspec/localhost/jemalloc_spec.rb <span class="nt">--color</span> <span class="nt">--format</span> documentation
+
+       Package <span class="s2">"jemalloc"</span>
+         should be installed
+
+       Command <span class="s2">"/usr/local/bin/jemalloc.sh env"</span>
+         should <span class="k">return </span>stdout /^LD_PRELOAD<span class="o">=</span>.+libjemalloc.+/
+
+       Finished <span class="k">in </span>0.08964 seconds
+       2 examples, 0 failures
+       Finished verifying &lt;test-centos-65&gt; <span class="o">(</span>0m1.75s<span class="o">)</span><span class="nb">.</span>
+
+
+<span class="nt">-----</span><span class="o">&gt;</span> Kitchen is finished. <span class="o">(</span>9m16.28s<span class="o">)</span>
+
+</pre></div></div>
+
+<p>Ubuntu(deb)、CentOS(rpm)のどちらも、<code>2 examples, 0 failures</code>と望んだ結果になっていることが確認できました。<br>
+これでこのパッケージは期待通りの動きをしてくれそうな気がします。</p>
+
+<h2>
+<span id="さいごに" class="fragment"></span><a href="#%E3%81%95%E3%81%84%E3%81%94%E3%81%AB"><i class="fa fa-link"></i></a>さいごに</h2>
+
+<p>このサンプルではcheckinstallを軽めに扱っているので、そのまま再利用というわけにもいかないでしょう、そのへんは各自の知見の活用しどころだと思います。</p>
+
+<p>例えばこういう形のtest-KitchenをCIなどで自動実行するようにして、作ったパッケージをしれっと<a href="https://packagecloud.io/" rel="nofollow noopener" target="_blank">packagecloud.io</a>などでホストすれば、自前パッケージのデリバリも楽になるかもしれないですね。</p>

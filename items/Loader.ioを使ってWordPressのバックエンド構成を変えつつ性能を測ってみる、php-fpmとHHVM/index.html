@@ -1,0 +1,222 @@
+<p><a href="https://loader.io/" rel="nofollow noopener" target="_blank">Loader.io</a>をそのうち試そうとしていたところに、丁度いい相談があったのでやってみた。<br>
+プラットフォームの要素を変更したWordPressでパフォーマンスを比較したいとのことだ。</p>
+
+<h2>
+<span id="hiphopvmhhvmのamazon-linux用rpmを作った" class="fragment"></span><a href="#hiphopvmhhvm%E3%81%AEamazon-linux%E7%94%A8rpm%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>HipHopVM(HHVM)のAmazon Linux用RPMを作った</h2>
+
+<blockquote>
+<p><a href="http://hhvm.com/" title="HHVM" rel="nofollow noopener" target="_blank">HHVM</a>はFacebookの言語Hackの実行エンジン。細かい話は置いといて、HHVMのバージョン3.6は5.6相当のphp実装でもある。</p>
+</blockquote>
+
+<p>Amazon Linuxをベースにしつつ、HHVMでWordPressを動かしたいと言われ、RPMでだれでも使えるようにしていいならしばらく面倒見てもいーよと。</p>
+
+<p>で、test-kitchenでRPM作れるようにして、walter-cdでポイっとリリースできるようにしたのが次のリンク。</p>
+
+<p><a href="https://github.com/OpsRockin/hhvm-for-amazon-linux" title="OpsRockin/hhvm-for-amazon-linux" rel="nofollow noopener" target="_blank">OpsRockin/hhvm-for-amazon-linux</a></p>
+
+<p>できたものはpackagecloudで配布中、と。</p>
+
+<p><a href="https://packagecloud.io/opsrock-hhvm/hhvm-stable" title="opsrock-hhvm/hhvm-stable - Packages" rel="nofollow noopener" target="_blank">opsrock-hhvm/hhvm-stable - Packages</a></p>
+
+<h2>
+<span id="hhvmのrpmを元にamimotoシリーズにhhvmをラインナップしてもらった" class="fragment"></span><a href="#hhvm%E3%81%AErpm%E3%82%92%E5%85%83%E3%81%ABamimoto%E3%82%B7%E3%83%AA%E3%83%BC%E3%82%BA%E3%81%ABhhvm%E3%82%92%E3%83%A9%E3%82%A4%E3%83%B3%E3%83%8A%E3%83%83%E3%83%97%E3%81%97%E3%81%A6%E3%82%82%E3%82%89%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>HHVMのRPMを元に、AMIMOTOシリーズにHHVMをラインナップしてもらった</h2>
+
+<p>少し前からHHVMに興味津々だったWordPressのAMIMOTOにRPMを渡すと、ほどなくHHVMを使ったWordPressがAmazon MacketPlaceに並びました。<br>
+既存のHVM版との要素はこんな感じで違います。 HVMとHHVMとタイトルが付いておりすこし紛らわしい。</p>
+
+<table>
+<thead>
+<tr>
+<th>-</th>
+<th><a href="https://aws.amazon.com/marketplace/pp/B00LWHVJH8/" rel="nofollow noopener" target="_blank">AMIMOTO HVM</a></th>
+<th><a href="https://aws.amazon.com/marketplace/pp/B00V5JYXTO" rel="nofollow noopener" target="_blank">AMIMOTO HHVM</a></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Virtualization Modes</td>
+<td>HVM</td>
+<td>HVM</td>
+</tr>
+<tr>
+<td>HTTPエントリ</td>
+<td>nginx</td>
+<td>nginx</td>
+</tr>
+<tr>
+<td>upstream</td>
+<td>fastcgi</td>
+<td>fastcgi</td>
+</tr>
+<tr>
+<td>PHPランタイム</td>
+<td>
+<strong>php-fpm</strong> (5.5)</td>
+<td>
+<strong>hhvm</strong> (5.6相当)</td>
+</tr>
+<tr>
+<td>DB</td>
+<td>Percona</td>
+<td>Percona</td>
+</tr>
+</tbody>
+</table>
+
+<p>これをそれぞれインスタンスタイプ<code>c3.large</code>で起動し、WordPressのインストールとloader.ioのverifyまで済ませる。<br>
+nginxのキャシュプラグインが入っているので、これはOFF。</p>
+
+<p>リージョンはloader.ioに近そうなので<code>us-east-1</code>を選択。</p>
+
+<h2>
+<span id="loaderioのリクエストセッティング" class="fragment"></span><a href="#loaderio%E3%81%AE%E3%83%AA%E3%82%AF%E3%82%A8%E3%82%B9%E3%83%88%E3%82%BB%E3%83%83%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0"><i class="fa fa-link"></i></a>Loader.ioのリクエストセッティング</h2>
+
+<p>普段こういうのは大抵httperfあたりを使うんですが、Loader.ioは結果をシェアしやすいのと、地味に性能が必要なクライアントマシンと回線の用意が無いのでやってみた。</p>
+
+<p>無料プランなのでテストは1分間、上限は10000クライアント。ホストを変えると結果のアーカイブがクリアされちゃうのは仕方ないところか。</p>
+
+<ul>
+<li>Duration: 1分</li>
+<li>Type: 期間中2クライアント数を0-300まで増加(Maintain client load)</li>
+</ul>
+
+<p>比較は2つの指標で。</p>
+
+<h3>
+<span id="トップページ表示" class="fragment"></span><a href="#%E3%83%88%E3%83%83%E3%83%97%E3%83%9A%E3%83%BC%E3%82%B8%E8%A1%A8%E7%A4%BA"><i class="fa fa-link"></i></a>トップページ表示</h3>
+
+<p>とりあえずトップページに対してクライアントを増やしながら全力アクセス。これは特に説明不要か。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F88cc59ba-1373-faca-ab63-44cfc30a75c0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bbef71fc6671f00d5569fa062caab686" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F88cc59ba-1373-faca-ab63-44cfc30a75c0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bbef71fc6671f00d5569fa062caab686" alt="スクリーンショット_4_1_15__1_41_AM.png" title="スクリーンショット_4_1_15__1_41_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/88cc59ba-1373-faca-ab63-44cfc30a75c0.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F88cc59ba-1373-faca-ab63-44cfc30a75c0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=8f56865a17973e7381f8a9eedc24b94a 1x" loading="lazy"></a></p>
+
+<p>nginxキャッシュを切っているので、毎度毎度トップページを生成させます。</p>
+
+<h4>
+<span id="php-fpm版に対して実行" class="fragment"></span><a href="#php-fpm%E7%89%88%E3%81%AB%E5%AF%BE%E3%81%97%E3%81%A6%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>php-fpm版に対して実行</h4>
+
+<p>まずはphp-fpmのAMIMOTOに対して実行。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1375bc7b-56ad-0583-8e99-db21927c79bf.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3f56a46cc636ad182f474653d133c61d" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1375bc7b-56ad-0583-8e99-db21927c79bf.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3f56a46cc636ad182f474653d133c61d" alt="スクリーンショット_4_1_15__1_51_AM.png" title="スクリーンショット_4_1_15__1_51_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1375bc7b-56ad-0583-8e99-db21927c79bf.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1375bc7b-56ad-0583-8e99-db21927c79bf.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=cf2b33ebcc227fc068c22d0ebdf3be8f 1x" loading="lazy"></a></p>
+
+<p>クライアントの増加に対し、ほぼ線形に平均のレスポンスタイムも遅延していくのがよく分かる。</p>
+
+<h4>
+<span id="hhvmに対して実行" class="fragment"></span><a href="#hhvm%E3%81%AB%E5%AF%BE%E3%81%97%E3%81%A6%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>hhvmに対して実行</h4>
+
+<p>つづいてhhvmのAMIMOTOに対して実行。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe570d436-c4ca-e944-ec92-604ccaae619b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1e421a977a4a650ecd4ccf42de502dfe" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe570d436-c4ca-e944-ec92-604ccaae619b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1e421a977a4a650ecd4ccf42de502dfe" alt="スクリーンショット_4_1_15__1_55_AM.png" title="スクリーンショット_4_1_15__1_55_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/e570d436-c4ca-e944-ec92-604ccaae619b.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe570d436-c4ca-e944-ec92-604ccaae619b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0b42ff9eaa825d7fad345d8908811b79 1x" loading="lazy"></a></p>
+
+<p>同じように見えるが、青軸のスケールが違うね。次で比較しよう。</p>
+
+<h4>
+<span id="トップページ簡易比較" class="fragment"></span><a href="#%E3%83%88%E3%83%83%E3%83%97%E3%83%9A%E3%83%BC%E3%82%B8%E7%B0%A1%E6%98%93%E6%AF%94%E8%BC%83"><i class="fa fa-link"></i></a>トップページ簡易比較</h4>
+
+<p>分かりやすい所をピックアップしてみた。</p>
+
+<table>
+<thead>
+<tr>
+<th>-</th>
+<th><a href="https://aws.amazon.com/marketplace/pp/B00LWHVJH8/" rel="nofollow noopener" target="_blank">AMIMOTO HVM</a></th>
+<th><a href="https://aws.amazon.com/marketplace/pp/B00V5JYXTO" rel="nofollow noopener" target="_blank">AMIMOTO HHVM</a></th>
+<th>(参考)nginxキャッシュ有効</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平均レスポンスタイム</td>
+<td>3108ms</td>
+<td>1566ms</td>
+<td>15ms</td>
+</tr>
+<tr>
+<td>リクエスト処理数</td>
+<td>2637</td>
+<td>5387</td>
+<td>386830</td>
+</tr>
+</tbody>
+</table>
+
+<p>同じインスタンスタイプだけども、処理数が倍違う。</p>
+
+<h3>
+<span id="wordpressの管理画面の記事一覧を表示" class="fragment"></span><a href="#wordpress%E3%81%AE%E7%AE%A1%E7%90%86%E7%94%BB%E9%9D%A2%E3%81%AE%E8%A8%98%E4%BA%8B%E4%B8%80%E8%A6%A7%E3%82%92%E8%A1%A8%E7%A4%BA"><i class="fa fa-link"></i></a>WordPressの管理画面の記事一覧を表示</h3>
+
+<p>Loader.ioでも複数のリクエスト間でサーバレスポンスの値を使えます。WordPressはCookieが使えればいいみたいなので、次の2つ</p>
+
+<ol>
+<li>管理画面ログイン (POST /wp-login.php )</li>
+<li>記事一覧表示    (GET /wp-admin/edit.php )</li>
+</ol>
+
+<p>これならphpの処理系としての実力がさらに顕著に出るかも？</p>
+
+<p>厳密には1で返されるリダイレクト先(<code>/wp-admin/</code>)にもリクエストを送るようなので3回づつリクエストが発生していたけど、リダイレクト時にCookieは持ち回ってくれないみたい。</p>
+
+<p>ツールにWordPressでログインの処理をさせる時は、Post用のパラメータとして次の項目を埋めればOKだった。</p>
+
+<ul>
+<li>log : ユーザ名</li>
+<li>pwd : パスワード</li>
+<li>wp-submit : <code>Log+In</code>
+</li>
+<li>testcookie : 1 (いらないかも)</li>
+</ul>
+
+<p>Cookieの使い回し方はLoader.ioのヘルプで。</p>
+
+<p><a href="http://support.loader.io/article/18-variables" title="Variables - Loader.io Help Desk" rel="nofollow noopener" target="_blank">Variables - Loader.io Help Desk</a></p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6e6c19b7-4287-d2f4-2bec-0b00977cf453.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ac6d266f2ed58df0e2c3af07b6738eae" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6e6c19b7-4287-d2f4-2bec-0b00977cf453.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ac6d266f2ed58df0e2c3af07b6738eae" alt="スクリーンショット_4_1_15__2_45_AM.png" title="スクリーンショット_4_1_15__2_45_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/6e6c19b7-4287-d2f4-2bec-0b00977cf453.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6e6c19b7-4287-d2f4-2bec-0b00977cf453.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=13888a0d01131a19f8e1abebff4d2b6b 1x" loading="lazy"></a></p>
+
+<p>ついでに、管理画面は重たい事がわかっているのでレスポンスが50xになってしまってもベンチマークが中断しないようにエラー許容レートとタイムアウトを伸ばしておく。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F24a01498-5859-52f6-4ed8-5c23d50e115c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ceb6129600165464e402500ecb80ed5c" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F24a01498-5859-52f6-4ed8-5c23d50e115c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ceb6129600165464e402500ecb80ed5c" alt="スクリーンショット_4_1_15__2_32_AM.png" title="スクリーンショット_4_1_15__2_32_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/24a01498-5859-52f6-4ed8-5c23d50e115c.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F24a01498-5859-52f6-4ed8-5c23d50e115c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=ed271e3440d54b6bd9ab6c74297afa2f 1x" loading="lazy"></a></p>
+
+<p>増やした理由はすぐに。</p>
+
+<h4>
+<span id="php-fpm版に対して実行-1" class="fragment"></span><a href="#php-fpm%E7%89%88%E3%81%AB%E5%AF%BE%E3%81%97%E3%81%A6%E5%AE%9F%E8%A1%8C-1"><i class="fa fa-link"></i></a>php-fpm版に対して実行</h4>
+
+<p>では、ログインと管理用データ取得という重たげな処理をやってみよう。まずphp-fpm。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb0ecddbe-7556-3376-b2d4-93831c859024.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=274072c0e8d150175fee90d69457314c" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb0ecddbe-7556-3376-b2d4-93831c859024.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=274072c0e8d150175fee90d69457314c" alt="スクリーンショット_4_1_15__2_52_AM.png" title="スクリーンショット_4_1_15__2_52_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/b0ecddbe-7556-3376-b2d4-93831c859024.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb0ecddbe-7556-3376-b2d4-93831c859024.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=c51a8f6a04992670cda1a9ddd9d38944 1x" loading="lazy"></a></p>
+
+<p>レスポンスタイムが途中から劇的に早くなった？？ のではなく、150−200クライアントのあたりでエラーで落ちている。</p>
+
+<p>次の図、レスポンスコードの推移が分かりやすい。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F0aed2e24-9881-6985-8a8f-9e6e06297139.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fa7e0403a68baa92bd8a9bda87dfd171" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F0aed2e24-9881-6985-8a8f-9e6e06297139.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fa7e0403a68baa92bd8a9bda87dfd171" alt="スクリーンショット_4_1_15__2_52_AM.png" title="スクリーンショット_4_1_15__2_52_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/0aed2e24-9881-6985-8a8f-9e6e06297139.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F0aed2e24-9881-6985-8a8f-9e6e06297139.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=5986b3f669c34a94e0d760ef93a2802b 1x" loading="lazy"></a></p>
+
+<p>php-fpmのエラーログには幾らか原因が出ていたので、チューニングの余地はあるかもしれないが。。まあ大抵こうなるよねと。</p>
+
+<h4>
+<span id="hhvmに対して実行-1" class="fragment"></span><a href="#hhvm%E3%81%AB%E5%AF%BE%E3%81%97%E3%81%A6%E5%AE%9F%E8%A1%8C-1"><i class="fa fa-link"></i></a>hhvmに対して実行</h4>
+
+<p>同じことをhhvmに対しても実行した。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff7c15905-5e64-78b7-5632-1bd93739f7d9.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=f3e3bca2e8196c78f38827769b3144d9" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff7c15905-5e64-78b7-5632-1bd93739f7d9.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=f3e3bca2e8196c78f38827769b3144d9" alt="スクリーンショット_4_1_15__2_48_AM.png" title="スクリーンショット_4_1_15__2_48_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/f7c15905-5e64-78b7-5632-1bd93739f7d9.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff7c15905-5e64-78b7-5632-1bd93739f7d9.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=e545e402f97d2c86bf994c3cdf6b4f8a 1x" loading="lazy"></a></p>
+
+<p>レスポンスタイムこそ伸びた(defaultの10秒ではタイムアウト扱い)ものの、エラー無しで完走。ちょっとこれ内部の取り回しどうなってんだろと思いました。</p>
+
+<p>hhvmはこの後さらに数千までクライアントを増やしたが、先にnginxのパラメータチューニングが必要だったほど安定していました。</p>
+
+<h3>
+<span id="さいごに" class="fragment"></span><a href="#%E3%81%95%E3%81%84%E3%81%94%E3%81%AB"><i class="fa fa-link"></i></a>さいごに</h3>
+
+<p>hhvmは早い上に頑丈だった。PHPと完全に互換があるわけではないらしいということだけど、採用できるPHPアプリケーションなら検討もしくは対応していいとおもう。<br>
+Amazon Linux用のHHVM-RPMはビルド関連もオープンなので、オプションなどリクエストがあればフィードバックもらえると多分対応します。</p>
+
+<p>ベンチマークの裏でサーバにログインしてモニタリングしていると、どっちもCPUコア2つのうち片方しか使えてなかった感じなので、そこらもっと改良できるかも。</p>
+
+<p>Loader.ioは定期的に実行しつつSlackに結果を通知してくれたりするので、たまに本番環境の健康診断とか、ちょっとした環境の評価に使うのもいいですね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb700fe0e-f95d-c70b-10de-b921e04efcd0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4d6d0f535c77173765bae64671393ebe" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb700fe0e-f95d-c70b-10de-b921e04efcd0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4d6d0f535c77173765bae64671393ebe" alt="スクリーンショット_4_1_15__3_40_AM.png" title="スクリーンショット_4_1_15__3_40_AM.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/b700fe0e-f95d-c70b-10de-b921e04efcd0.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb700fe0e-f95d-c70b-10de-b921e04efcd0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=827fcbf435ec06054107372ba639c801 1x" loading="lazy"></a></p>
+
+<hr>
+
+<p>追記：</p>
+
+<p>本記事の画像はこちらにも提供しました。 &gt;&gt; <a href="http://ja.amimoto-ami.com/2015/05/07/amimoto-hhvm/" rel="nofollow noopener" target="_blank">網元HHVMの提供開始 | 超高速 WordPress AMI 網元</a></p>

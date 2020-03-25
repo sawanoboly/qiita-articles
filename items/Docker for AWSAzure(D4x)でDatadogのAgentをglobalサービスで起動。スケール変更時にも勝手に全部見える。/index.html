@@ -1,0 +1,53 @@
+<p>DatadogのDockerホスト向けAgentはD4xにちょうどいいかもしれないと思ったので起動してみる。</p>
+
+<h2>
+<span id="run--serviceに変換する" class="fragment"></span><a href="#run--service%E3%81%AB%E5%A4%89%E6%8F%9B%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>run =&gt; serviceに変換する</h2>
+
+<p>Dockerホスト向けAgentのインストラクションからはこう来るので、</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>docker run -d --name dd-agent \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /proc/:/host/proc/:ro \
+  -v /sys/fs/cgroup/:/host/sys/fs/cgroup:ro \
+  -e API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx datadog/docker-dd-agent:latest
+</pre></div></div>
+
+<p>globalモードのサービスとして動かせるように変換と。こうしておけばノードが増減しても全体でAgentが稼働する状況を保てる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>docker service create --name global-dd-agent \
+  --mode global \
+  --limit-cpu 1 \
+  --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock,readonly=true \
+  --mount type=bind,source=/proc/,target=/host/proc/,readonly=true \
+  --mount type=bind,source=/sys/fs/cgroup/,target=/host/sys/fs/cgroup,readonly=true \
+  -e API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  datadog/docker-dd-agent:latest
+</pre></div></div>
+
+<p>そういえばglobalにも対象絞りができるんだろうか？まあ今回はいいや。</p>
+
+<h2>
+<span id="serviceの確認" class="fragment"></span><a href="#service%E3%81%AE%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>Serviceの確認</h2>
+
+<p>全部のNodeでAgentが動きだしたね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker service ps global-dd-agent
+ID                         NAME                 IMAGE                           NODE                            DESIRED STATE  CURRENT STATE           ERROR
+b2m3d5lvyng0dn0p20ubpktpj  global-dd-agent      datadog/docker-dd-agent:latest  ip-192-168-xxx-xxx.ec2.internal  Running        Running 25 seconds ago  
+b71c81rhk8k1qzybme6on0csl   \_ global-dd-agent  datadog/docker-dd-agent:latest  ip-192-168-xxx-xxx.ec2.internal  Running        Running 20 seconds ago  
+0tkbe30m150unwuh58hw4svb2   \_ global-dd-agent  datadog/docker-dd-agent:latest  ip-192-168-xxx-xxx.ec2.internal  Running        Running 23 seconds ago  
+arc0tozq3ypoltqntli23eo4a   \_ global-dd-agent  datadog/docker-dd-agent:latest  ip-192-168-xxx-xxx.ec2.internal  Running        Running 12 seconds ago  
+ev76xdu7vc8r1pgldd1g5ui1f   \_ global-dd-agent  datadog/docker-dd-agent:latest  ip-192-168-xxx-xxx.ec2.internal  Running        Running 22 seconds ago  
+8atpxhwzhf4lie9xs50rq5geb   \_ global-dd-agent  datadog/docker-dd-agent:latest  ip-192-168-xxx-xxx.ec2.internal  Running        Running 20 seconds ago
+</pre></div></div>
+
+<p>Datadog側にもガサっと情報が上がってきました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F610a0c14-e933-89d8-0f5f-18c11a0c4600.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=91220e45b27896393413ab3524623764" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F610a0c14-e933-89d8-0f5f-18c11a0c4600.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=91220e45b27896393413ab3524623764" alt="Events___Datadog.jpg" title="Events___Datadog.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/610a0c14-e933-89d8-0f5f-18c11a0c4600.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F610a0c14-e933-89d8-0f5f-18c11a0c4600.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=a4402d66fa1c9bce4187114551dc099b 1x" loading="lazy"></a></p>
+
+<p>Dockerコンテナの作られたりする様子もあがってきて色々と丁度いいかも。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>globalのサービスは、一発タスクにも使える。例えば事前にdocker imageをpullしておきたいとか。</p>

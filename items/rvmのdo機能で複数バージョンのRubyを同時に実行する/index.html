@@ -1,0 +1,43 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>rvmにdoというオプションがある、使用例は<a href="https://rvm.io/set/tests/" rel="nofollow noopener" target="_blank">公式の<code>rvm test</code></a>。</p>
+
+<p>渡したシェルを複数のrvmコンテキストで別々に実行してくれる。主にテスト向けの機能。</p>
+
+<h3>
+<span id="バージョン表示のrakeタスク" class="fragment"></span><a href="#%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E8%A1%A8%E7%A4%BA%E3%81%AErake%E3%82%BF%E3%82%B9%E3%82%AF"><i class="fa fa-link"></i></a>バージョン表示のrakeタスク</h3>
+
+<p>それぞれのRubyでバージョンを表示するだけのタスクを走らせてみる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="n">desc</span> <span class="s2">"print version"</span>
+<span class="n">task</span> <span class="ss">:print_ruby_version</span> <span class="k">do</span>
+  <span class="nb">puts</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'RUBY_VERSION'</span><span class="p">]</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="カンマ区切りでバージョンを複数指定して実行" class="fragment"></span><a href="#%E3%82%AB%E3%83%B3%E3%83%9E%E5%8C%BA%E5%88%87%E3%82%8A%E3%81%A7%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%82%92%E8%A4%87%E6%95%B0%E6%8C%87%E5%AE%9A%E3%81%97%E3%81%A6%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>カンマ区切りでバージョンを複数指定して実行</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ rvm ruby-1.9.2-p320,ruby-1.9.3-p194 do rake print_ruby_version
+ruby-1.9.2-p320
+ruby-1.9.3-p194
+</pre></div></div>
+
+<h3>
+<span id="allでインストール済みのすべてのバージョンで実行" class="fragment"></span><a href="#all%E3%81%A7%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E6%B8%88%E3%81%BF%E3%81%AE%E3%81%99%E3%81%B9%E3%81%A6%E3%81%AE%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%A7%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>allでインストール済みのすべてのバージョンで実行</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ rvm all do rake print_ruby_version
+jruby-1.6.7.2
+ruby-1.9.2-p320
+ruby-1.9.3-p194
+ruby-1.9.3-p125
+</pre></div></div>
+
+<p>例えば<code>.travis.yml</code>を勝手に拾ってテストしてみるのも良い。</p>

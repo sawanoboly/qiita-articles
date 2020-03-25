@@ -1,0 +1,668 @@
+<p>前回 <a href="http://qiita.com/sawanoboly/items/218a7b03ddec6be45e34" title="Chefのローカルモードだけでリモートサーバを運用してみようと、Knife-Zeroを作った。Nodeの構成情報もとれるよ。 - Qiita" id="reference-acb79b000c2d96370362">Chefのローカルモードだけでリモートサーバを運用してみようと、Knife-Zeroを作った。Nodeの構成情報もとれるよ。 - Qiita</a> の続きといえば続きです。</p>
+
+<blockquote>
+<p>Knife-Zeroのページはこちら。 <a href="http://knife-zero.github.io/ja/" class="autolink" rel="nofollow noopener" target="_blank">http://knife-zero.github.io/ja/</a></p>
+</blockquote>
+
+<p>Chef11.xからローカルモードというのが加わりました。Chef-Client/Server環境の簡易版であり、Soloの代わりでもあります。</p>
+
+<blockquote>
+
+<h3>
+<span id="chef-soloからの乗り換えとしてchef-zeroローカルモード検索が多いようなのでこの追記を先頭に移動" class="fragment"></span><a href="#chef-solo%E3%81%8B%E3%82%89%E3%81%AE%E4%B9%97%E3%82%8A%E6%8F%9B%E3%81%88%E3%81%A8%E3%81%97%E3%81%A6chef-zero%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%83%A2%E3%83%BC%E3%83%89%E6%A4%9C%E7%B4%A2%E3%81%8C%E5%A4%9A%E3%81%84%E3%82%88%E3%81%86%E3%81%AA%E3%81%AE%E3%81%A7%E3%81%93%E3%81%AE%E8%BF%BD%E8%A8%98%E3%82%92%E5%85%88%E9%A0%AD%E3%81%AB%E7%A7%BB%E5%8B%95"><i class="fa fa-link"></i></a>Chef-Soloからの乗り換えとしてChef-Zero(ローカルモード)検索が多いようなので、この追記を先頭に移動</h3>
+
+<p>このサンプルではSSH越しにローカルモードを実行していますが、単にサーバ側にChef-Repoを置いてローカルモードをしたい場合、<br>
+Chefをインストール後にChef-Repoのディレクトリに移動して<code>chef-client -z</code>でOKです。<br>
+SoloみたいにCookbookPathが無いとかそういうエラーもなく、簡単に実行できます。<br>
+ついでに、<a href="https://matschaffer.github.io/knife-solo/" rel="nofollow noopener" target="_blank">Knife-Solo</a>は無くならないので、乗り換え必須ではありません。</p>
+
+<p>追記1： で、Soloどうなるのよってのは<a href="http://www.sawanoboly.net/2014/12/chef-solo-zero-knife-solo-zero/" rel="nofollow noopener" target="_blank">こちらに書いた</a>ので合わせてどうぞ。<br>
+追記2: 200ストックの通知が来たので、コマンド等を現行(1.8.0時)向けに少し修正<br>
+追記3: Knife-Zeroのページ。</p>
+</blockquote>
+
+<h2>
+<span id="概要" class="fragment"></span><a href="#%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>概要</h2>
+
+<p>今回はローカルモードを主眼において、そのままChef-Serverレスでインフラを管理していこうという試みのチュートリアルです。<br>
+本文はだいたいこんな感じですすめます。</p>
+
+<ul>
+<li>ローカルモードでのChefのインフラ構築ワークフロー</li>
+<li>Knife-Sakuraでサーバ調達 (※ optional)</li>
+<li>Knife-Zero</li>
+</ul>
+
+<p>ちなみに作業後のディレクトリ構成等は <a href="https://github.com/higanworks/chef_localmode_tutorial" title="higanworks/chef_localmode_tutorial" rel="nofollow noopener" target="_blank">higanworks/chef_localmode_tutorial</a> にアップしているので、セットアップ代わりにこちらをクローンしてから始めてもよいです。</p>
+
+<h2>
+<span id="セットアップ" class="fragment"></span><a href="#%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>セットアップ</h2>
+
+<p>Rubyプロジェクトぽく進めます、必要なディレクトリを用意して。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mkdir my_chefrepo
+$ cd my_chefrepo/
+$ bundle init
+Writing new Gemfile to /Users/sawanoboriyu/my_chefrepo/Gemfile
+</pre></div></div>
+
+<p>Gemfileに使うGemsを記述して。</p>
+
+<div class="code-frame" data-lang="runy">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre>source "https://rubygems.org"
+
+gem 'chef'
+gem 'knife-zero'
+gem 'knife-sakura'
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>
+Bundleします。
+
+...
+Installing chef (11.14.6)
+Installing knife-zero (0.1.2)
+...
+
+Installing knife-sakura (0.0.2)
+Your bundle is complete!
+It was installed into ./vendor/bundle
+</pre></div></div>
+
+<p>ちなみにknife-zero(0.1.2), knife-sakura(0.0.2)以上が必須です。</p>
+
+<p><code>--binstubs</code>しているので、カレントの<code>./bin</code>に実行ファイルが来ます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree . -I vendor
+.
+├── Gemfile
+├── Gemfile.lock
+└── bin
+    ├── chef-apply
+    ├── chef-client
+    ├── chef-service-manager
+    ├── chef-shell
+    ├── chef-solo
+    ├── chef-zero
+    ├── coderay
+    ├── erubis
+    ├── ffi-yajl-bench
+    ├── fog
+    ├── htmldiff
+    ├── knife
+    ├── ldiff
+    ├── nokogiri
+    ├── ohai
+    ├── pry
+    ├── rackup
+    ├── restclient
+    └── shef
+</pre></div></div>
+
+<h3>
+<span id="ローカルモードの準備" class="fragment"></span><a href="#%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%83%A2%E3%83%BC%E3%83%89%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>ローカルモードの準備</h3>
+
+<p>knifeコマンドのデフォルト動作をローカルモードにするため<code>knife.rb</code>を作ります。この記述はコマンドラインの<code>--local-mode</code>オプションと同じ働きです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mkdir .chef
+$ echo 'local_mode true' &gt; .chef/knife.rb
+</pre></div></div>
+
+<p>これでローカルモードで動作するようになります。<br>
+Chef-Client/Server環境のコマンド、<code>knife environment list</code>等を叩いてみましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife environment list -V
+WARN: No cookbooks directory found at or above current directory.  Assuming /Users/sawanoboriyu/Dev/worktmp/my_chefrepo.
+INFO: Starting chef-zero on host localhost, port 8889 with repository at repository at /Users/sawanoboriyu/Dev/worktmp/my_chefrepo
+  One version per cookbook
+
+
+$ ./bin/knife node list -V
+WARN: No cookbooks directory found at or above current directory.  Assuming /Users/sawanoboriyu/Dev/worktmp/my_chefrepo.
+INFO: Starting chef-zero on host localhost, port 8889 with repository at repository at /Users/sawanoboriyu/Dev/worktmp/my_chefrepo
+  One version per cookbook
+</pre></div></div>
+
+<p>この記述 <code>Starting chef-zero on host localhost, port 8889 with repository at repository at /Users/sawanoboriyu/Dev/worktmp/my_chefrepo</code> がポイントです。<br>
+ローカルのディレクトリをベースにChefZeroが起動して、ChefServerの代わりをしています。</p>
+
+<p>なおWARNが出ていますが、単に<code>./cookbooks</code>ディレクトリが無いためです。<br>
+あとで勝手にできるので、これ以降<code>WARN: No cookbooks directory〜</code>は省略します。</p>
+
+<h2>
+<span id="environmentをつくる" class="fragment"></span><a href="#environment%E3%82%92%E3%81%A4%E3%81%8F%E3%82%8B"><i class="fa fa-link"></i></a>Environmentをつくる</h2>
+
+<p>新しいEnvironment、<code>development</code>を作ってみましょう。<code>knife environment create development</code>です。</p>
+
+<div class="code-frame" data-lang="json"><div class="highlight"><pre><span class="err">$</span><span class="w"> </span><span class="err">./bin/knife</span><span class="w"> </span><span class="err">environment</span><span class="w"> </span><span class="err">create</span><span class="w"> </span><span class="err">development</span><span class="w">
+
+</span><span class="err">##</span><span class="w"> </span><span class="err">---エディタが開く</span><span class="w">
+
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"development"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"cookbook_versions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"json_class"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Chef::Environment"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"chef_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"environment"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"default_attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"override_attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span><span class="err">##</span><span class="w"> </span><span class="err">---</span><span class="w"> </span><span class="err">保存して終了</span><span class="w">
+
+</span><span class="err">Created</span><span class="w"> </span><span class="err">development</span><span class="w">
+</span></pre></div></div>
+
+<p>リストに出るようになりました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife environment list
+development
+</pre></div></div>
+
+<p>ファイルとして保存されています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree environments/
+environments/
+└── development.json
+</pre></div></div>
+
+<p><code>knife search</code>で<code>environment</code>を対象に探せばちゃんと見つかります。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife search environment 'name:dev*'
+1 items found
+
+chef_type:           environment
+cookbook_versions:
+default_attributes:
+description:         
+json_class:          Chef::Environment
+name:                development
+override_attributes:
+</pre></div></div>
+
+<blockquote>
+
+<h3>
+<span id="余談chefzeroを単体で上げるknife-serve" class="fragment"></span><a href="#%E4%BD%99%E8%AB%87chefzero%E3%82%92%E5%8D%98%E4%BD%93%E3%81%A7%E4%B8%8A%E3%81%92%E3%82%8Bknife-serve"><i class="fa fa-link"></i></a>余談：ChefZeroを単体で上げる<code>knife serve</code>
+</h3>
+
+<p><code>knife serve</code>サブコマンドを使うと、ローカルのディレクトリをChef-Repoに見立てたChefZeroが起動します。<br>
+※ 通常のchef-zeroコマンドではすべてオンメモリで、リソース空っぽで起動して終了時に何も保存しません。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife serve
+Serving files from:
+repository at /Users/sawanoboriyu/Dev/worktmp/my_chefrepo
+  One version per cookbook
+
+&gt;&gt; Starting Chef Zero (v2.2)...
+&gt;&gt; WEBrick (v1.3.1) on Rack (v1.5) is listening at http://localhost:8889
+&gt;&gt; Press CTRL+C to stop
+</pre></div></div>
+
+<p>この状態なら、Chef-Serveに問い合わせる要領でオブジェクトを取得することもできるので、色々動作確認してみたい場合は使える機能です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -H 'Accept: application/json' localhost:8889/environments
+{
+  "development": "http://localhost:8889/environments/development"
+}
+</pre></div></div>
+
+<p><code>Accept: application/json</code>ヘッダを忘れずに。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -H 'Accept: application/json' localhost:8889/environments/development
+{
+  "name": "development",
+  "description": "",
+  "cookbook_versions": {
+  },
+  "json_class": "Chef::Environment",
+  "chef_type": "environment",
+  "default_attributes": {
+  },
+  "override_attributes": {
+  }
+}
+</pre></div></div>
+
+<p>ついでに言うと、これらのオブジェクトはファイルベースなので<code>rm</code>でもサクッと消せます。</p>
+</blockquote>
+
+<h2>
+<span id="data-bagをつくる" class="fragment"></span><a href="#data-bag%E3%82%92%E3%81%A4%E3%81%8F%E3%82%8B"><i class="fa fa-link"></i></a>Data Bagをつくる</h2>
+
+<p>同様にData Bagを作ってみます。</p>
+
+<div class="code-frame" data-lang="json"><div class="highlight"><pre><span class="err">$</span><span class="w"> </span><span class="err">./bin/knife</span><span class="w"> </span><span class="err">data</span><span class="w"> </span><span class="err">bag</span><span class="w"> </span><span class="err">create</span><span class="w"> </span><span class="err">samplebag</span><span class="w"> </span><span class="err">sampleitem</span><span class="w">
+
+</span><span class="err">##</span><span class="w"> </span><span class="err">---エディタが開くので編集する</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sampleitem"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"foo"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bar"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span><span class="err">##</span><span class="w"> </span><span class="err">---</span><span class="w"> </span><span class="err">保存して終了</span><span class="w">
+
+</span><span class="err">Created</span><span class="w"> </span><span class="err">data_bag</span><span class="p">[</span><span class="err">samplebag</span><span class="p">]</span><span class="w">
+</span><span class="err">Created</span><span class="w"> </span><span class="err">data_bag_item</span><span class="p">[</span><span class="err">sampleitem</span><span class="p">]</span><span class="w">
+</span></pre></div></div>
+
+<p>リストOK。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife data bag list
+samplebag
+
+$ ./bin/knife data bag show samplebag sampleitem
+foo: bar
+id:  sampleitem
+</pre></div></div>
+
+<p>これもファイルとして保存されています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree data_bags/
+data_bags/
+└── samplebag
+    └── sampleitem.json
+
+1 directory, 1 file
+</pre></div></div>
+
+<blockquote>
+<p>追記:<br>
+この段落をサーバ側で実行すれば、単体でChef-Soloを実行するのとだいたいおなじ感覚になります。</p>
+</blockquote>
+
+<h2>
+<span id="適当なnodeを用意する-knife-sakura" class="fragment"></span><a href="#%E9%81%A9%E5%BD%93%E3%81%AAnode%E3%82%92%E7%94%A8%E6%84%8F%E3%81%99%E3%82%8B-knife-sakura"><i class="fa fa-link"></i></a>適当なNodeを用意する knife-sakura</h2>
+
+<p>ではChefの管理対象とするリソースとして、今回はLinuxサーバを用意します。</p>
+
+<p>サーバはSSHが繋がるならば既存のものでも良いですし、aws cliでもterraformでも、ローカルのVagrantでも好きなように調達してください。</p>
+
+<p>さて、今回はせっかくなのでなんかしらクラウドで。<br>
+Knifeのプラグインを利用して<a href="http://cloud.sakura.ad.jp/" rel="nofollow noopener" target="_blank">さくらのクラウド</a>から調達します。みなさんたいていクーポンが遊んでいるでしょう。</p>
+
+<ul>
+<li>参考＆詳しい使い方は: <a href="https://github.com/cl-lab-k/knife-sakura" title="cl-lab-k/knife-sakura" rel="nofollow noopener" target="_blank">cl-lab-k/knife-sakura</a>
+</li>
+</ul>
+
+<p>Vagrant+VirtualBoxでマシンを調達するならば <a href="http://blog.chopschips.net/blog/2015/08/25/vagrant-knife-zero-best-practice/" title="Vagrantでknife-zeroを使うためのベストプラクティス | 割り箸ポテチ" rel="nofollow noopener" target="_blank">Vagrantでknife-zeroを使うためのベストプラクティス | 割り箸ポテチ</a> も参考になるでしょう。</p>
+
+<h3>
+<span id="さくらのクラウドknife-sakuraセットアップ" class="fragment"></span><a href="#%E3%81%95%E3%81%8F%E3%82%89%E3%81%AE%E3%82%AF%E3%83%A9%E3%82%A6%E3%83%89knife-sakura%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>さくらのクラウド(knife-sakura)セットアップ</h3>
+
+<p><code>.chef/knife.rb</code>をちょろちょろっと編集して、環境変数をエクスポートしておきます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">.chef/knife.rb</span></div>
+<div class="highlight"><pre><span class="n">local_mode</span> <span class="kp">true</span>
+
+<span class="c1">## SakuraCloud credentials</span>
+<span class="n">knife</span><span class="p">[</span><span class="ss">:sakuracloud_api_token</span><span class="p">]</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'SAKURACLOUD_API_TOKEN'</span><span class="p">]</span>
+<span class="n">knife</span><span class="p">[</span><span class="ss">:sakuracloud_api_token_secret</span><span class="p">]</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'SAKURACLOUD_API_TOKEN_SECRET'</span><span class="p">]</span>
+<span class="n">knife</span><span class="p">[</span><span class="ss">:sakuracloud_ssh_key</span><span class="p">]</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'SAKURACLOUD_USER_KEY_ID'</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="さくらのクラウドknife-sakuraでサーバ調達" class="fragment"></span><a href="#%E3%81%95%E3%81%8F%E3%82%89%E3%81%AE%E3%82%AF%E3%83%A9%E3%82%A6%E3%83%89knife-sakura%E3%81%A7%E3%82%B5%E3%83%BC%E3%83%90%E8%AA%BF%E9%81%94"><i class="fa fa-link"></i></a>さくらのクラウド(knife-sakura)でサーバ調達</h3>
+
+<p>サーバを調達するには、<code>knife sakura server create</code>です。</p>
+
+<p>server1,server2,server3として、3台ほど調達を試みます。<br>
+ついでに<code>--no-bootstrap</code>として、Chef-Server連携用のbootstrapをキャンセルします。 (※ この後のknife-zeroのため)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ for x in {1..3} ; do echo ./bin/knife sakura server create  --server-plan 1001 --disk-plan 4 --source-archive 112500463685 --no-bootstrap -n server${x}; done
+
+Instance ID: 112600642xxx
+Server Plan: プラン/1Core-1GB
+Public IP Address: 133.242.231.xxx
+
+Instance ID: 112600642xxx
+Server Plan: プラン/1Core-1GB
+Public IP Address: 133.242.230.xxx
+
+Instance ID: 112600642xxx
+Server Plan: プラン/1Core-1GB
+Public IP Address: 133.242.237.xxx
+</pre></div></div>
+
+<p>新鮮なサーバが3台とれました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife sakura server list
+ID                                    Name                                  Status                                Created at                          
+112600642xxx                          1a966089-d6bb-42cb-a7df-08beda84cxxx  up                                    2014-08-25Txx:xx:xx+09:00           
+112600642xxx                          aa897042-ecf0-49fd-9eaa-05dea1be3xxx  up                                    2014-08-25Txx:xx:xx+09:00           
+112600642xxx                          9bd5969f-a682-465d-b3c0-6e86148a4xxx  up                                    2014-08-25Txx:xx:xx+09:00
+</pre></div></div>
+
+<p>じゃあこれらをChefローカルモードの管理下においていきます。</p>
+
+<h3>
+<span id="knife-zeroでnodeを管理下に" class="fragment"></span><a href="#knife-zero%E3%81%A7node%E3%82%92%E7%AE%A1%E7%90%86%E4%B8%8B%E3%81%AB"><i class="fa fa-link"></i></a>knife-zeroでnodeを管理下に</h3>
+
+<p><code>knife zero bootstrap</code>をすることで、<a href="http://qiita.com/sawanoboly/items/218a7b03ddec6be45e34" title="Chefのローカルモードだけでリモートサーバを運用してみようと、Knife-Zeroを作った。Nodeの構成情報もとれるよ。 - Qiita">前回</a>のようにします。</p>
+
+<p><code>-E development</code>をつけて、<code>Environent =&gt; development</code>のノードとして登録しましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>## server1をbootstrap
+$ ./bin/knife zero bootstrap 133.242.231.xxx -x ubuntu -E development --sudo -N server1
+...
+133.242.231.xxx Chef Client finished, 0/0 resources updated in 3.692237549 seconds
+
+
+## server2をbootstrap
+$ ./bin/knife zero bootstrap 133.242.230.xxx -x ubuntu -E development --sudo -N server2
+...
+133.242.230.xxx Chef Client finished, 0/0 resources updated in 3.692237549 seconds
+
+
+## server3をbootstrap
+$ ./bin/knife zero bootstrap 133.242.237.xxx -x ubuntu -E development --sudo -N server3
+...
+133.242.237.xxx Chef Client finished, 0/0 resources updated in 3.692237549 seconds
+
+
+</pre></div></div>
+
+<p>無事Zero Bootstrapが終わったので、nodeのリストが取れることを確認しましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife node list
+server1
+server2
+server3
+</pre></div></div>
+
+<p>もちろんファイルとしてローカルにありつつ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree nodes/
+nodes/
+├── server1.json
+├── server2.json
+└── server3.json
+
+0 directories, 3 files
+</pre></div></div>
+
+<p><code>knife node show</code>などで情報を表示することができます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife node show server1
+Node Name:   server1
+Environment: development
+FQDN:        localhost
+IP:          133.242.231.xxx
+Run List:    
+Roles:       
+Recipes:     
+Platform:    ubuntu 12.04
+Tags:        
+
+</pre></div></div>
+
+<p><code>Environent =&gt; development</code>なNodeをサーチすれば、それぞれがちゃんと引っかかりますね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife search node 'chef_environment:development'
+3 items found
+
+Node Name:   server1
+Environment: development
+FQDN:        localhost
+IP:          133.242.231.xxx
+Run List:    
+Roles:       
+Recipes:     
+Platform:    ubuntu 12.04
+Tags:        
+
+Node Name:   server2
+Environment: development
+FQDN:        localhost
+IP:          133.242.230.xxx
+Run List:    
+Roles:       
+Recipes:     
+Platform:    ubuntu 12.04
+Tags:        
+
+Node Name:   server3
+Environment: development
+FQDN:        localhost
+IP:          133.242.237.xxx
+Run List:    
+Roles:       
+Recipes:     
+Platform:    ubuntu 12.04
+Tags:        
+
+</pre></div></div>
+
+<p>標準の<code>knife ssh</code>もローカルモードで動作させれば、このとおり。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife ssh 'chef_environment:development' -x ubuntu --attribute ipaddress uptime 
+133.242.231.xxx  xx:40:51 up  1:41,  1 user,  load average: 0.00, 0.01, 0.05
+133.242.230.xxx  xx:40:51 up  1:40,  1 user,  load average: 0.00, 0.02, 0.05
+133.242.237.xxx  xx:40:51 up  1:38,  1 user,  load average: 0.00, 0.02, 0.05
+</pre></div></div>
+
+<p>※ 標準で接続先に使われるFQDNが全部<code>localhost</code>なので、<code>--attribute ipaddress</code>を指定してSSHの接続対象をIPにしています。</p>
+
+<blockquote>
+<p>追記： Knife-Zero 1.8.0で、Bootstrapで指定したIPを<code>node.knife_zero.host</code>で保持するようにしました。<br>
+IPアドレスを複数持つ一部の環境では<code>node.ipaddress</code>が手元からつながらない場合があるため、Bootstrapでの接続実績を使い回しできるようにする更新です。<br>
+そっちを使う場合は、<code>--attribute ipaddress</code>の代わりに、<code>--attribute knife_zero.host</code>でどうぞ。</p>
+</blockquote>
+
+<h2>
+<span id="cookbookを作ってレシピを適用data-bag-searchもok" class="fragment"></span><a href="#cookbook%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%A6%E3%83%AC%E3%82%B7%E3%83%94%E3%82%92%E9%81%A9%E7%94%A8data-bag-search%E3%82%82ok"><i class="fa fa-link"></i></a>Cookbookを作ってレシピを適用、Data Bag, SearchもOK</h2>
+
+<p><code>knife cookbook create</code>でCookbookを作りましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife cookbook create demobook
+** Creating cookbook demobook
+** Creating README for cookbook: demobook
+** Creating CHANGELOG for cookbook: demobook
+** Creating metadata for cookbook: demobook
+</pre></div></div>
+
+<p><code>local_mode</code>なので<code>./cookbooks/</code>ディレクトリを自動でつくって、雛形をおいてくれます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree cookbooks/
+cookbooks/
+└── demobook
+    ├── CHANGELOG.md
+    ├── README.md
+    ├── attributes
+    ├── definitions
+    ├── files
+    │   └── default
+    ├── libraries
+    ├── metadata.rb
+    ├── providers
+    ├── recipes
+    │   └── default.rb
+    ├── resources
+    └── templates
+        └── default
+
+11 directories, 4 files
+</pre></div></div>
+
+<h3>
+<span id="data-bagを使うレシピ" class="fragment"></span><a href="#data-bag%E3%82%92%E4%BD%BF%E3%81%86%E3%83%AC%E3%82%B7%E3%83%94"><i class="fa fa-link"></i></a>Data Bagを使うレシピ</h3>
+
+<p>C/S環境と同様にかつ、ノード側に特にプラグイン無しでData Bagが利用できることを確認するため、次のようなRecipeを作りました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/demobook/recipes/data_bag.rb</span></div>
+<div class="highlight"><pre><span class="n">text</span> <span class="o">=</span> <span class="n">data_bag_item</span><span class="p">(</span><span class="s1">'samplebag'</span><span class="p">,</span> <span class="s1">'sampleitem'</span><span class="p">)</span>
+
+<span class="n">file</span> <span class="s1">'/tmp/from_databag.txt'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="n">text</span><span class="p">[</span><span class="s1">'foo'</span><span class="p">]</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="searchを使うレシピ" class="fragment"></span><a href="#search%E3%82%92%E4%BD%BF%E3%81%86%E3%83%AC%E3%82%B7%E3%83%94"><i class="fa fa-link"></i></a>Searchを使うレシピ</h3>
+
+<p>同様にSearchが利用できることを確認するため、次のようなRecipeを作りました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cookbooks/demobook/recipes/search.rb</span></div>
+<div class="highlight"><pre><span class="n">nodes</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"chef_environment:</span><span class="si">#{</span><span class="n">node</span><span class="p">.</span><span class="nf">chef_environment</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="n">list</span> <span class="o">=</span> <span class="n">nodes</span><span class="p">.</span><span class="nf">map</span> <span class="p">{</span><span class="o">|</span><span class="n">n</span><span class="o">|</span> <span class="n">n</span><span class="p">.</span><span class="nf">to_s</span><span class="p">}</span>
+
+<span class="n">file</span> <span class="s1">'/tmp/nodes_from_search.txt'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="n">list</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="ランリストをまとめるroleを作る" class="fragment"></span><a href="#%E3%83%A9%E3%83%B3%E3%83%AA%E3%82%B9%E3%83%88%E3%82%92%E3%81%BE%E3%81%A8%E3%82%81%E3%82%8Brole%E3%82%92%E4%BD%9C%E3%82%8B"><i class="fa fa-link"></i></a>ランリストをまとめるRoleを作る</h3>
+
+<p>Environemntなどと同様に、<code>knife role create</code>でRoleを作ります。</p>
+
+<div class="code-frame" data-lang="json"><div class="highlight"><pre><span class="err">$</span><span class="w"> </span><span class="err">./bin/knife</span><span class="w"> </span><span class="err">role</span><span class="w"> </span><span class="err">create</span><span class="w"> </span><span class="err">demorole</span><span class="w">
+
+</span><span class="err">##</span><span class="w"> </span><span class="err">---エディタが開く</span><span class="w">
+</span><span class="p">{</span><span class="w">
+  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"demorole"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w"> 
+  </span><span class="nl">"json_class"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Chef::Role"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"default_attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+  </span><span class="p">},</span><span class="w">  
+  </span><span class="nl">"override_attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+  </span><span class="p">},</span><span class="w">  
+  </span><span class="nl">"chef_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"role"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"run_list"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="s2">"demobook::data_bag"</span><span class="p">,</span><span class="w">    </span><span class="err">##</span><span class="w"> </span><span class="err">ここを追記</span><span class="w">
+    </span><span class="s2">"demobook::search"</span><span class="w">       </span><span class="err">##</span><span class="w"> </span><span class="err">ここを追記</span><span class="w">
+  </span><span class="p">],</span><span class="w">  
+  </span><span class="nl">"env_run_lists"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span><span class="err">##</span><span class="w"> </span><span class="err">---</span><span class="w"> </span><span class="err">保存して終了</span><span class="w">
+
+</span><span class="err">Created</span><span class="w"> </span><span class="err">role</span><span class="p">[</span><span class="err">demorole</span><span class="p">]</span><span class="w">
+
+</span></pre></div></div>
+
+<p><code>role show</code>で確認したりも可と。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife role show demorole
+chef_type:           role
+default_attributes:
+description:         
+env_run_lists:
+json_class:          Chef::Role
+name:                demorole
+override_attributes:
+run_list:
+  recipe[demobook::data_bag]
+  recipe[demobook::search]
+</pre></div></div>
+
+<p><code>server1</code>に<code>role[demorole]</code>の役割を与えてみましょう。<br>
+<code>knife node run_list add</code>です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife node run_list add server1 'role[demorole]'
+server1:
+  run_list: role[demorole]
+</pre></div></div>
+
+<p>適用するにはまたKnife-Zeroで作った拡張の<code>knife zero converge</code>でOKです。<br>
+まあポートフォワードを付けてChef-Clientを叩いてくるだけなのですが。</p>
+
+<blockquote>
+<p>追記: <code>zero chef_client</code>は<code>zero converge</code>に(主に気分で)変えました。<code>zero chef_client</code>も使えます。</p>
+</blockquote>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>./bin/knife zero converge <span class="s1">'name:server1'</span> <span class="nt">-x</span> ubuntu <span class="nt">--sudo</span> <span class="nt">--attribute</span> ipaddress
+133.242.231.xxx Starting Chef Client, version 11.14.6
+
+<span class="c">## RunListからCookbookを取得する</span>
+133.242.231.xxx resolving cookbooks <span class="k">for </span>run list: <span class="o">[</span><span class="s2">"demobook::data_bag"</span>, <span class="s2">"demobook::search"</span><span class="o">]</span>
+133.242.231.xxx Synchronizing Cookbooks:
+133.242.231.xxx   - demobook
+133.242.231.xxx Compiling Cookbooks...
+133.242.231.xxx Converging 2 resources
+
+
+<span class="c">## demobook::data_bagの実行</span>
+133.242.231.xxx Recipe: demobook::data_bag
+133.242.231.xxx   <span class="k">*</span> file[/tmp/from_databag.txt] action create
+133.242.231.xxx     - create new file /tmp/from_databag.txt
+133.242.231.xxx     - update content <span class="k">in </span>file /tmp/from_databag.txt from none to fcde2b
+133.242.231.xxx     <span class="nt">---</span> /tmp/from_databag.txt   2014-08-25 xx:15:49.135991498 +0900
+133.242.231.xxx     +++ /tmp/.from_databag.txt20140825-3969-1tnpdkw 2014-08-25 xx:15:49.135991498 +0900
+133.242.231.xxx     @@ <span class="nt">-1</span> +1,2 @@
+133.242.231.xxx     +bar  <span class="c">## Data Bagの中身をファイルに出力</span>
+
+
+<span class="c">## demobook::searchの実行</span>
+133.242.231.xxx Recipe: demobook::search
+133.242.231.xxx   <span class="k">*</span> file[/tmp/nodes_from_search.txt] action create
+133.242.231.xxx     - create new file /tmp/nodes_from_search.txt
+133.242.231.xxx     - update content <span class="k">in </span>file /tmp/nodes_from_search.txt from none to 37ab54
+133.242.231.xxx     <span class="nt">---</span> /tmp/nodes_from_search.txt  2014-08-25 xx:15:49.139991498 +0900
+133.242.231.xxx     +++ /tmp/.nodes_from_search.txt20140825-3969-ln7sth 2014-08-25 xx:15:49.139991498 +0900
+133.242.231.xxx     @@ <span class="nt">-1</span> +1,4 @@   <span class="c">## Searchの結果をファイルに出力</span>
+133.242.231.xxx     +node[server1]
+133.242.231.xxx     +node[server2]
+133.242.231.xxx     +node[server3]
+133.242.231.xxx 
+133.242.231.xxx Running handlers:
+133.242.231.xxx Running handlers <span class="nb">complete
+</span>133.242.231.xxx Chef Client finished, 2/2 resources updated <span class="k">in </span>4.011358121 seconds
+</pre></div></div>
+
+<p>Data Bag,Searchの機能がちゃんと使えていることがわかりますね。</p>
+
+<p>ちなみにローカルモードで<code>knife status</code>も有効です。<br>
+最後に<code>knife zero converge</code>を実行したのが何時なのかわかって助かりますね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife status
+47 minutes ago, server2, localhost, 133.242.230.xxx, ubuntu 12.04.
+45 minutes ago, server3, localhost, 133.242.237.xxx, ubuntu 12.04.
+6 minutes ago, server1, localhost, 133.242.231.xxx, ubuntu 12.04.
+</pre></div></div>
+
+<p>最後に<code>server1</code>の現状を<code>node show</code>で確認してチュートリアルをおわりましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/knife node show server1
+Node Name:   server1
+Environment: development
+FQDN:        localhost
+IP:          133.242.231.xxx
+Run List:    role[demorole]
+Roles:       demorole
+Recipes:     demobook::data_bag, demobook::search
+Platform:    ubuntu 12.04
+Tags:        
+</pre></div></div>
+
+<h2>
+<span id="ワークフローの補足" class="fragment"></span><a href="#%E3%83%AF%E3%83%BC%E3%82%AF%E3%83%95%E3%83%AD%E3%83%BC%E3%81%AE%E8%A3%9C%E8%B6%B3"><i class="fa fa-link"></i></a>ワークフローの補足</h2>
+
+<p>ここで紹介しているワークフローは先日出版された『Chef活用ガイド』の内容を踏襲しています。<br>
+Chef-Solo系では難しかったワークフローだったのですが、ローカルモードを上手く使えばChef-Serverが無くてもむしろ書籍の内容をほぼ100%実践できます。</p>
+
+<p>書中でもChef-Serverについて配布用のハブであり、情報の集約をするとしていますが、ローカルモード+Knife-Zeroがその役割を全部担える以上、Chef-Server本体は特に必要ありませんね。</p>
+
+<p><a href="http://ascii.asciimw.jp/books/books/detail/978-4-04-891985-2.shtml" rel="nofollow noopener" target="_blank"><img src="https://qiita-user-contents.imgix.net/http%3A%2F%2Fascii.asciimw.jp%2Fbooks%2Fbooks%2Fjpeg150%2F978-4-04-891985-2.jpg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=2f4fc54c06612de73a1129cf7a354176" alt="Chef活用ガイド" data-canonical-src="http://ascii.asciimw.jp/books/books/jpeg150/978-4-04-891985-2.jpg" srcset="https://qiita-user-contents.imgix.net/http%3A%2F%2Fascii.asciimw.jp%2Fbooks%2Fbooks%2Fjpeg150%2F978-4-04-891985-2.jpg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=6f68f380d0a0746e37474111b5a51438 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>この例ではChefなので、ローカルのディレクトリをChef-Repoとしてだけ扱いました。ローカルディレクトリで完結することにはそれなりに意味があります、他のツールと組み合わせやすいんですよね。</p>
+
+<p>なにかしらCLIでs3のバケットを確保してもよし、route53やdnsimpleのCLIでDNSをいじっても良いし、kumogataでCloudFormationを作ってみたりVagrantやTerraformでDigital Oceanのホストを作ったりherokuにアプリをおいてもOK。<br>
+で、Recipeが使いたい、構成情報をとっておきたいといったノードに対してのみChefをつかったり、Chef-MetalやChef-Container(Docker)と合わせるのも良いでしょう。</p>
+
+<p>Test-KitchenやServerspecのテストコードをいれて、テストが通ったらほぼシームレスにNode(Searchで抽出)に適用するようなフローも可能です。</p>
+
+<p>リソースが確保できるか/それがどこにあるか、どのようにリソースを使うか/使わてれいるか、またそれらはクエリ可能か、とこういった概ね現状がわかる情報をふくめたインフラの構成内容をツールで管理しつつGit等で追跡できるようになって、Infrastructure as Codeってやつが捗るんじゃないかと思います。</p>

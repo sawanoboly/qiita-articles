@@ -1,0 +1,160 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Amazon Linux2014.09からyumでインストールできるnginxが1.6.xになったので、SPDY対応してみる。</p>
+
+<h2>
+<span id="nginx-16をインストール" class="fragment"></span><a href="#nginx-16%E3%82%92%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>Nginx 1.6をインストール</h2>
+
+<p>ではおもむろに<code>yum install nginx</code>してnginxをインストール。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo </span>yum <span class="nb">install </span>nginx
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+Installed:
+  nginx.x86_64 1:1.6.1-2.21.amzn1                                                                                                                                                           
+
+Dependency Installed:
+  GeoIP.x86_64 0:1.4.8-1.5.amzn1    gd.x86_64 0:2.0.35-11.10.amzn1    gperftools-libs.x86_64 0:2.0-11.5.amzn1    libXpm.x86_64 0:3.5.10-2.9.amzn1    libunwind.x86_64 0:1.1-2.1.amzn1   
+
+Complete!
+</pre></div></div>
+
+<p>ビルドオプションの<code>--with-http_spdy_module</code>を確認してみます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>nginx <span class="nt">-V</span> 2&gt;&amp;1 | <span class="nb">tr</span> <span class="s2">"</span><span class="se">\ </span><span class="s2">"</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> 
+nginx
+version:
+nginx/1.6.1
+built
+by
+gcc
+4.8.2
+20131212
+<span class="o">(</span>Red
+Hat
+4.8.2-7<span class="o">)</span>
+<span class="o">(</span>GCC<span class="o">)</span>
+
+TLS
+SNI
+support
+enabled
+configure
+arguments:
+<span class="nt">--prefix</span><span class="o">=</span>/usr/share/nginx
+<span class="nt">--sbin-path</span><span class="o">=</span>/usr/sbin/nginx
+<span class="nt">--conf-path</span><span class="o">=</span>/etc/nginx/nginx.conf
+<span class="nt">--error-log-path</span><span class="o">=</span>/var/log/nginx/error.log
+<span class="nt">--http-log-path</span><span class="o">=</span>/var/log/nginx/access.log
+<span class="nt">--http-client-body-temp-path</span><span class="o">=</span>/var/lib/nginx/tmp/client_body
+<span class="nt">--http-proxy-temp-path</span><span class="o">=</span>/var/lib/nginx/tmp/proxy
+<span class="nt">--http-fastcgi-temp-path</span><span class="o">=</span>/var/lib/nginx/tmp/fastcgi
+<span class="nt">--http-uwsgi-temp-path</span><span class="o">=</span>/var/lib/nginx/tmp/uwsgi
+<span class="nt">--http-scgi-temp-path</span><span class="o">=</span>/var/lib/nginx/tmp/scgi
+<span class="nt">--pid-path</span><span class="o">=</span>/var/run/nginx.pid
+<span class="nt">--lock-path</span><span class="o">=</span>/var/lock/subsys/nginx
+<span class="nt">--user</span><span class="o">=</span>nginx
+<span class="nt">--group</span><span class="o">=</span>nginx
+<span class="nt">--with-file-aio</span>
+<span class="nt">--with-ipv6</span>
+<span class="nt">--with-http_ssl_module</span>
+<span class="nt">--with-http_spdy_module</span>        <span class="c">## これ</span>
+<span class="nt">--with-http_realip_module</span>
+<span class="nt">--with-http_addition_module</span>
+<span class="nt">--with-http_xslt_module</span>
+<span class="nt">--with-http_image_filter_module</span>
+<span class="nt">--with-http_geoip_module</span>
+<span class="nt">--with-http_sub_module</span>
+<span class="nt">--with-http_dav_module</span>
+<span class="nt">--with-http_flv_module</span>
+<span class="nt">--with-http_mp4_module</span>
+<span class="nt">--with-http_gunzip_module</span>
+<span class="nt">--with-http_gzip_static_module</span>
+<span class="nt">--with-http_random_index_module</span>
+<span class="nt">--with-http_secure_link_module</span>
+<span class="nt">--with-http_degradation_module</span>
+<span class="nt">--with-http_stub_status_module</span>
+<span class="nt">--with-http_perl_module</span>
+<span class="nt">--with-mail</span>
+<span class="nt">--with-mail_ssl_module</span>
+<span class="nt">--with-pcre</span>
+<span class="nt">--with-google_perftools_module</span>
+<span class="nt">--with-debug</span>
+<span class="nt">--with-cc-opt</span><span class="o">=</span><span class="s1">'-O2
+-g
+-pipe
+-Wall
+-Wp,-D_FORTIFY_SOURCE=2
+-fexceptions
+-fstack-protector
+--param=ssp-buffer-size=4
+-m64
+-mtune=generic'</span>
+<span class="nt">--with-ld-opt</span><span class="o">=</span><span class="s1">'
+-Wl,-E'</span>
+</pre></div></div>
+
+<h2>
+<span id="自己署名のサーバ証明書セットを作成" class="fragment"></span><a href="#%E8%87%AA%E5%B7%B1%E7%BD%B2%E5%90%8D%E3%81%AE%E3%82%B5%E3%83%BC%E3%83%90%E8%A8%BC%E6%98%8E%E6%9B%B8%E3%82%BB%E3%83%83%E3%83%88%E3%82%92%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>自己署名のサーバ証明書セットを作成</h2>
+
+<p>取り急ぎ、<code>/etc/nginx/cert.key</code>と<code>/etc/nginx/cert.pem</code>を、PublicHostnameを証明書のCNにして作ります。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>openssl genrsa 2048 | <span class="nb">sudo tee</span> /etc/nginx/cert.key
+<span class="nv">$ </span><span class="nb">sudo chmod </span>0400 /etc/nginx/cert.key
+
+<span class="nv">$ </span><span class="nb">sudo </span>sh <span class="nt">-c</span> <span class="s1">'openssl req -subj "/C=JP/ST=Kobe-shi/L=Chuo-ku/O=OpsRock LLC/OU=opsrock.com/CN=`/opt/aws/bin/ec2-metadata | grep public-hostname | cut -d \" \" -f 2`" \
+-new -x509 -nodes -sha1 -days 3650 -key /etc/nginx/cert.key &gt; /etc/nginx/cert.pem'</span>
+</pre></div></div>
+
+<h2>
+<span id="nginxをspdyに" class="fragment"></span><a href="#nginx%E3%82%92spdy%E3%81%AB"><i class="fa fa-link"></i></a>NginxをSPDYに</h2>
+
+<p>デフォルト設定ファイル<code>/etc/nginx/nginx.conf</code>の109行目以降にHTTPS設定の雛形があるので、軽くコメントアウトします。<br>
+で、<code>listen</code>に <strong>spdy</strong> を追記。</p>
+
+<p>Vimで編集するのが面倒だったらsedでやってもいいです。<br>
+<code>sudo sed -e '109,126s/#//' -e '110s/443/443\ spdy/'  /etc/nginx/nginx.conf -i</code></p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>    # HTTPS server
+    #
+    server {
+        listen       443 spdy; ## ここだけ追記
+        server_name  localhost;
+        root         html;
+
+        ssl                  on;
+        ssl_certificate      cert.pem;
+        ssl_certificate_key  cert.key;
+
+        ssl_session_timeout  5m;
+
+        ssl_protocols  SSLv2 SSLv3 TLSv1;
+        ssl_ciphers  HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers   on;
+
+        location / {
+        }
+    }
+
+</pre></div></div>
+
+<p>そしてNginxを起動。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo service nginx start
+Starting nginx:                                            [  OK  ]
+</pre></div></div>
+
+<p>確認にはGoogle Chromeの<code>SPDY indicator</code>を使いました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F54e9991a-25e9-ed42-089e-667863baa6d0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9205720747200d62678a5ac02b80d32e" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F54e9991a-25e9-ed42-089e-667863baa6d0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9205720747200d62678a5ac02b80d32e" alt="Test_Page_for_the_Nginx_HTTP_Server_on_the_Amazon_Linux_AMI.png" title="Test_Page_for_the_Nginx_HTTP_Server_on_the_Amazon_Linux_AMI.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/54e9991a-25e9-ed42-089e-667863baa6d0.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F54e9991a-25e9-ed42-089e-667863baa6d0.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=cf5cc8d18f5fb092ed96990c14a7c56b 1x" loading="lazy"></a></p>
+
+<p>SPDYっすね。</p>
+
+<p>自己署名では出だしがこうなりますけどね。。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffb2674d7-0559-bfdf-d611-8f8daec71993.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=f057f0436cdd499f3ba787a991b93afb" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffb2674d7-0559-bfdf-d611-8f8daec71993.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=f057f0436cdd499f3ba787a991b93afb" alt="プライバシー_エラー.png" title="プライバシー_エラー.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/fb2674d7-0559-bfdf-d611-8f8daec71993.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffb2674d7-0559-bfdf-d611-8f8daec71993.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=58a20127962f48ee18e69768d2a5c51f 1x" loading="lazy"></a></p>

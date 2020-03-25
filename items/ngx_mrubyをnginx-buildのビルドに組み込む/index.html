@@ -1,0 +1,99 @@
+<p><a href="https://github.com/cubicdaiya/nginx-build" rel="nofollow noopener" target="_blank">nginx-build</a>っちゅう、nginxのビルドをラップしてくれるツールがあります。<br>
+広めの想定範囲内で柔軟に対応できて、環境依存度が比較的高めのライブラリを自動で取ってくるなど、ノウハウが詰まっててよいものです。</p>
+
+<p>で、導入に少しコツがいる、<a href="https://github.com/matsumoto-r/ngx_mruby" rel="nofollow noopener" target="_blank">ngx_mruby</a>を組み込む場合について書いておきます。</p>
+
+<p>これを書いた時点の各々のバージョンはこちら。</p>
+
+<ul>
+<li>nginx-build: v0.7.1</li>
+<li>ngx_mruby: v1.17.0</li>
+</ul>
+
+<p>本記事の内容は、このリポジトリで使ってます。 <a href="https://github.com/giraffi/docker-nginx-mruby-base" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/giraffi/docker-nginx-mruby-base</a></p>
+
+<blockquote>
+<p>余談。<code>ngx_mruby x nginx-build</code>はわりと背徳の香りがする組み合わせです。理解できる方はほんの一部でしょうが。。。</p>
+</blockquote>
+
+<h2>
+<span id="nginx-buildの3rdパーティーモジュール定義" class="fragment"></span><a href="#nginx-build%E3%81%AE3rd%E3%83%91%E3%83%BC%E3%83%86%E3%82%A3%E3%83%BC%E3%83%A2%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%AB%E5%AE%9A%E7%BE%A9"><i class="fa fa-link"></i></a>nginx-buildの3rdパーティーモジュール定義</h2>
+
+<p>nginx-buildはiniファイルに3rdパーティモジュールを定義します。<br>
+ngx_mrubyはこんな感じに、shprov指定による前処理がほぼ必須です。</p>
+
+<div class="code-frame" data-lang="ini">
+<div class="code-lang"><span class="bold">modules3rd.ini</span></div>
+<div class="highlight"><pre><span class="nn">[ngx_mruby]</span>
+<span class="py">form</span><span class="p">=</span><span class="s">git</span>
+<span class="py">url</span><span class="p">=</span><span class="s">https://github.com/matsumoto-r/ngx_mruby.git</span>
+<span class="py">rev</span><span class="p">=</span><span class="s">v1.17.0</span>
+<span class="py">shprov</span><span class="p">=</span><span class="s">/config/mruby/wrap_build.sh</span>
+</pre></div>
+</div>
+
+<p>ここのformがどうやらformatのことで、fromと誤認してたまにハマる。</p>
+
+<h2>
+<span id="ngx_mrubyのフックされる前処理" class="fragment"></span><a href="#ngx_mruby%E3%81%AE%E3%83%95%E3%83%83%E3%82%AF%E3%81%95%E3%82%8C%E3%82%8B%E5%89%8D%E5%87%A6%E7%90%86"><i class="fa fa-link"></i></a>ngx_mrubyの(フックされる)前処理</h2>
+
+<p>前処理の内訳例です。nginxをビルドする前にこれらが終わっていないといけません。</p>
+
+<ul>
+<li>mgemの塩梅を調節</li>
+<li>mrubyをビルドする</li>
+</ul>
+
+<p>ざっくりshellにして、shprov指定の内容がこちら。元の<code>build.sh</code>を参考にしています。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">wrap_build.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/bin/sh</span>
+
+<span class="nb">set</span> <span class="nt">-xe</span>
+
+<span class="c">## 自前のbuild_config.rbに差し替えたい時</span>
+/bin/cp <span class="nt">-f</span> /config/mruby/build_config.rb ./
+./configure <span class="nt">--with-ngx-src-root</span><span class="o">=</span>../nginx-<span class="nv">$NGINX_VER</span>
+
+make build_mruby <span class="nt">-j</span> 2
+make generate_gems_config <span class="nt">-j</span> 2 <span class="c"># これがほんとに必要かはちゃんと調べてない。</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="nginx-buildが使うconfigureへの仕込み" class="fragment"></span><a href="#nginx-build%E3%81%8C%E4%BD%BF%E3%81%86configure%E3%81%B8%E3%81%AE%E4%BB%95%E8%BE%BC%E3%81%BF"><i class="fa fa-link"></i></a>nginx-buildが使うconfigureへの仕込み</h2>
+
+<p>さて、<code>ngx_mruby</code>では指定バージョンの<code>ngx_devel_kit</code>も<code>--add-module</code>する必要がある(っぽい)。<br>
+これをiniで賄うのは面倒なので、configureのオプションに加えておきます。幸いパスは固定です。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">configure.sh</span></div>
+<div class="highlight"><pre>./configure <span class="nt">--with-debug</span> <span class="se">\</span>
+ <span class="nt">--prefix</span><span class="o">=</span>/usr/local/nginx <span class="se">\</span>
+ <span class="nt">--with-pcre-jit</span> <span class="se">\</span>
+
+... <span class="o">(</span>中略<span class="o">)</span>
+
+ <span class="nt">--add-module</span><span class="o">=</span>../ngx_mruby/dependence/ngx_devel_kit
+</pre></div>
+</div>
+
+<p><code>ngx_mruby</code>本体の<code>add-module</code>は<code>nginx-build</code>が自動でつけてくれます。</p>
+
+<h2>
+<span id="nginx-build" class="fragment"></span><a href="#nginx-build"><i class="fa fa-link"></i></a>nginx-build!</h2>
+
+<p>準備ができたら、ビルドします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ export NGINX_VER=1.9.12
+$ ./nginx-build -verbose -v $NGINX_VER -d work -pcre -zlib -m modules3rd.ini -c configure.sh --clear
+</pre></div></div>
+
+<blockquote>
+<p>(nginx-build 0.7.2以前) しばらく眺めていればおわります。今のところshprov(provideShell)はexitが0以外でも容赦なく進んでいくようなので、<code>-verbose</code>をつけて経過を眺めておくのが無難でした。</p>
+</blockquote>
+
+<p>v0.7.3以降のnginx-buildを使えば、shprovのexit_statusが0出ない場合Failするので安心です。(コメント参照)</p>
+
+<p>あとは<code>make install</code>するなりなんなりと。</p>

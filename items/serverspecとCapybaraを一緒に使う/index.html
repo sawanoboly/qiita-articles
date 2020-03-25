@@ -1,0 +1,131 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>serverspecで状態をテストした後、Webのアプリなら振る舞いもテストしようと思いました。</p>
+
+<p>で、serverspecがRSpecならば、<a href="https://github.com/jnicklas/capybara" title="jnicklas/capybara" rel="nofollow noopener" target="_blank">Capybara</a>も混ぜたらいいんじゃね？ と試してみた。</p>
+
+<h2>
+<span id="コード" class="fragment"></span><a href="#%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>コード</h2>
+
+<p><a href="https://github.com/higanworks/serverspec_with_capybara-example" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/serverspec_with_capybara-example</a></p>
+
+<p><code>spec_helper</code>はこんな感じで。</p>
+
+<p>アプリのコードを読むわけではないので、webkitドライバでリモート扱いとしてテストすることにしました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">spec_helper.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'serverspec'</span>
+<span class="nb">require</span> <span class="s1">'capybara/rspec'</span>
+<span class="nb">require</span> <span class="s1">'capybara-webkit'</span>
+
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">Exec</span>
+<span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">DetectOS</span>
+
+<span class="no">RSpec</span><span class="p">.</span><span class="nf">configure</span> <span class="k">do</span> <span class="o">|</span><span class="n">c</span><span class="o">|</span>
+  <span class="k">if</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'ASK_SUDO_PASSWORD'</span><span class="p">]</span>
+    <span class="nb">require</span> <span class="s1">'highline/import'</span>
+    <span class="n">c</span><span class="p">.</span><span class="nf">sudo_password</span> <span class="o">=</span> <span class="n">ask</span><span class="p">(</span><span class="s2">"Enter sudo password: "</span><span class="p">)</span> <span class="p">{</span> <span class="o">|</span><span class="n">q</span><span class="o">|</span> <span class="n">q</span><span class="p">.</span><span class="nf">echo</span> <span class="o">=</span> <span class="kp">false</span> <span class="p">}</span>
+  <span class="k">else</span>
+    <span class="n">c</span><span class="p">.</span><span class="nf">sudo_password</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'SUDO_PASSWORD'</span><span class="p">]</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="no">Capybara</span><span class="p">.</span><span class="nf">default_driver</span> <span class="o">=</span> <span class="ss">:webkit</span>
+</pre></div>
+</div>
+
+<p>で、serverspecとcapybaraのテストを混ぜたspecファイルを書いた。</p>
+
+<ul>
+<li>(serverspec) <code>openssl version</code> の戻りをチェック</li>
+<li>(Capybara練習用) <a href="https://filippo.io/Heartbleed/" title="Test your server for Heartbleed (CVE-2014-0160)" rel="nofollow noopener" target="_blank">Test your server for Heartbleed (CVE-2014-0160)</a> のサイトに到達性チェック</li>
+<li>(Capybara練習用) とばっちり的に<code>google.com:443</code>のHeartbleedをテストして、<code>All good〜</code>の出力を得る</li>
+</ul>
+
+<p>接続先は<code>Capybara.app_host</code>で自由に調整できるし、サイト上でのクライアント挙動も端的に記述できていい感じです。<br>
+実際にやる場合はサーバにデプロイしたアプリや、自前で運用しているWEBのエントリポイントに対して行いましょう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">heart_spec.rb</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+<span class="nb">require</span> <span class="s1">'spec_helper'</span>
+
+<span class="c1">## serverspecのコマンドリソースでopensslのバージョンをチェックする</span>
+<span class="n">describe</span> <span class="n">command</span><span class="p">(</span><span class="s1">'openssl version'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">it</span> <span class="p">{</span> <span class="n">should</span> <span class="n">return_stdout</span> <span class="sr">/^OpenSSL\ 1\.0\.1g/</span> <span class="p">}</span>
+<span class="k">end</span>
+
+
+<span class="c1">## `:type =&gt; :feature`で`capybara`を使う</span>
+<span class="n">describe</span> <span class="s1">'visit Heartbleed test'</span> <span class="p">,</span><span class="ss">:type</span> <span class="o">=&gt;</span> <span class="ss">:feature</span> <span class="k">do</span>
+
+  <span class="n">before</span> <span class="ss">:each</span> <span class="k">do</span>
+    <span class="no">Capybara</span><span class="p">.</span><span class="nf">app_host</span> <span class="o">=</span> <span class="s1">'https://filippo.io'</span>
+  <span class="k">end</span>
+
+  <span class="c1">## Heartbleedテストのトップページを表示するテスト</span>
+  <span class="n">it</span> <span class="s1">'show testpage'</span> <span class="k">do</span>
+    <span class="n">visit</span> <span class="s1">'/Heartbleed/'</span>
+    <span class="n">expect</span><span class="p">(</span><span class="n">page</span><span class="p">).</span><span class="nf">to</span> <span class="n">have_content</span> <span class="s1">'Heartbleed test'</span>
+  <span class="k">end</span>
+
+  <span class="c1">## google.com(任意)に対してHeartbleedテストを実施して、`All good`が表示されることを確認</span>
+  <span class="n">it</span> <span class="s1">'check google ssl'</span> <span class="k">do</span>
+    <span class="n">visit</span> <span class="s1">'/Heartbleed/'</span>
+    <span class="n">fill_in</span> <span class="s1">'hostname'</span><span class="p">,</span> <span class="ss">:with</span> <span class="o">=&gt;</span> <span class="s1">'google.com'</span>
+    <span class="n">click_on</span> <span class="s1">'Go!'</span>
+    <span class="n">expect</span><span class="p">(</span><span class="n">page</span><span class="p">).</span><span class="nf">to</span> <span class="n">have_content</span> <span class="s1">'All good, google.com seems fixed or unaffected!'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>どちらもRSpecなので、統一感がありますね。</p>
+
+<h2>
+<span id="テスト実行" class="fragment"></span><a href="#%E3%83%86%E3%82%B9%E3%83%88%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>テスト実行</h2>
+
+<p>では実行してみましょう。</p>
+
+<div class="code-frame" data-lang="rspec">
+<div class="code-lang"><span class="bold">rspec_output</span></div>
+<div class="highlight"><pre>$ rspec -fd --color
+
+Command "openssl version"
+  should return stdout /^OpenSSL\ 1\.0\.1g/
+
+visit Heartbleed test
+  show testpage
+  check google ssl
+
+Finished in 4.79 seconds
+3 examples, 0 failures
+</pre></div>
+</div>
+
+<p>いけました。</p>
+
+<h2>
+<span id="追記sshバックエンドなときー" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98ssh%E3%83%90%E3%83%83%E3%82%AF%E3%82%A8%E3%83%B3%E3%83%89%E3%81%AA%E3%81%A8%E3%81%8D%E3%83%BC"><i class="fa fa-link"></i></a>追記:Sshバックエンドなときー</h2>
+
+<p>describe内のbeforeではなく、テンプレートから生成されたspec_helperに入れちゃう手があります。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># -- snip --
+    if c.host != host
+      c.ssh.close if c.ssh
+      c.host  = host
+## ここでCapybara.app_hostを設定しちゃう。
+      Capybara.app_host = "http://#{host}"
+      options = Net::SSH::Config.for(c.host)
+      user    = options[:user] || Etc.getlogin
+      c.ssh   = Net::SSH.start(host, user, options)
+    end
+# -- snip --
+</pre></div></div>
+
+<p>これだとRSpec実行端末から到達性が必要なので、いっそSocksやポートフォワード張らせてもいいのかもしれない。</p>

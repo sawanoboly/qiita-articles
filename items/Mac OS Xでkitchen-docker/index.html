@@ -1,0 +1,93 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://github.com/portertech/kitchen-docker" title="portertech/kitchen-docker" rel="nofollow noopener" target="_blank">portertech/kitchen-docker</a> がMac内だけでも使える。</p>
+
+<h2>
+<span id="boot2dockerの準備" class="fragment"></span><a href="#boot2docker%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>boot2dockerの準備</h2>
+
+<p>Macなのでboot2dockerでホストVMを作ります。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>boot2docker start
+Waiting <span class="k">for </span>VM to be started...
+...........
+Started.
+Auto detection of the VM<span class="s1">'s IP address.
+To connect the Docker client to the Docker daemon, please set:
+     export DOCKER_HOST=tcp://:xxxx
+</span></pre></div></div>
+
+<p>通常のDocker使用では<code>export DOCKER_HOST=tcp://:xxxx</code>でdocekrコマンドからホストVMを意識せずに使えます。<br>
+Macでkitchen-dockerする場合、コンテナへのSSH接続に<code>boot2docker</code>で作成したホストVMを対象にとりたいので、IPアドレスを指定します。</p>
+
+<h3>
+<span id="ipアドレスを付けてエクスポート" class="fragment"></span><a href="#ip%E3%82%A2%E3%83%89%E3%83%AC%E3%82%B9%E3%82%92%E4%BB%98%E3%81%91%E3%81%A6%E3%82%A8%E3%82%AF%E3%82%B9%E3%83%9D%E3%83%BC%E3%83%88"><i class="fa fa-link"></i></a>IPアドレスを付けてエクスポート</h3>
+
+<p><code>boot2docker ip</code>でホストVMのアドレスを取得。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>boot2docker ip
+
+The VM<span class="s1">'s Host only interface IP address is: 192.168.59.yyy
+</span></pre></div></div>
+
+<p>くっつけてエクスポートしましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>export DOCKER_HOST=tcp://192.168.59.yyy:xxxx
+</pre></div></div>
+
+<p>アドレス省略時、kitchenコマンドはssh接続時に<code>127.0.0.1:${sshd用にフォワードしたポート}</code>に行くのでコンテナ作成はできますが、続きができません。</p>
+
+<h2>
+<span id="kitchenlocalymlで上書きマージ" class="fragment"></span><a href="#kitchenlocalyml%E3%81%A7%E4%B8%8A%E6%9B%B8%E3%81%8D%E3%83%9E%E3%83%BC%E3%82%B8"><i class="fa fa-link"></i></a><code>.kitchen.local.yml</code>で上書きマージ</h2>
+
+<p>Test-Kitchenの設定を<code>.kitchen.local.yml</code>で差分だけ作ります。<br>
+環境変数にもあることだし、ERBとして使い回しましょう。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.local.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">docker</span>
+  <span class="na">binary</span><span class="pi">:</span> <span class="s">/usr/local/bin/docker</span>
+  <span class="na">socket</span><span class="pi">:</span> <span class="s">&lt;%= ENV['DOCKER_HOST'] %&gt;</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">ubuntu-12.04</span>
+    <span class="na">driver_config</span><span class="pi">:</span>
+      <span class="na">image</span><span class="pi">:</span> <span class="s">ubuntu:12.04</span>
+    <span class="na">run_list</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">recipe[ubuntu]</span>
+      <span class="pi">-</span> <span class="s">recipe[apt]</span>
+</pre></div>
+</div>
+
+<p>ではconvergeと。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>kitchen converge
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+        <span class="s2">"Ports"</span>: <span class="o">{</span>
+            <span class="s2">"22/tcp"</span>: <span class="o">[</span>
+                <span class="o">{</span>
+                    <span class="s2">"HostIp"</span>: <span class="s2">"0.0.0.0"</span>,
+                    <span class="s2">"HostPort"</span>: <span class="s2">"49153"</span>
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+       Waiting <span class="k">for </span>192.168.59.xxx:49153...  <span class="c">## ここが127.0.0.1宛になって止まる</span>
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+<span class="nv">$ </span>kitchen list
+Instance                  Driver  Provisioner  Last Action
+default-ubuntu-1204       Docker  ChefZero     Converged
+
+<span class="nv">$ </span><span class="nb">uname</span> <span class="nt">-v</span>
+Darwin Kernel Version 13.2.0: Thu Apr 17 23:03:13 PDT 2014<span class="p">;</span> root:xnu-2422.100.13~1/RELEASE_X86_64
+</pre></div></div>
+
+<p>できました。</p>

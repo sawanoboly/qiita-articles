@@ -1,0 +1,304 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+
+<p>Note: serverspecのバージョンアップにより、多分この内容そのままでは失敗しそう。</p>
+</blockquote>
+
+<p>構築済みサーバの確認には<a href="http://serverspec.org" rel="nofollow noopener" target="_blank">serverspec</a>が使いやすいようです。<br>
+そして私は受け入れテストの共有に<a href="http://cukes.info/" rel="nofollow noopener" target="_blank">Cucumber</a>(Turnipも)を好んで使います。</p>
+
+<p>さて<code>serverspec</code>の書式はもちろんRSpecで、英(単)語とプログラミングが嫌いなコミュニティでテストを共有しようとするのが結構気が引けたりします。<code>cucumber</code>のGherkinは癖がありますが、人に見てもらうのには適しています。</p>
+
+<p>色々経緯もあって両方捨てがたいなーという状況だったので、<code>cucumber</code>から<code>serverspec</code>使ってみようということにしてみました。</p>
+
+<h2>
+<span id="featureの作成" class="fragment"></span><a href="#feature%E3%81%AE%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>featureの作成</h2>
+
+<p>ということで、手始めとしてcentosにepelリポジトリが登録されている状態をテストしてみます。</p>
+
+<p>featureのシナリオをつくります。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/epel.feature</span></div>
+<div class="highlight"><pre><span class="c"># coding:utf-8</span>
+<span class="c"># language: ja</span>
+
+<span class="kd">機能</span><span class="p">:</span> epelリポジトリ
+
+<span class="err">前提</span><span class="p">:</span> <span class="err">何かしらの仕組みで構築済みです</span>
+
+<span class="kn">シナリオ</span><span class="p">:</span> epelのリポジトリが登録されている
+  <span class="nf">もし</span> <span class="s">"/etc/yum.repos.d/epel.repo"</span> ファイルが存在する
+  <span class="nf">ならば</span> <span class="s">"epel"</span> の状態が <span class="s">"enable"</span> だ                                                                                                                        
+</pre></div>
+</div>
+
+<p>cucumberを実行するとstep定義の案内が表示されます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">steps_information</span></div>
+<div class="highlight"><pre>You can implement step definitions <span class="k">for </span>undefined steps with these snippets:
+
+もし<span class="o">(</span>/^<span class="s2">"(.*?)"</span> ファイルが存在する<span class="nv">$/</span><span class="o">)</span> <span class="k">do</span> |arg1|
+  pending <span class="c"># express the regexp above with the code you wish you had</span>
+end
+
+ならば<span class="o">(</span>/^<span class="s2">"(.*?)"</span> の状態がenableだ<span class="nv">$/</span><span class="o">)</span> <span class="k">do</span> |arg1|
+  pending <span class="c"># express the regexp above with the code you wish you had</span>
+end
+</pre></div>
+</div>
+
+<p>この各Stepで<code>serverspec</code>を使ってみます。</p>
+
+<h2>
+<span id="supportenv-の記述" class="fragment"></span><a href="#supportenv-%E3%81%AE%E8%A8%98%E8%BF%B0"><i class="fa fa-link"></i></a>support/env の記述</h2>
+
+<p>stepで<code>serverspec</code>を使うために、cucumberの共通設定ファイル<code>features/support/env.rb</code>に各種記述をしていきます。<br>
+<code>serverspec-init</code>の生成する<code>spec_helper</code>を参考にしました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/support/env.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'serverspec'</span> 
+<span class="kp">include</span> <span class="no">RSpec</span><span class="o">::</span><span class="no">Matchers</span>
+<span class="kp">include</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">Exec</span>  <span class="c1"># リモートが対象ならここはSsh</span>
+<span class="kp">include</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">DetectOS</span>
+</pre></div>
+</div>
+
+<p>迷ったら<code>serverspec-init</code>を実際に実行して、<code>spec_helper.rb</code>から記述をまるっと持ってきましょう。SSH経由のテストなら<code>RSpec.configure</code>周りが必須になります。</p>
+
+<h2>
+<span id="steps-の記述" class="fragment"></span><a href="#steps-%E3%81%AE%E8%A8%98%E8%BF%B0"><i class="fa fa-link"></i></a>Steps の記述</h2>
+
+<p>さてStepです、拡張されたMatchersはそのまま使えるわけでもなく、backendの選択が必要です。<br>
+ということでserverspecのリソースタイプをインスタンスにしてから、それに対してマッチャを使うやり方になります。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/step_definitions/epel_steps.rb</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+
+<span class="err">もし</span><span class="p">(</span><span class="sr">/^"(.*?)" ファイルが存在する$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">filename</span><span class="o">|</span>
+  <span class="vi">@file</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+  <span class="vi">@file</span><span class="p">.</span><span class="nf">should</span> <span class="n">be_file</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span><span class="p">(</span><span class="sr">/^"(.*?)" の状態がenableだ$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">repo</span><span class="o">|</span>
+  <span class="vi">@file</span><span class="p">.</span><span class="nf">should</span> <span class="n">contain</span><span class="p">(</span><span class="s1">'^\s*enabled=1'</span><span class="p">).</span><span class="nf">from</span><span class="p">(</span><span class="sr">/\[</span><span class="si">#{</span><span class="n">repo</span><span class="si">}</span><span class="sr">\]/</span><span class="p">).</span><span class="nf">to</span><span class="p">(</span><span class="sr">/^\n/</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>serverspecの便利なマッチャ、<code>be_file</code>や<code>contain</code>(+from_to)をこの様に使うことができました。</p>
+
+<h2>
+<span id="実行してみる" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>実行してみる</h2>
+
+<p>それでは<code>cucumber</code>を実行してみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">execute_cucumber</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>cucumber features/epel.feature 
+<span class="c"># coding:utf-8</span>
+<span class="c"># language: ja</span>
+機能: epelリポジトリ
+
+  前提: 何かしらの仕組みで構築済みです
+
+  シナリオ: epelのリポジトリが登録されている                   <span class="c"># features/epel.feature:8</span>
+    もし<span class="s2">"/etc/yum.repos.d/epel.repo"</span> ファイルが存在する <span class="c"># features/step_definitions/epel_steps.rb:3</span>
+    ならば<span class="s2">"epel"</span> の状態がenableだ                    <span class="c"># features/step_definitions/epel_steps.rb:8</span>
+
+1 scenario <span class="o">(</span>1 passed<span class="o">)</span>
+2 steps <span class="o">(</span>2 passed<span class="o">)</span>
+0m0.111s
+
+</pre></div>
+</div>
+
+<p>パスしました！ serverspecのマッチャが使えるのは嬉しいですね。</p>
+
+<h2>
+<span id="もっとサンプルをシナリオテンプレートと" class="fragment"></span><a href="#%E3%82%82%E3%81%A3%E3%81%A8%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%82%92%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA%E3%83%86%E3%83%B3%E3%83%97%E3%83%AC%E3%83%BC%E3%83%88%E3%81%A8"><i class="fa fa-link"></i></a>もっとサンプルを、シナリオテンプレートと</h2>
+
+<p>とりあえず<code>cucumber</code>と<code>serverspec</code>との連携ができたので、より実践的なサンプルを作ってみました。</p>
+
+<h3>
+<span id="feature-samples" class="fragment"></span><a href="#feature-samples"><i class="fa fa-link"></i></a>feature samples</h3>
+
+<p>デーモンの状態と、パッケージの導入状況テストです。内容は見たらだいたい分かるかと。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/service.feature</span></div>
+<div class="highlight"><pre><span class="c"># coding:utf-8</span>
+<span class="c"># language: ja</span>
+
+<span class="kd">機能</span><span class="p">:</span> サーバが適当なデーモンを上げている
+
+<span class="err">前提</span><span class="p">:</span> <span class="err">何かしらの仕組みで構築済みです</span>
+
+<span class="kn">シナリオテンプレート</span><span class="p">:</span> サービスチェック
+  <span class="nf">もし</span> サービス <span class="s">"&lt;servicename&gt;"</span> の状態を調べる
+  <span class="nf">ならば</span> サービスの状態は <span class="s">"&lt;state&gt;"</span> で
+  <span class="nf">かつ</span> サービスの自動起動は <span class="s">"&lt;on_boot&gt;"</span> です
+
+  <span class="nn">サンプル</span><span class="p">:</span> 
+    <span class="p">|</span> <span class="nv">servicename</span> <span class="p">|</span> <span class="nv">state</span>   <span class="p">|</span> <span class="nv">on_boot</span> <span class="p">|</span>
+    <span class="p">|</span> <span class="n">crond</span>       <span class="p">|</span> <span class="n">running</span> <span class="p">|</span> <span class="n">enable</span>  <span class="p">|</span>
+    <span class="p">|</span> <span class="n">rsyslog</span>     <span class="p">|</span> <span class="n">running</span> <span class="p">|</span> <span class="n">enable</span>  <span class="p">|</span>
+    <span class="p">|</span> <span class="n">mdmonitor</span>   <span class="p">|</span> <span class="n">stopped</span> <span class="p">|</span> <span class="n">disable</span> <span class="p">|</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/package.feature</span></div>
+<div class="highlight"><pre><span class="c"># coding:utf-8</span>
+<span class="c"># language: ja                 </span>
+
+<span class="kd">機能</span><span class="p">:</span> サーバが適当なパッケージを導入している
+
+<span class="err">前提</span><span class="p">:</span> <span class="err">何かしらの仕組みで構築済みです</span>
+
+<span class="kn">シナリオテンプレート</span><span class="p">:</span> パッケージチェック
+  <span class="nf">もし</span> パッケージ <span class="s">"&lt;pkgname&gt;"</span> の状態を調べる 
+  <span class="nf">ならば</span> パッケージの状態は <span class="s">"&lt;state&gt;"</span> です
+
+  <span class="nn">サンプル</span><span class="p">:</span>
+    <span class="p">|</span> <span class="nv">pkgname</span>   <span class="p">|</span> <span class="nv">state</span>         <span class="p">|</span>   
+    <span class="p">|</span> <span class="n">git</span>       <span class="p">|</span> <span class="n">installed</span>     <span class="p">|</span>   
+    <span class="p">|</span> <span class="n">syslog-ng</span> <span class="p">|</span> <span class="n">not_installed</span> <span class="p">|</span>   
+    <span class="p">|</span> <span class="n">tmux</span>      <span class="p">|</span> <span class="n">installed</span>     <span class="p">|</span>   
+</pre></div>
+</div>
+
+<p>ちなみにテーブルのインデントを作るときは<a href="http://vimcasts.org/episodes/aligning-text-with-tabular-vim/" rel="nofollow noopener" target="_blank">Tabular.vim</a>というvimのプラグインを使って自動で整うようにしています。</p>
+
+<h3>
+<span id="steps-for-features" class="fragment"></span><a href="#steps-for-features"><i class="fa fa-link"></i></a>steps for features</h3>
+
+<p>先程のfeaturesに対するstepです。引数を工夫すればもっとメタに短く定義できると思いますがこんなもんで。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/step_definitions/service_steps.rb</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+
+<span class="err">もし</span><span class="p">(</span><span class="sr">/^サービス "(.*?)" の状態を調べる$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">servicename</span><span class="o">|</span>
+  <span class="vi">@service</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Service</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">servicename</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span><span class="p">(</span><span class="sr">/^サービスの状態は "(.*?)" で$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">state</span><span class="o">|</span>
+  <span class="k">if</span> <span class="n">state</span> <span class="o">==</span> <span class="s1">'running'</span>
+    <span class="vi">@service</span><span class="p">.</span><span class="nf">should</span> <span class="n">be_running</span>
+  <span class="k">else</span>
+    <span class="vi">@service</span><span class="p">.</span><span class="nf">should_not</span> <span class="n">be_running</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span><span class="p">(</span><span class="sr">/^サービスの自動起動は "(.*?)" です$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">on_boot</span><span class="o">|</span>
+  <span class="k">if</span> <span class="n">on_boot</span> <span class="o">==</span> <span class="s1">'enable'</span>
+    <span class="vi">@service</span><span class="p">.</span><span class="nf">should</span> <span class="n">be_enabled</span>
+  <span class="k">else</span>
+    <span class="vi">@service</span><span class="p">.</span><span class="nf">should_not</span> <span class="n">be_enabled</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/step_definitions/package_steps.rb</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+
+<span class="err">もし</span><span class="p">(</span><span class="sr">/^パッケージ "(.*?)" の状態を調べる$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">pkgname</span><span class="o">|</span>
+  <span class="vi">@package</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Package</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">pkgname</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span><span class="p">(</span><span class="sr">/^パッケージの状態は "(.*?)" で$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">state</span><span class="o">|</span>
+  <span class="k">if</span> <span class="n">state</span> <span class="o">==</span> <span class="s1">'installed'</span>
+    <span class="vi">@package</span><span class="p">.</span><span class="nf">should</span> <span class="n">be_installed</span>
+  <span class="k">else</span>
+    <span class="vi">@package</span><span class="p">.</span><span class="nf">should_not</span> <span class="n">be_installed</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>stepではfailする場合に例外を出す必要があるのですが、serverspecのマッチャとshould(_not)の組み合わせでうまいこと例外になります。</p>
+
+<h3>
+<span id="results" class="fragment"></span><a href="#results"><i class="fa fa-link"></i></a>results</h3>
+
+<p>これらを実行すると下記の結果が得られます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">execute_cucumber</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>cucumber 
+<span class="c"># coding:utf-8</span>
+<span class="c"># language: ja</span>
+機能: サーバが適当なパッケージを導入している
+
+  前提: 何かしらの仕組みで構築済みです
+
+  シナリオテンプレート: パッケージチェック         <span class="c"># features/package.feature:8</span>
+    もしパッケージ <span class="s2">"&lt;pkgname&gt;"</span> の状態を調べる <span class="c"># features/step_definitions/package_steps.rb:4</span>
+    ならばパッケージの状態は <span class="s2">"&lt;state&gt;"</span> で    <span class="c"># features/step_definitions/package_steps.rb:8</span>
+
+    サンプル: 
+      | pkgname   | state         |
+      | git       | installed     |
+      | syslog-ng | not_installed |
+      | tmux      | installed     |
+
+<span class="c"># coding:utf-8</span>
+<span class="c"># language: ja</span>
+機能: サーバが適当なデーモンを上げている
+
+  前提: 何かしらの仕組みで構築済みです
+
+  シナリオテンプレート: サービスチェック             <span class="c"># features/service.feature:8</span>
+    もしサービス <span class="s2">"&lt;servicename&gt;"</span> の状態を調べる <span class="c"># features/step_definitions/service_steps.rb:3</span>
+    ならばサービスの状態は <span class="s2">"&lt;state&gt;"</span> で        <span class="c"># features/step_definitions/service_steps.rb:7</span>
+    かつサービスの自動起動は <span class="s2">"&lt;on_boot&gt;"</span> です    <span class="c"># features/step_definitions/service_steps.rb:15</span>
+
+    サンプル: 
+      | servicename | state   | on_boot |
+      | crond       | running | <span class="nb">enable</span>  |
+      | rsyslog     | running | <span class="nb">enable</span>  |
+      | mdmonitor   | stopped | disable |
+
+6 scenarios <span class="o">(</span>6 passed<span class="o">)</span>
+15 steps <span class="o">(</span>15 passed<span class="o">)</span>
+0m0.287s
+</pre></div>
+</div>
+
+<p>ついでにcucumberのHTMLフォーマットで出力してみました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc03a99af-50ea-e599-4982-b41ff0f29c2e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8c42632dd35580c6857e6a8bba8cac95" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc03a99af-50ea-e599-4982-b41ff0f29c2e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8c42632dd35580c6857e6a8bba8cac95" alt="Cucumber.png" title="Cucumber.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/c03a99af-50ea-e599-4982-b41ff0f29c2e.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc03a99af-50ea-e599-4982-b41ff0f29c2e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0a0f1e92c86e53650469f9f40c87d5d5 1x" loading="lazy"></a></p>
+
+<p>見やすいので結果を共有しやすいかもしれない。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>serverspec使いたいけど、RSpecの記法が導入のネックになっていたり、人におすすめしづらいというお悩みを持っておられたら、思い切ってGherkin(cucumber)という選択もどうでしょう。</p>
+
+<p>何がおすすめか、というのは場合によりますわね。</p>
+
+<hr>
+
+<p>追記：</p>
+
+<p>SSH経由でリモートサーバをテストする際はこのように書いてもいけました。Featuresに織り交ぜることができますね。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">step_with_ssh_example</span></div>
+<div class="highlight"><pre><span class="err">Then(/^The</span> <span class="err">server</span> <span class="err">has</span> <span class="err">cron</span> <span class="err">entry</span> <span class="err">'(.*)'/)</span> <span class="err">do</span> <span class="p">|</span><span class="nv">line</span><span class="p">|</span>
+  <span class="n">@cron</span> <span class="n">=</span> <span class="n">Serverspec::Type::Cron.new</span>
+  <span class="err">Net</span><span class="p">::</span><span class="err">SSH.start('test.example.com',</span> <span class="err">'root')</span> <span class="err">do</span> <span class="p">|</span><span class="nv">ssh</span><span class="p">|</span>
+    <span class="n">expect(@cron.have_entry(line).with_user('www')).to</span> <span class="n">be_true</span>
+  <span class="err">end</span>
+<span class="err">end</span>
+</pre></div>
+</div>

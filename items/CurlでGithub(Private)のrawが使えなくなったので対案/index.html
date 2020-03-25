@@ -1,0 +1,47 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>よくGithubプライベートリポジトリからcurlでrawデータを取って来てたりしたのです。</p>
+
+<p>こんな具合に。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre>curl <span class="nt">-s</span> <span class="nt">-f</span> <span class="nt">-L</span> <span class="nt">-u</span> <span class="s1">'LOGIN_NAME/token:API_TOKEN'</span> https://raw.github.com/ORG_NAME/REPO_NAME/master/README.md
+</pre></div></div>
+
+<p>raw.githubはスクリプトをbashに渡したりするのに都合が良かったんですよね。</p>
+
+<p>が、今朝(12/12/2013)トークンが古い形式だからか、rawの仕様が変わったのか、とりあえず使えなくなったことを私のNagiosが検知しました。</p>
+
+<p>これはそろそろ真面目にAPIを呼ぶか、と幾らか試して次のやり方に落ち着きそう。</p>
+
+<p>※ node.jsのjsonコマンドは使える前提、代わりも色々あるので置き換えて。</p>
+
+<h2>
+<span id="base64コマンドがある場合" class="fragment"></span><a href="#base64%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E3%81%8C%E3%81%82%E3%82%8B%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>base64コマンドがある場合</h2>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre>curl <span class="nt">-s</span> <span class="nt">-H</span> <span class="s2">"Authorization: token OAUTH_TOKEN"</span> https://api.github.com/repos/ORG_NAME/REPO_NAME/contents/PATH_TO_CONTENT | json content | <span class="nb">base64</span> <span class="nt">-D</span>
+</pre></div></div>
+
+<h2>
+<span id="base64コマンドがない場合" class="fragment"></span><a href="#base64%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E3%81%8C%E3%81%AA%E3%81%84%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>base64コマンドがない場合</h2>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre>curl <span class="nt">-s</span> <span class="nt">-H</span> <span class="s2">"Authorization: token OAUTH_TOKEN"</span> https://api.github.com/repos/ORG_NAME/REPO_NAME/contents/PATH_TO_CONTENT | json content | perl <span class="nt">-MMIME</span>::Base64 <span class="nt">-ne</span> <span class="s1">'print MIME::Base64::decode_base64($_)
+</span></pre></div></div>
+
+<p>api.githubはraw.githubとちがい、必ずJSONオブジェクトになるのでパースを一個はさもう。で、base64デコードと。<br>
+jsonコマンドはyajlなどのパッケージで何か代わりがあった気がします、</p>
+
+<p>ちなみにブランチ/タグの指定はクエリでOK<code>?ref=master</code></p>
+
+<h2>
+<span id="nagiosで監視しておく" class="fragment"></span><a href="#nagios%E3%81%A7%E7%9B%A3%E8%A6%96%E3%81%97%E3%81%A6%E3%81%8A%E3%81%8F"><i class="fa fa-link"></i></a>Nagiosで監視しておく</h2>
+
+<p>このやり方がいつまで有効かは知らないので、Nagiosで監視しますわ。<br>
+check_httpのサンプルはこちら。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre>check_http <span class="nt">-H</span> api.github.com <span class="nt">-u</span> /repos/MY_ORG/REPO_NAME/contents/README.md <span class="nt">-S</span> <span class="nt">-k</span> <span class="s2">"Authorization: token OAUTH_TOKEN"</span>
+HTTP OK: HTTP/1.1 200 OK - 3366 bytes <span class="k">in </span>0.887 second response <span class="nb">time</span> |time<span class="o">=</span>0.886742s<span class="p">;;;</span>0.000000 <span class="nv">size</span><span class="o">=</span>3366B<span class="p">;;;</span>0
+</pre></div></div>

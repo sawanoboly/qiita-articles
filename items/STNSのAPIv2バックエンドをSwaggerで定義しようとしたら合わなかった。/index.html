@@ -1,0 +1,541 @@
+<p><a href="http://swagger.io" rel="nofollow noopener" target="_blank">Swagger</a>ってのがあってね。概要は次のスライドで。</p>
+
+<ul>
+<li>スライド: <a href="http://www.slideshare.net/takurosasaki/swaggerapi" rel="nofollow noopener" target="_blank">Swaggerで始めるモデルファーストなAPI開発 (Takuro Sasaki, Software Developer)</a>
+</li>
+</ul>
+
+<p>で、以前にSTNSのバックエンド仕様を調べたことがあります。このときのSTNS APIはバージョン1(以下、<code>V1</code>とか)です。</p>
+
+<p><a href="http://qiita.com/sawanoboly/items/d8b017760d8b51d7ded4" id="reference-4d240e0ca6c9db5baa94">STNSのバックエンドをつくろう - Qiita</a></p>
+
+<p>さて、Swaggerの手習いで作ってみるAPIとして、STNSのAPI バージョン2.1を模すれば二兎かもしれないと考えたところ、これミスマッチだったというお話。<br>
+何かの役に立つわけでもないが、手記としてしたためておく。</p>
+
+<h2>
+<span id="stnsのapi-version-2" class="fragment"></span><a href="#stns%E3%81%AEapi-version-2"><i class="fa fa-link"></i></a>STNSのAPI Version 2</h2>
+
+<p><a href="http://stns.jp/en/interface" rel="nofollow noopener" target="_blank">STNS Api Version 2</a> について。</p>
+
+<ul>
+<li>プレフィクス<code>/v2</code>
+</li>
+<li>レスポンスは<code>metadata</code>と<code>items</code>という2要素で構成
+
+<ul>
+<li>itemsの中身はV1のレスポンスと同じ</li>
+<li>metadataはなんだかグローバルな情報</li>
+</ul>
+</li>
+<li>sudoリソース</li>
+<li>ヘルスチェックはプレフィクスなしのv1と共通</li>
+</ul>
+
+<p>うむ、ここまでよし。</p>
+
+<h3>
+<span id="レスポンスv2" class="fragment"></span><a href="#%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9v2"><i class="fa fa-link"></i></a>レスポンスv2</h3>
+
+<p>リスト<code>/v2/user/list</code>のレスポンスはこんな感じ。</p>
+
+<div class="code-frame" data-lang="json"><div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"api_version"</span><span class="p">:</span><span class="w"> </span><span class="mf">2.1</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"result"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"min_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1001</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"example1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1001</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"group_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"directory"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"shell"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"gecos"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"keys"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="s2">"ssh-rsa xxxx"</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"link_users"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"example2"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1002</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"group_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"directory"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"shell"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"gecos"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"keys"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="s2">"ssh-rsa xxxx"</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"link_users"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div></div>
+
+<p>単品<code>/v2/user/name/example1</code>のレスポンスはこうなった。</p>
+
+<div class="code-frame" data-lang="json"><div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"api_version"</span><span class="p">:</span><span class="w"> </span><span class="mf">2.1</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"result"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"min_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1001</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"example1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1001</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"password"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"group_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1001</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"directory"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"shell"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"gecos"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"keys"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="s2">"ssh-rsa xxxx"</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"link_users"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div></div>
+
+<p>一見Swaggerでも定義は作りやすそうに見えたんだけど。。</p>
+
+<h3>
+<span id="なにが困ったのか1-データモデル" class="fragment"></span><a href="#%E3%81%AA%E3%81%AB%E3%81%8C%E5%9B%B0%E3%81%A3%E3%81%9F%E3%81%AE%E3%81%8B1-%E3%83%87%E3%83%BC%E3%82%BF%E3%83%A2%E3%83%87%E3%83%AB"><i class="fa fa-link"></i></a>なにが困ったのか1: データモデル</h3>
+
+<p>まず、データのキー名にユニークなIDをつかうとSwaggerで定義するモデル作成に困るのです。<br>
+例えば次の形でサンプルレスポンスを作るにはベタ打ちしか方法がないっぽい。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>"example1": {
+  "id": 1001,
+...
+</pre></div></div>
+
+<p>構造的にこうなってると。Google Bigtableとかのような持ち方。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>|          example1          |
+| id   | password | group_id |
+|------|----------|----------|
+| 1001 | $6....   | 1001     |
+</pre></div></div>
+
+<p>こういう状態だと、プロパティ側のモデルは作れるんだけども、それを使いまわす形でのレスポンスが作成できなかった。ドキュメントとしてなら全部サンプルレスポンス手打ちでよいのだけども、OpenAPI Specとしてはそうもいかない。</p>
+
+<p>あくまでSwaggerのdefinitionsで定義するとなると、次のような構造が必要だった。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{
+  "name": "example1",
+  "id": 1001,
+...
+
+</pre></div></div>
+
+<p>つまりこんな状態。RDB的なレコード。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>| name     | id   | password | group_id |
+|----------|------|----------|----------|
+| example1 | 1001 | $6....   | 1001     |
+
+</pre></div></div>
+
+<p>比べると、ああそうだよねえ。。としか。</p>
+
+<h3>
+<span id="なにが困ったのか2-metadataのmin_id" class="fragment"></span><a href="#%E3%81%AA%E3%81%AB%E3%81%8C%E5%9B%B0%E3%81%A3%E3%81%9F%E3%81%AE%E3%81%8B2-metadata%E3%81%AEmin_id"><i class="fa fa-link"></i></a>なにが困ったのか2: metadataのmin_id</h3>
+
+<p>もう一つ、metadataのmin_idがレスポンスに含む含まない関係なしで、常にレコード全体から算出した値であることがネックになりそうだった。<br>
+こちらはSwaggerからすこし外れる話でただの感想なんだけども、バックエンドのデータストア次第でちょっと困るなと。</p>
+
+<div class="code-frame" data-lang="json"><div class="highlight"><pre><span class="nl">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"api_version"</span><span class="p">:</span><span class="w"> </span><span class="mf">2.1</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"result"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"min_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1001</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span></pre></div></div>
+
+<p>min_idに入れる値についてはRDBならMINな関数でいいけど、例えばDynamoDBなんかだと横断してMAXとかMINとかとれない。</p>
+
+<p><a href="http://stackoverflow.com/questions/18219562/max-operations-in-amazon-dynamodb" rel="nofollow noopener" target="_blank">java - MAX operations in Amazon DynamoDB - Stack Overflow</a></p>
+
+<p>この場合、オブジェクトの更新時にフックしてチェック＆更新をかける専用テーブル(アイテム)が必要なのよね。。プラットフォームの選定に影響するのだ。</p>
+
+<h2>
+<span id="完" class="fragment"></span><a href="#%E5%AE%8C"><i class="fa fa-link"></i></a>完</h2>
+
+<p>まずここで完全移植用の定義をつくるのは諦めた。あとはおまけ。</p>
+
+<h2>
+<span id="swaggerぽいモデルにしてみる" class="fragment"></span><a href="#swagger%E3%81%BD%E3%81%84%E3%83%A2%E3%83%87%E3%83%AB%E3%81%AB%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>Swaggerぽいモデルにしてみる</h2>
+
+<blockquote>
+<p>元々がディレクトリ型のデータなので、キーとプロパティの組み合わせというレスポンスで当たり前であることはひとまず置いといてください。</p>
+</blockquote>
+
+<p>当初の目的のうち、Swaggerの練習くらいはやっておきたい。折角なのでSwaggerで作れるようにAPI仕様を改変してみよう。</p>
+
+<p>この辺を参考に。</p>
+
+<ul>
+<li><a href="http://petstore.swagger.io/" rel="nofollow noopener" target="_blank">PetStore | Swagger UI</a></li>
+<li><a href="http://qiita.com/magaya0403/items/0419d84d8df7784ac465">swaggerの基礎。swaggerの設定ファイルの書き方とか - Qiita</a></li>
+</ul>
+
+<h3>
+<span id="変更点1-metadataをなくす" class="fragment"></span><a href="#%E5%A4%89%E6%9B%B4%E7%82%B91-metadata%E3%82%92%E3%81%AA%E3%81%8F%E3%81%99"><i class="fa fa-link"></i></a>変更点1: metadataをなくす</h3>
+
+<p><code>metadata</code>自体はキー名が固定なので普通にモデル定義できる。実は残してもいい。</p>
+
+<p>しかし<code>api_version</code>はそもそもリクエスト側が指定できればいい気がするぞ。。すでに<code>/v2</code>プレフィクスもあるし。<br>
+もちろんデフォルトがあるからレスポンスに入れるとしても<code>X-API-VERSION</code>というヘッダにでもいれちゃおう。</p>
+
+<p><code>result</code>はHTTPのステータスコードでいいんじゃないのかなあ。</p>
+
+<p><code>min_id</code>が厳しい。ちょい不自然だが...ヘッダだ。<code>X-MIN-ID</code>にいれちゃう。</p>
+
+<h3>
+<span id="変更点2-user_name-group_nameをモデルに含める" class="fragment"></span><a href="#%E5%A4%89%E6%9B%B4%E7%82%B92-user_name-group_name%E3%82%92%E3%83%A2%E3%83%87%E3%83%AB%E3%81%AB%E5%90%AB%E3%82%81%E3%82%8B"><i class="fa fa-link"></i></a>変更点2: user_name, group_nameをモデルに含める</h3>
+
+<p>まあAPI v1に近くなちゃうね。キーをnameにしまっただけ。<br>
+ほか、nullもなんだかまずい気がするのでlink_usersなどは無しの場合に空配列としよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; GET /user/name/example1
+
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+X-API-VERSION: 2.1
+X-MIN-ID: 1001
+Date: xxxxxxxx
+Content-Length: xxx
+
+{
+  "name": "example1",
+  "id": 1001,
+  "password": "",
+  "group_id": 1001,
+  "directory": "",
+  "shell": "",
+  "gecos": "",
+  "keys": [
+    "ssh-rsa xxxx"
+  ],
+  "link_users": []
+}
+</pre></div></div>
+
+<h3>
+<span id="変更点3-get_by_idは単品オブジェクトをリストはアレイでレスポンス" class="fragment"></span><a href="#%E5%A4%89%E6%9B%B4%E7%82%B93-get_by_id%E3%81%AF%E5%8D%98%E5%93%81%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%82%92%E3%83%AA%E3%82%B9%E3%83%88%E3%81%AF%E3%82%A2%E3%83%AC%E3%82%A4%E3%81%A7%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9"><i class="fa fa-link"></i></a>変更点3: Get_By_IDは単品オブジェクトを、リストはアレイでレスポンス</h3>
+
+<p>v2の<code>items</code>にあたるところを変えてしまおう。</p>
+
+<p>単品のGETについては変更点2のとおり、リストを取得する場合はアレイにする。これなら同じモデルのオブジェクトが並ぶだけだ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; GET /user/list
+
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+X-API-VERSION: 2.1
+X-MIN-ID: 1001
+Date: xxxxxxxx
+Content-Length: xxx
+
+[
+  {
+    "name": "example1",
+    "id": 1001,
+    "password": "",
+    "group_id": 1001,
+    "directory": "",
+    "shell": "",
+    "gecos": "",
+    "keys": [
+      "ssh-rsa xxxx"
+    ],
+    "link_users": []
+  },
+  {
+    "name": "example2",
+    "id": 1002,
+    "password": "",
+    "group_id": 1001,
+    "directory": "",
+    "shell": "",
+    "gecos": "",
+    "keys": [
+      "ssh-rsa xxxx"
+    ],
+    "link_users": []
+  }
+]
+</pre></div></div>
+
+<h3>
+<span id="変更点4-404はmessageで" class="fragment"></span><a href="#%E5%A4%89%E6%9B%B4%E7%82%B94-404%E3%81%AFmessage%E3%81%A7"><i class="fa fa-link"></i></a>変更点4: 404はmessageで</h3>
+
+<p>V2では<code>"items": null</code>で返ってくる。Swaggerサンプルを参考にするとこれもV1に寄るなあ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; GET /user/name/example1
+
+HTTP/1.1 404 Not Found
+Content-Type: application/json; charset=utf-8
+X-API-VERSION: 2.1
+X-MIN-ID: 1001
+Date: xxxxxxxx
+Content-Length: xxx
+
+{
+  "message": "Resource not found"
+}
+</pre></div></div>
+
+<h3>
+<span id="できたswaggerのspec-パチもんapi" class="fragment"></span><a href="#%E3%81%A7%E3%81%8D%E3%81%9Fswagger%E3%81%AEspec-%E3%83%91%E3%83%81%E3%82%82%E3%82%93api"><i class="fa fa-link"></i></a>できたSwaggerのSpec (パチもんAPI)</h3>
+
+<p>とりあえず<code>/v2/user/name/{id}</code>と<code>/v2/user/list</code>だけ実装。</p>
+
+<p>一応こちらでソースとインタラクティブなドキュメントが見られるはずです。<br>
+=&gt; <a href="https://app.swaggerhub.com/api/sawanoboly/sandbox1/2.1" class="autolink" rel="nofollow noopener" target="_blank">https://app.swaggerhub.com/api/sawanoboly/sandbox1/2.1</a></p>
+
+<p><code>swaggerhub</code>だとヘッダがドキュメントに含まれなかったりと妙な挙動をしてますが、<a href="http://editor.swagger.io/" rel="nofollow noopener" target="_blank">editor.swagger.io</a>の方に貼り付ければレスポンスヘッダもドキュメントに含まれてました。</p>
+
+<div class="code-frame" data-lang="yaml"><div class="highlight"><pre><span class="nn">---</span>
+<span class="na">swagger</span><span class="pi">:</span> <span class="s1">'</span><span class="s">2.0'</span>
+<span class="na">info</span><span class="pi">:</span>
+  <span class="na">version</span><span class="pi">:</span> <span class="s2">"</span><span class="s">2.1"</span>
+  <span class="na">title</span><span class="pi">:</span> <span class="s">mysandbox1</span>
+  <span class="na">description</span><span class="pi">:</span> <span class="s">example </span><span class="m">1</span>
+<span class="na">paths</span><span class="pi">:</span>
+  <span class="s">/healthcheck</span><span class="pi">:</span>
+    <span class="na">get</span><span class="pi">:</span>
+      <span class="na">description</span><span class="pi">:</span> <span class="s">health check url</span>
+      <span class="na">produces</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">application/json</span>
+      <span class="na">responses</span><span class="pi">:</span>
+        <span class="s1">'</span><span class="s">200'</span><span class="pi">:</span>
+          <span class="na">description</span><span class="pi">:</span> <span class="s1">'</span><span class="s">returns</span><span class="nv"> </span><span class="s">success'</span>
+          <span class="na">schema</span><span class="pi">:</span>
+            <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/Healty"</span>
+          <span class="na">headers</span><span class="pi">:</span>
+            <span class="na">X-API-VERSION</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">api version</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+              <span class="na">default</span><span class="pi">:</span> <span class="m">2.1</span>
+            <span class="na">X-MIN-ID</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">please return the minimum Id in the All users, group</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+  <span class="s">/v2/metadata</span><span class="pi">:</span>
+    <span class="na">get</span><span class="pi">:</span>
+      <span class="na">description</span><span class="pi">:</span> <span class="s">Returns metadata (demo)</span>
+      <span class="na">produces</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">application/json</span>
+      <span class="na">responses</span><span class="pi">:</span>
+        <span class="s1">'</span><span class="s">200'</span><span class="pi">:</span>
+          <span class="na">description</span><span class="pi">:</span> <span class="s1">'</span><span class="s">Metadata'</span>
+          <span class="na">schema</span><span class="pi">:</span>
+            <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/Metadata"</span>
+          <span class="na">headers</span><span class="pi">:</span>
+            <span class="na">X-API-VERSION</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">api version</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+              <span class="na">default</span><span class="pi">:</span> <span class="m">2.1</span>
+            <span class="na">X-MIN-ID</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">please return the minimum Id in the All users, group</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+  <span class="s">/v2/user/name/{id}</span><span class="pi">:</span>
+    <span class="na">parameters</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">id</span>
+        <span class="na">in</span><span class="pi">:</span> <span class="s">path</span>
+        <span class="na">required</span><span class="pi">:</span> <span class="no">true</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+    <span class="na">get</span><span class="pi">:</span>
+      <span class="na">description</span><span class="pi">:</span> <span class="s">find by user name</span>
+      <span class="na">produces</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">application/json</span>
+      <span class="na">responses</span><span class="pi">:</span>
+        <span class="s1">'</span><span class="s">404'</span><span class="pi">:</span>
+          <span class="na">description</span><span class="pi">:</span> <span class="s1">'</span><span class="s">404</span><span class="nv"> </span><span class="s">error'</span>
+          <span class="na">schema</span><span class="pi">:</span>
+            <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/NotFound"</span>
+        <span class="s1">'</span><span class="s">200'</span><span class="pi">:</span>
+          <span class="na">description</span><span class="pi">:</span> <span class="s1">'</span><span class="s">404</span><span class="nv"> </span><span class="s">error'</span>
+          <span class="na">schema</span><span class="pi">:</span>
+            <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/User"</span>
+          <span class="na">headers</span><span class="pi">:</span>
+            <span class="na">X-API-VERSION</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">api version</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+              <span class="na">default</span><span class="pi">:</span> <span class="m">2.1</span>
+            <span class="na">X-MIN-ID</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">please return the minimum Id in the All users, group</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+  <span class="s">/v2/user/list</span><span class="pi">:</span>
+    <span class="na">get</span><span class="pi">:</span>
+      <span class="na">description</span><span class="pi">:</span> <span class="s">list of all users</span>
+      <span class="na">produces</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">application/json</span>
+      <span class="na">responses</span><span class="pi">:</span>
+        <span class="s1">'</span><span class="s">404'</span><span class="pi">:</span>
+          <span class="na">description</span><span class="pi">:</span> <span class="s1">'</span><span class="s">404</span><span class="nv"> </span><span class="s">error'</span>
+          <span class="na">schema</span><span class="pi">:</span>
+            <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/NotFound"</span>
+        <span class="s1">'</span><span class="s">200'</span><span class="pi">:</span>
+          <span class="na">description</span><span class="pi">:</span> <span class="s1">'</span><span class="s">404</span><span class="nv"> </span><span class="s">error'</span>
+          <span class="na">schema</span><span class="pi">:</span>
+            <span class="na">type</span><span class="pi">:</span> <span class="s">array</span>
+            <span class="na">items</span><span class="pi">:</span>
+              <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/User"</span>
+          <span class="na">headers</span><span class="pi">:</span>
+            <span class="na">X-API-VERSION</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">api version</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+              <span class="na">default</span><span class="pi">:</span> <span class="m">2.1</span>
+            <span class="na">X-MIN-ID</span><span class="pi">:</span>
+              <span class="na">description</span><span class="pi">:</span> <span class="s">please return the minimum Id in the All users, group</span>
+              <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+<span class="na">definitions</span><span class="pi">:</span>
+  <span class="na">Healty</span><span class="pi">:</span>
+    <span class="na">description</span><span class="pi">:</span> <span class="s">Healty response</span>
+    <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+    <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">success"</span>
+  <span class="na">NotFound</span><span class="pi">:</span>
+    <span class="na">description</span><span class="pi">:</span> <span class="s">404 response</span>
+    <span class="na">type</span><span class="pi">:</span> <span class="s">object</span>
+    <span class="na">properties</span><span class="pi">:</span>
+      <span class="na">message</span><span class="pi">:</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">Resource</span><span class="nv"> </span><span class="s">not</span><span class="nv"> </span><span class="s">found"</span>
+      <span class="na">items</span><span class="pi">:</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="no">null</span>
+  <span class="na">Metadata</span><span class="pi">:</span>
+    <span class="na">description</span><span class="pi">:</span> <span class="s">metadata object</span>
+    <span class="na">type</span><span class="pi">:</span> <span class="s">object</span>
+    <span class="na">required</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">api_version</span>
+      <span class="pi">-</span> <span class="s">result</span>
+      <span class="pi">-</span> <span class="s">min_id</span>
+    <span class="na">properties</span><span class="pi">:</span>
+      <span class="na">api_version</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">api version</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">number</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="m">2.1</span>
+      <span class="na">result</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">success only</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">success"</span>
+      <span class="na">min_id</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">please return the minimum Id in the All users, group</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">integer</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="m">1001</span>
+  <span class="na">User</span><span class="pi">:</span>
+    <span class="na">description</span><span class="pi">:</span> <span class="s">User object</span>
+    <span class="na">type</span><span class="pi">:</span> <span class="s">object</span>
+    <span class="na">required</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">name</span>
+      <span class="pi">-</span> <span class="s">id</span>
+    <span class="na">properties</span><span class="pi">:</span>
+      <span class="na">name</span><span class="pi">:</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="s">example1</span>
+      <span class="na">id</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">uid</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">integer</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="m">1001</span>
+      <span class="na">password</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">login password by /etc/shadow format</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">$6$salt$hash"</span>
+      <span class="na">group_id</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">gid</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">integer</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="m">1001</span>
+      <span class="na">directory</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">home directory</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">/home/example1"</span>
+      <span class="na">shell</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">default shell</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">/bin/bash"</span>
+      <span class="na">keys</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">public keys</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">array</span>
+        <span class="na">items</span><span class="pi">:</span>
+          <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+          <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">ssh-rsa</span><span class="nv"> </span><span class="s">xxxxx"</span>
+      <span class="na">gecos</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">general information about the account</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+        <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">example</span><span class="nv"> </span><span class="s">user"</span>
+      <span class="na">link_users</span><span class="pi">:</span>
+        <span class="na">description</span><span class="pi">:</span> <span class="s">stns link users</span>
+        <span class="na">type</span><span class="pi">:</span> <span class="s">array</span>
+        <span class="na">items</span><span class="pi">:</span>
+          <span class="na">type</span><span class="pi">:</span> <span class="s">string</span>
+          <span class="na">example</span><span class="pi">:</span> <span class="s2">"</span><span class="s">example2"</span>
+<span class="c1"># Added by API Auto Mocking Plugin</span>
+<span class="na">host</span><span class="pi">:</span> <span class="s">virtserver.swaggerhub.com</span>
+<span class="na">basePath</span><span class="pi">:</span> <span class="s">/sawanoboly/sandbox1/2.1</span>
+<span class="na">schemes</span><span class="pi">:</span>
+ <span class="pi">-</span> <span class="s">https</span>
+</pre></div></div>
+
+<p>ちなみにレスポンスは<code>metadata</code>+<code>items</code>という構成にもちゃんとできる。itemsはアレイになっちゃうけどもたしかこんな感じ。</p>
+
+<div class="code-frame" data-lang="yaml"><div class="highlight"><pre><span class="na">schema</span><span class="pi">:</span>
+  <span class="na">type</span><span class="pi">:</span> <span class="s">object</span>
+  <span class="na">properties</span><span class="pi">:</span>
+    <span class="na">metadata</span><span class="pi">:</span>
+      <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/Metadata"</span>
+    <span class="na">items</span><span class="pi">:</span>
+      <span class="na">type</span><span class="pi">:</span> <span class="s">array</span>
+      <span class="na">items</span><span class="pi">:</span>
+        <span class="s">$ref</span><span class="pi">:</span> <span class="s2">"</span><span class="s">#/definitions/User"</span>
+</pre></div></div>
+
+<p>(前回のだけど)普通に実装したSinatraのコードより長いぜ。</p>
+
+<p>curlで取ってみる。(※モックのvirtserverはヘッダ定義が無効っぽい)</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -i https://virtserver.swaggerhub.com/sawanoboly/sandbox1/2.1/v2/user/list
+HTTP/1.1 200 OK
+Access-Control-Allow-Headers: Content-Type
+Access-Control-Allow-Methods: *
+Access-Control-Allow-Origin: *
+Content-Type: application/json
+Server: Jetty(6.1.26)
+Content-Length: 212
+Connection: keep-alive
+
+[ {
+  "name" : "example1",
+  "password" : "$6$salt$hash",
+  "directory" : "/home/example1",
+  "shell" : "/bin/bash",
+  "keys" : [ "ssh-rsa xxxxx" ],
+  "gecos" : "example user",
+  "link_users" : [ "example2" ]
+} ]
+</pre></div></div>
+
+<p>まあよし。</p>
+
+<h2>
+<span id="でどうなるの" class="fragment"></span><a href="#%E3%81%A7%E3%81%A9%E3%81%86%E3%81%AA%E3%82%8B%E3%81%AE"><i class="fa fa-link"></i></a>で、どうなるの</h2>
+
+<p>STNSのバックエンドAPIをSwaggerに寄せる(要はRESTぽくする)とバックエンドの移植はしやすく、POST/PUTでのデータ管理が実装しやすくなるけども、肝心のLinuxで動くNSS/PAMクライアント側でのデータの取り回しが煩雑になりそうだなと思いました。</p>
+
+<p>以前V1を自分がsinatraで作ってみたり、cloudpackさんがDynamoDB直読みで作った(下記リンク)ように、STNSバックエンドの実装自体は簡単で、それはV2でも同じです。<br>
+結局Swaggerを使ってみようとした時点で選択を誤っていたということですね。</p>
+
+<p><a href="http://qiita.com/shogomuranushi/items/f09fcdeb146b45452403" id="reference-529af3f1076eeddb98b7">Linuxユーザ管理の決定版？ 〜STNSとサーバレスで夢が広がる〜【cloudpack大阪ブログ】 - Qiita</a></p>
+
+<p>そもそも元がシンプルなキーバリューなので愚直に実装すればよいんだよな。</p>
+
+<p>さて今回得られたものは。</p>
+
+<ul>
+<li>Swagger Specの書き方</li>
+<li>モデルファーストで作れるAPIの判定方法をひとつ</li>
+<li>STNSバックエンドのパチもん</li>
+</ul>
+
+<p>の3点でした。</p>

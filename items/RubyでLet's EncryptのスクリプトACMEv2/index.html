@@ -1,0 +1,584 @@
+<p>前回ACMEv1でやったのはこちら。 <a href="https://qiita.com/sawanoboly/items/f23e73c613e9454076b8" id="reference-270130c9e00390c3fa52">RubyでLet's Encryptのスクリプト - Qiita</a></p>
+
+<p>Let's EncryptでACMEv2が使えるようになり、rubyのクライアントもv2対応してしばらく経ちました。<br>
+一応v1で困ってはいなかったのでちゃんと見ていなかったが、いつまでもv1で置いておくのも気持ちが悪いのでv2の仕様を確認することにした。</p>
+
+<p>v1との相違点なんかを確認しながら同じことをやってみよう。</p>
+
+<ul>
+<li> <a href="https://github.com/unixcharles/acme-client" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/unixcharles/acme-client</a>
+</li>
+</ul>
+
+<p>あくまでRubyのクライアントでv1=&gt;v2を使う際の変更点などであることを事前にご了承で。</p>
+
+<p>以下、Let's EncryptはLEと呼称します。ほか、本記事内でのv2は文脈によって次のうちのいずれかを指しますので、少々読みにくいかもしれませんが流れで判断してください。</p>
+
+<ul>
+<li>仕様としてのACMEv2</li>
+<li>LEのACMEv2仕様API</li>
+<li>ruby acme-clientのv2</li>
+</ul>
+
+<h2>
+<span id="環境" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83"><i class="fa fa-link"></i></a>環境</h2>
+
+<ul>
+<li>IDCFクラウドにDebian9のVM
+
+<ul>
+<li>aptでRuby, acme-client v2.0.1</li>
+</ul>
+</li>
+<li>WebサーバとしてNginx
+
+<ul>
+<li>rootは /var/www/html;</li>
+</ul>
+</li>
+</ul>
+
+<p>pryで実行していきます。</p>
+
+<h2>
+<span id="ステップ-秘密鍵" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-%E7%A7%98%E5%AF%86%E9%8D%B5"><i class="fa fa-link"></i></a>ステップ 秘密鍵</h2>
+
+<p>ここは同じですね。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'openssl'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="o">&gt;</span> <span class="n">private_key</span> <span class="o">=</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">PKey</span><span class="o">::</span><span class="no">RSA</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="mi">2048</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;OpenSSL::PKey::RSA:0x00007fc6491e3540&gt;</span>
+</pre></div></div>
+
+<h2>
+<span id="ステップ-acmev2のディレクトリ-エンドポイント指定からちょっと変更" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-acmev2%E3%81%AE%E3%83%87%E3%82%A3%E3%83%AC%E3%82%AF%E3%83%88%E3%83%AA-%E3%82%A8%E3%83%B3%E3%83%89%E3%83%9D%E3%82%A4%E3%83%B3%E3%83%88%E6%8C%87%E5%AE%9A%E3%81%8B%E3%82%89%E3%81%A1%E3%82%87%E3%81%A3%E3%81%A8%E5%A4%89%E6%9B%B4"><i class="fa fa-link"></i></a>ステップ ACMEv2のディレクトリ (※エンドポイント指定からちょっと変更)</h2>
+
+<p>v2用から、directoryのパス込みで指定するようになってます。<br>
+引数のキーも<code>directory</code>なので、変数名もdirectoryにしちゃおう。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">directory</span> <span class="o">=</span> <span class="s1">'https://acme-staging-v02.api.letsencrypt.org/directory'</span>
+</pre></div></div>
+
+<p>例によってACMEv2に対応しているAPIならなんでもよいです。</p>
+
+<h2>
+<span id="ステップ-acmeクライアントの初期化" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-acme%E3%82%AF%E3%83%A9%E3%82%A4%E3%82%A2%E3%83%B3%E3%83%88%E3%81%AE%E5%88%9D%E6%9C%9F%E5%8C%96"><i class="fa fa-link"></i></a>ステップ ACMEクライアントの初期化</h2>
+
+<p>手順はあまり変わらず、<code>directory</code>指定となった。<br>
+オブジェクトの中身は結構変わったね。秘密鍵がjwkの一部として使われている。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'acme-client'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="o">&gt;</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="o">::</span><span class="no">VERSION</span>
+<span class="o">=&gt;</span> <span class="s2">"2.0.1"</span>
+
+<span class="o">&gt;</span> <span class="n">client</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">private_key: </span><span class="n">private_key</span><span class="p">,</span> <span class="ss">directory: </span><span class="n">directory</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client:0x00007fc64a30b8e0</span>
+ <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@directory</span><span class="o">=</span>
+  <span class="c1">#&lt;Acme::Client::Resources::Directory:0x00007fc64a30b250</span>
+   <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@url</span><span class="o">=</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/directory&gt;&gt;,</span>
+ <span class="vi">@jwk</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::JWK::RSA:0x00007fc64a30b7f0 @private_key=#&lt;OpenSSL::PKey::RSA:0x00007fc6491e3540&gt;&gt;,</span>
+ <span class="vi">@kid</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@nonces</span><span class="o">=</span><span class="p">[]</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<p>また、すでに鍵を登録済み(≒アカウントがある)であれば、後述のkidを使ってクライアントを作成することができるようだ。</p>
+
+<h2>
+<span id="ステップ-caへの公開鍵登録初回" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-ca%E3%81%B8%E3%81%AE%E5%85%AC%E9%96%8B%E9%8D%B5%E7%99%BB%E9%8C%B2%E5%88%9D%E5%9B%9E"><i class="fa fa-link"></i></a>ステップ CAへの公開鍵登録(初回)</h2>
+
+<p><code>terms_of_service_agreed</code>オプションがついて、更に<del>形骸化</del>簡略化した。<br>
+のはまあいいとして、v2では登録した秘密鍵に対応するkidという識別情報がもらえるようになった。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">account</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">new_account</span><span class="p">(</span><span class="ss">contact: </span><span class="s1">'mailto:sawanoboriyu+acme@example.com'</span><span class="p">,</span> <span class="ss">terms_of_service_agreed: </span><span class="kp">true</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::Resources::Account:0x00007fc64a2faea0</span>
+ <span class="vi">@client</span><span class="o">=</span>
+  <span class="c1">#&lt;Acme::Client:0x00007fc64a30b8e0</span>
+   <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@connections</span><span class="o">=</span>
+    <span class="o">...</span>
+   <span class="vi">@directory</span><span class="o">=</span>
+    <span class="c1">#&lt;Acme::Client::Resources::Directory:0x00007fc64a30b250</span>
+     <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+     <span class="vi">@directory</span><span class="o">=</span>
+      <span class="p">{</span><span class="ss">:meta</span><span class="o">=&gt;</span>
+        <span class="p">{</span><span class="s2">"caaIdentities"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">"letsencrypt.org"</span><span class="p">],</span>
+         <span class="s2">"termsOfService"</span><span class="o">=&gt;</span><span class="s2">"https://letsencrypt.org/documents/LE-SA-v1.2-November-15-2017.pdf"</span><span class="p">,</span>
+         <span class="s2">"website"</span><span class="o">=&gt;</span><span class="s2">"https://letsencrypt.org/docs/staging-environment/"</span><span class="p">},</span>
+       <span class="ss">:new_nonce</span><span class="o">=&gt;</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/acme/new-nonce&gt;,</span>
+       <span class="ss">:new_account</span><span class="o">=&gt;</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/acme/new-acct&gt;,</span>
+       <span class="ss">:new_order</span><span class="o">=&gt;</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/acme/new-order&gt;,</span>
+       <span class="ss">:revoke_certificate</span><span class="o">=&gt;</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/acme/revoke-cert&gt;,</span>
+       <span class="ss">:key_change</span><span class="o">=&gt;</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/acme/key-change&gt;},</span>
+     <span class="vi">@url</span><span class="o">=</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/directory&gt;&gt;,</span>
+   <span class="vi">@jwk</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::JWK::RSA:0x00007fc64a30b7f0 @private_key=#&lt;OpenSSL::PKey::RSA:0x00007fc6491e3540&gt;&gt;,</span>
+   <span class="vi">@kid</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/xxxxxxxx"</span><span class="p">,</span>
+   <span class="vi">@nonces</span><span class="o">=</span><span class="p">[</span><span class="s2">"uX19iMR4YlWAdYiu-KMzPdlYDFzpoAB-4-ikAvJPGQg"</span><span class="p">]</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="vi">@contact</span><span class="o">=</span><span class="p">[</span><span class="s2">"mailto:sawanoboriyu+acme@example.com"</span><span class="p">],</span>
+ <span class="vi">@status</span><span class="o">=</span><span class="s2">"valid"</span><span class="p">,</span>
+ <span class="vi">@term_of_service</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@url</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/xxxxxxxx"</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<p>上記のレスポンスでkidが<code>.../acme/acct/xxxxxxxx</code> といった感じで含まれています。</p>
+
+<p>ちなみに<code>mailto:</code>では<code>@example.com,@example.net</code>といったドメインはブラックリストで却下されます。(これもLEのACMEv2 APIからだと思う)</p>
+
+<blockquote>
+<p>invalid contact domain. Contact emails @example.com are forbidden</p>
+</blockquote>
+
+<p>なにかしら有効なドメインをつかいましょう。こちらは秘密鍵と違って重複しても問題ないはず。</p>
+
+<h3>
+<span id="kid" class="fragment"></span><a href="#kid"><i class="fa fa-link"></i></a>kid?</h3>
+
+<p>登録済みのアカウントを使い回すには、kidを保存しておかないと駄目なの？というと、そうでもないです。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">account</span><span class="p">.</span><span class="nf">kid</span>
+<span class="o">=&gt;</span> <span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/xxxxxxxx"</span>
+</pre></div></div>
+
+<p>クライアント初期化時にオプションとして渡すことができて、いちおうなんとなくスムーズな感じですすめることができます。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">kid</span> <span class="o">=</span> <span class="n">account</span><span class="p">.</span><span class="nf">kid</span>
+<span class="o">=&gt;</span> <span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/xxxxxxxx"</span>
+
+<span class="c1"># kidを指定したクライアント作成</span>
+<span class="o">&gt;</span> <span class="n">client</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">private_key: </span><span class="n">private_key</span><span class="p">,</span> <span class="ss">directory: </span><span class="n">directory</span><span class="p">,</span> <span class="ss">kid: </span><span class="n">kid</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client:0x00007fc64aa9a840</span>
+ <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@directory</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::Resources::Directory:0x00007fc64aa9a5e8 @connection_options={}, @url=#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/directory&gt;&gt;,</span>
+ <span class="vi">@jwk</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::JWK::RSA:0x00007fc64aa9a7c8 @private_key=#&lt;OpenSSL::PKey::RSA:0x00007fc6491e3540&gt;&gt;,</span>
+ <span class="vi">@kid</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/xxxxxxxx"</span><span class="p">,</span>
+ <span class="vi">@nonces</span><span class="o">=</span><span class="p">[]</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<p>ただ、すでに登録済みの秘密鍵を使ったクライアントは、kidを省略してもLE側で勝手に突き合わせてくれます。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="c1"># 初期化直後は kid = nil</span>
+<span class="o">&gt;</span> <span class="n">client</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">private_key: </span><span class="n">private_key</span><span class="p">,</span> <span class="ss">directory: </span><span class="n">directory</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client:0x00007fc6491e9260</span>
+ <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+ <span class="vi">@directory</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::Resources::Directory:0x00007fc6491e9008 @connection_options={}, @url=#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/directory&gt;&gt;,</span>
+ <span class="vi">@jwk</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::JWK::RSA:0x00007fc6491e91e8 @private_key=#&lt;OpenSSL::PKey::RSA:0x00007fc6491e3540&gt;&gt;,</span>
+ <span class="vi">@kid</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@nonces</span><span class="o">=</span><span class="p">[]</span><span class="o">&gt;</span>
+
+<span class="c1"># でも取りに行けば、値があることが確認できる。</span>
+<span class="o">&gt;</span> <span class="n">client</span><span class="p">.</span><span class="nf">kid</span>
+<span class="c1"># 取得にはすこし時間がかかる</span>
+<span class="o">=&gt;</span> <span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/xxxxxxxx"</span>
+</pre></div></div>
+
+<p>この辺はkidを使っても良いし、v1のときのように気にせず先にすすめてよいように思います。</p>
+
+<blockquote>
+<p>kidの値が間違っている場合でも、クライアントは作成可能。このあとのnew_orderでハネられます。</p>
+</blockquote>
+
+<h2>
+<span id="ステップ-registrationv1--なくなった" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-registrationv1--%E3%81%AA%E3%81%8F%E3%81%AA%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>ステップ registration(v1) .... なくなった。</h2>
+
+<p>アカウント作成時に約款同意を含めたので不要と。</p>
+
+<h2>
+<span id="ステップ-ドメインのチャレンジを申請する" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E3%81%AE%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%82%92%E7%94%B3%E8%AB%8B%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ステップ ドメインのチャレンジを申請する</h2>
+
+<p>v1ではclientからauthorizationを作っていたが、v2では一旦<code>Acme::Client::Resources::Order</code>のインスタンスを作るようになった。<br>
+※このあとの<code>example.com</code>は適当に読み替えで。</p>
+
+<blockquote>
+<p>追記:<br>
+v2では、 identifiersとして渡したドメインはLowercaseで処理されるようになりました。<br>
+あとでつくるauthorizationで、domain属性の中身が ACME2.example.com =&gt; acmev2.example.com になる感じ。</p>
+</blockquote>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">order</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">new_order</span><span class="p">(</span><span class="ss">identifiers: </span><span class="p">[</span><span class="s1">'acmev2.example.com'</span><span class="p">])</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::Resources::Order:0x00007fc64a506a50</span>
+ <span class="vi">@authorization_urls</span><span class="o">=</span><span class="p">[</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/authz/8Kd11K9K7_sw4MyyEW3q5137Vphs0OLWHToQrlaax2A"</span><span class="p">],</span>
+ <span class="vi">@certificate_url</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@client</span><span class="o">=</span>
+  <span class="c1">#&lt;Acme::Client:0x00007fc6491e9260</span>
+   <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@connections</span><span class="o">=</span>
+    <span class="o">...</span>
+   <span class="vi">@directory</span><span class="o">=</span>
+    <span class="c1">#&lt;Acme::Client::Resources::Directory:0x00007fc6491e9008</span>
+     <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+     <span class="vi">@directory</span><span class="o">=</span>
+      <span class="o">...</span>
+     <span class="vi">@url</span><span class="o">=</span><span class="c1">#&lt;URI::HTTPS https://acme-staging-v02.api.letsencrypt.org/directory&gt;&gt;,</span>
+   <span class="vi">@jwk</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::JWK::RSA:0x00007fc6491e91e8 @private_key=#&lt;OpenSSL::PKey::RSA:0x00007fc6491e3540&gt;&gt;,</span>
+   <span class="vi">@kid</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/xxxxxxxx"</span><span class="p">,</span>
+   <span class="vi">@nonces</span><span class="o">=</span><span class="p">[</span><span class="s2">"yt3TCMgt67czokGFRzoQAr5JSWvMq-APFc5Ygak6JGg"</span><span class="p">]</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="vi">@expires</span><span class="o">=</span><span class="s2">"2018-09-04T05:38:09.929580426Z"</span><span class="p">,</span>
+ <span class="vi">@finalize_url</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/finalize/xxxxxxxx/6557233"</span><span class="p">,</span>
+ <span class="vi">@identifiers</span><span class="o">=</span><span class="p">[{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"dns"</span><span class="p">,</span> <span class="s2">"value"</span><span class="o">=&gt;</span><span class="s2">"example.com"</span><span class="p">}],</span>
+ <span class="vi">@status</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">,</span>
+ <span class="vi">@url</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/order/xxxxxxxx/6557233"</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<p>なんでOrderを1つかませるようにしたのかなと、<code>new_order</code>の実装をみてみる。<br>
+なるほど<code>not_before</code>, <code>not_after</code>などが使えるようになったから、一枚かますようになったのかな。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="c1"># Owner: Acme::Client</span>
+<span class="c1"># Visibility: public</span>
+<span class="c1"># Number of lines: 16</span>
+
+<span class="k">def</span> <span class="nf">new_order</span><span class="p">(</span><span class="n">identifiers</span><span class="p">:,</span> <span class="ss">not_before: </span><span class="kp">nil</span><span class="p">,</span> <span class="ss">not_after: </span><span class="kp">nil</span><span class="p">)</span>
+  <span class="n">payload</span> <span class="o">=</span> <span class="p">{}</span>
+  <span class="n">payload</span><span class="p">[</span><span class="s1">'identifiers'</span><span class="p">]</span> <span class="o">=</span> <span class="k">if</span> <span class="n">identifiers</span><span class="p">.</span><span class="nf">is_a?</span><span class="p">(</span><span class="no">Hash</span><span class="p">)</span>
+    <span class="n">identifiers</span>
+  <span class="k">else</span>
+    <span class="no">Array</span><span class="p">(</span><span class="n">identifiers</span><span class="p">).</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">identifier</span><span class="o">|</span>
+      <span class="p">{</span> <span class="ss">type: </span><span class="s1">'dns'</span><span class="p">,</span> <span class="ss">value: </span><span class="n">identifier</span> <span class="p">}</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+  <span class="n">payload</span><span class="p">[</span><span class="s1">'notBefore'</span><span class="p">]</span> <span class="o">=</span> <span class="n">not_before</span> <span class="k">if</span> <span class="n">not_before</span>
+  <span class="n">payload</span><span class="p">[</span><span class="s1">'notAfter'</span><span class="p">]</span> <span class="o">=</span> <span class="n">not_after</span> <span class="k">if</span> <span class="n">not_after</span>
+
+  <span class="n">response</span> <span class="o">=</span> <span class="n">post</span><span class="p">(</span><span class="n">endpoint_for</span><span class="p">(</span><span class="ss">:new_order</span><span class="p">),</span> <span class="ss">payload: </span><span class="n">payload</span><span class="p">)</span>
+  <span class="n">arguments</span> <span class="o">=</span> <span class="n">attributes_from_order_response</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+  <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="o">::</span><span class="no">Resources</span><span class="o">::</span><span class="no">Order</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="nb">self</span><span class="p">,</span> <span class="o">**</span><span class="n">arguments</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div></div>
+
+<p>authorizationは<code>order.authorizations.first</code>として</p>
+
+<p>authorizations自体は要素が1つの配列だけど、他の方式とかへの対応のため拡張可能な仕様なんだろう。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">authorization</span> <span class="o">=</span> <span class="n">order</span><span class="p">.</span><span class="nf">authorizations</span><span class="p">.</span><span class="nf">first</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::Resources::Authorization:0x00007fc64a9e28d0</span>
+ <span class="vi">@challenges</span><span class="o">=</span>
+  <span class="p">[{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"tls-alpn-01"</span><span class="p">,</span>
+    <span class="s2">"status"</span><span class="o">=&gt;</span><span class="s2">"pending"</span><span class="p">,</span>
+    <span class="s2">"url"</span><span class="o">=&gt;</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/challenge/8Kd11K9K7_sw4MyyEW3q5137Vphs0OLWHToQrlaax2A/164428936"</span><span class="p">,</span>
+    <span class="s2">"token"</span><span class="o">=&gt;</span><span class="s2">"8xTyIIL4sip6nJlI_7gg9AMp_3uFByQXHoqIRP0gbqQ"</span><span class="p">},</span>
+   <span class="p">{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"http-01"</span><span class="p">,</span>
+    <span class="s2">"status"</span><span class="o">=&gt;</span><span class="s2">"pending"</span><span class="p">,</span>
+    <span class="s2">"url"</span><span class="o">=&gt;</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/challenge/8Kd11K9K7_sw4MyyEW3q5137Vphs0OLWHToQrlaax2A/164428937"</span><span class="p">,</span>
+    <span class="s2">"token"</span><span class="o">=&gt;</span><span class="s2">"_Nu_4S3OuYkaMG-Kq5DHrX05zp9tlx-jubnMg0-k1v4"</span><span class="p">},</span>
+   <span class="p">{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"dns-01"</span><span class="p">,</span>
+    <span class="s2">"status"</span><span class="o">=&gt;</span><span class="s2">"pending"</span><span class="p">,</span>
+    <span class="s2">"url"</span><span class="o">=&gt;</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/challenge/8Kd11K9K7_sw4MyyEW3q5137Vphs0OLWHToQrlaax2A/164428938"</span><span class="p">,</span>
+    <span class="s2">"token"</span><span class="o">=&gt;</span><span class="s2">"yxJQO-KqzLwG70wnV5gs6PCF7v0JrGJdhvEa5kRtzNk"</span><span class="p">}],</span>
+ <span class="vi">@client</span><span class="o">=</span>
+   <span class="o">...</span>
+ <span class="vi">@domain</span><span class="o">=</span><span class="s2">"example.com"</span><span class="p">,</span>
+ <span class="vi">@expires</span><span class="o">=</span><span class="s2">"2018-09-04T05:38:09Z"</span><span class="p">,</span>
+ <span class="vi">@identifier</span><span class="o">=</span><span class="p">{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"dns"</span><span class="p">,</span> <span class="s2">"value"</span><span class="o">=&gt;</span><span class="s2">"acmev2.example.com"</span><span class="p">},</span>
+ <span class="vi">@status</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">,</span>
+ <span class="vi">@url</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/authz/8Kd11K9K7_sw4MyyEW3q5137Vphs0OLWHToQrlaax2A"</span><span class="p">,</span>
+ <span class="vi">@wildcard</span><span class="o">=</span><span class="kp">nil</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<p><code>tls-alpn-01</code>, <code>http-01</code>, <code>dns-01</code> の3方式が</p>
+
+<p>tls-alpn-01(The TLS with Application Level Protocol Negotiation) については <a href="https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01" rel="nofollow noopener" target="_blank">https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01</a> で。</p>
+
+<h2>
+<span id="ステップ-http-01タイプでチャレンジする" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-http-01%E3%82%BF%E3%82%A4%E3%83%97%E3%81%A7%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ステップ http-01タイプでチャレンジする</h2>
+
+<p>とりあえずv1の記事と同じように<code>http-01</code>で。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">challenge</span> <span class="o">=</span> <span class="n">authorization</span><span class="p">.</span><span class="nf">http</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::Resources::Challenges::HTTP01:0x00007fc649a813c8</span>
+ <span class="vi">@client</span><span class="o">=</span>
+  <span class="c1">#&lt;Acme::Client:0x00007fc6491e9260</span>
+   <span class="vi">@connection_options</span><span class="o">=</span><span class="p">{},</span>
+   <span class="vi">@connections</span><span class="o">=</span>
+    <span class="o">...</span>
+   <span class="vi">@directory</span><span class="o">=</span>
+    <span class="o">...</span>
+   <span class="vi">@jwk</span><span class="o">=</span><span class="c1">#&lt;Acme::Client::JWK::RSA:0x00007fc6491e91e8 @private_key=#&lt;OpenSSL::PKey::RSA:0x00007fc6491e3540&gt;&gt;,</span>
+   <span class="vi">@kid</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/acct/6820825"</span><span class="p">,</span>
+   <span class="vi">@nonces</span><span class="o">=</span><span class="p">[]</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="vi">@error</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@status</span><span class="o">=</span><span class="s2">"pending"</span><span class="p">,</span>
+ <span class="vi">@token</span><span class="o">=</span><span class="s2">"_Nu_4S3OuYkaMG-Kq5DHrX05zp9tlx-jubnMg0-k1v4"</span><span class="p">,</span>
+ <span class="vi">@url</span><span class="o">=</span><span class="s2">"https://acme-staging-v02.api.letsencrypt.org/acme/challenge/8Kd11K9K7_sw4MyyEW3q5137Vphs0OLWHToQrlaax2A/164428937"</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<p>challengeの中身を確認しよう。ここはv1と全く同じですね。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">content_type</span>
+<span class="o">=&gt;</span> <span class="s2">"text/plain"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">file_content</span>
+<span class="o">=&gt;</span> <span class="s2">"MVOFaIaalrqjB_570ZnCztuJgQcW9zxQxIu2YcNllU0.84USDpgw-Xi9j6lV8ucRAwUOVv3-Aos2bQmb-cgACkU"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span>
+<span class="o">=&gt;</span> <span class="s2">".well-known/acme-challenge/MVOFaIaalrqjB_570ZnCztuJgQcW9zxQxIu2YcNllU0"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">token</span>
+<span class="o">=&gt;</span> <span class="s2">"MVOFaIaalrqjB_570ZnCztuJgQcW9zxQxIu2YcNllU0"</span>
+</pre></div></div>
+
+<h3>
+<span id="チャレンジのレスポンスを設置しよう" class="fragment"></span><a href="#%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%81%AE%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9%E3%82%92%E8%A8%AD%E7%BD%AE%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>チャレンジのレスポンスを設置しよう</h3>
+
+<p>ここもv1同様に。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">www_root</span> <span class="o">=</span> <span class="s1">'/var/www/html'</span>
+<span class="o">=&gt;</span> <span class="s2">"/var/www/html"</span>
+
+<span class="o">&gt;</span> <span class="no">FileUtils</span><span class="p">.</span><span class="nf">mkdir_p</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span> <span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span> <span class="p">)</span> <span class="p">)</span> <span class="p">)</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"/var/www/html/.well-known/acme-challenge"</span><span class="p">]</span>
+
+<span class="o">&gt;</span> <span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span><span class="p">,</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span><span class="p">),</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">file_content</span> <span class="p">)</span>
+<span class="o">=&gt;</span> <span class="mi">87</span>
+</pre></div></div>
+
+<p>ここで<code>Content-Type: text/plain</code>になるようにnginx.confの修正も忘れないように。 <a href="https://qiita.com/sawanoboly/items/f23e73c613e9454076b8">前回記事参照</a></p>
+
+<h2>
+<span id="チャレンジ対応okをleに通知" class="fragment"></span><a href="#%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E5%AF%BE%E5%BF%9Cok%E3%82%92le%E3%81%AB%E9%80%9A%E7%9F%A5"><i class="fa fa-link"></i></a>チャレンジ対応OKをLEに通知</h2>
+
+<p><code>request_validation</code>はv1と一緒、でも状態の更新は<code>challenge.reload</code>に変更となってる。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">status</span>
+<span class="o">=&gt;</span> <span class="s2">"pending"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">request_validation</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">status</span>
+<span class="o">=&gt;</span> <span class="s2">"pending"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">reload</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">status</span>
+<span class="o">=&gt;</span> <span class="s2">"valid"</span>
+</pre></div></div>
+
+<p>HTTPのリクエストログにはこんな感じで来ています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>GET /.well-known/acme-challenge/MVOFaIaalrqjB_570ZnCztuJgQcW9zxQxIu2YcNllU0 HTTP/1.1" 200 87 "-" "Mozilla/5.0 (compatible; Let's Encrypt validation server; +https://www.letsencrypt.org)"
+</pre></div></div>
+
+<blockquote>
+<p>challengeが<code>invalid</code>の場合、今回は <code>challenge.error</code> にレスポンスがはいっています。<br>
+こんな感じで<br>
+=&gt; {"type"=&gt;"urn:ietf:params:acme:error:unauthorized", "detail"=&gt;"No TXT record found at _acme-challenge.test.example.com", "status"=&gt;403}</p>
+</blockquote>
+
+<h2>
+<span id="ステップ-csrを作成する" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-csr%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ステップ CSRを作成する</h2>
+
+<p><code>Acme::Client::CertificateRequest</code>が自動で秘密鍵を作ってくれるのはv1同様だが、単体のときでも<code>common_name</code>として指定するようになった。。のかな？</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">csr</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="o">::</span><span class="no">CertificateRequest</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">subject: </span><span class="p">{</span> <span class="ss">common_name: </span><span class="s1">'acmev2.example.com'</span> <span class="p">})</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::CertificateRequest:0x00007fc649ae51e8</span>
+ <span class="vi">@common_name</span><span class="o">=</span><span class="s2">"example.com"</span><span class="p">,</span>
+ <span class="vi">@digest</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::Digest::SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&gt;,</span>
+ <span class="vi">@names</span><span class="o">=</span><span class="p">[</span><span class="s2">"example.com"</span><span class="p">],</span>
+ <span class="vi">@private_key</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::PKey::RSA:0x00007fc649ae5148&gt;,</span>
+ <span class="vi">@subject</span><span class="o">=</span><span class="p">{</span><span class="s2">"CN"</span><span class="o">=&gt;</span><span class="s2">"example.com"</span><span class="p">}</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<h2>
+<span id="ステップ-csrから証明書発行を申請する-非同期になった" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-csr%E3%81%8B%E3%82%89%E8%A8%BC%E6%98%8E%E6%9B%B8%E7%99%BA%E8%A1%8C%E3%82%92%E7%94%B3%E8%AB%8B%E3%81%99%E3%82%8B-%E9%9D%9E%E5%90%8C%E6%9C%9F%E3%81%AB%E3%81%AA%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>ステップ CSRから証明書発行を申請する (※非同期になった)</h2>
+
+<p>v1との違いとして、ここで<code>order</code>が再登場。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">order</span><span class="p">.</span><span class="nf">finalize</span><span class="p">(</span><span class="ss">csr: </span><span class="n">csr</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="c1"># 出来上がるまでは 'processing'</span>
+<span class="o">&gt;</span> <span class="n">order</span><span class="p">.</span><span class="nf">status</span>
+<span class="o">=&gt;</span> <span class="s2">"valid"</span>
+</pre></div></div>
+
+<h2>
+<span id="ステップ-作られた証明書を確認しよう" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-%E4%BD%9C%E3%82%89%E3%82%8C%E3%81%9F%E8%A8%BC%E6%98%8E%E6%9B%B8%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>ステップ 作られた証明書を確認しよう</h2>
+
+<p>acme-client v2では<code>order</code>にはいっている。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">order</span><span class="p">.</span><span class="nf">certificate</span>
+<span class="o">=&gt;</span> <span class="s2">"-----BEGIN CERTIFICATE-----</span><span class="se">\n</span><span class="s2">MIIF9TCCBN2gAwIBAgITAPqK0JUd ....
+</span></pre></div></div>
+
+<p>[初版から訂正] この<code>order.certificate</code>は新規証明書＋中間証明書が含まれていて、v1でのfull_chainにあたる内容がはいっています。</p>
+
+<p>先頭が今回作成した証明書、それ以降が中間証明書。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">certs</span> <span class="o">=</span> <span class="n">order</span><span class="p">.</span><span class="nf">certificate</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s2">"</span><span class="se">\n\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="o">&gt;</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">X509</span><span class="o">::</span><span class="no">Certificate</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">certs</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;OpenSSL::X509::Certificate</span>
+ <span class="n">subject</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::X509::Name CN=acmev2.example.com&gt;,</span>
+ <span class="n">issuer</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::X509::Name CN=Fake LE Intermediate X1&gt;,</span>
+ <span class="n">serial</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::BN 21825307703253062656376784444942033656726194&gt;,</span>
+ <span class="n">not_before</span><span class="o">=</span><span class="mi">2018</span><span class="o">-</span><span class="mi">08</span><span class="o">-</span><span class="mi">28</span> <span class="mo">05</span><span class="p">:</span><span class="mi">23</span><span class="p">:</span><span class="mi">50</span> <span class="no">UTC</span><span class="p">,</span>
+ <span class="n">not_after</span><span class="o">=</span><span class="mi">2018</span><span class="o">-</span><span class="mi">11</span><span class="o">-</span><span class="mi">26</span> <span class="mo">05</span><span class="p">:</span><span class="mi">23</span><span class="p">:</span><span class="mi">50</span> <span class="no">UTC</span><span class="o">&gt;</span>
+
+
+<span class="o">&gt;</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">X509</span><span class="o">::</span><span class="no">Certificate</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">certs</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;OpenSSL::X509::Certificate</span>
+ <span class="n">subject</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::X509::Name CN=Fake LE Intermediate X1&gt;,</span>
+ <span class="n">issuer</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::X509::Name CN=Fake LE Root X1&gt;,</span>
+ <span class="n">serial</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::BN 185931811205298764263482705882344673253&gt;,</span>
+ <span class="n">not_before</span><span class="o">=</span><span class="mi">2016</span><span class="o">-</span><span class="mo">05</span><span class="o">-</span><span class="mi">23</span> <span class="mi">22</span><span class="p">:</span><span class="mo">07</span><span class="p">:</span><span class="mi">59</span> <span class="no">UTC</span><span class="p">,</span>
+ <span class="n">not_after</span><span class="o">=</span><span class="mi">2036</span><span class="o">-</span><span class="mo">05</span><span class="o">-</span><span class="mi">23</span> <span class="mi">22</span><span class="p">:</span><span class="mo">07</span><span class="p">:</span><span class="mi">59</span> <span class="no">UTC</span><span class="o">&gt;</span>
+</pre></div></div>
+
+<p>ペアの鍵は<code>csr</code>から持ってくる必要があると。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">csr</span><span class="p">.</span><span class="nf">private_key</span><span class="p">.</span><span class="nf">to_pem</span>
+<span class="o">=&gt;</span> <span class="s2">"-----BEGIN RSA PRIVATE KEY-----</span><span class="se">\n</span><span class="s2">M
+</span></pre></div></div>
+
+<h2>
+<span id="通して実行" class="fragment"></span><a href="#%E9%80%9A%E3%81%97%E3%81%A6%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>通して実行</h2>
+
+<p>ここまでのスクリプトをまとめてみるとこんな感じ、大筋はv1と変わらず。</p>
+
+<p>registrationがいらない分すこしだけ短くなったのと、cert作成が非同期になったのでwaitが一箇所増えた。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">acmev2.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'openssl'</span>
+
+<span class="n">private_key</span> <span class="o">=</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">PKey</span><span class="o">::</span><span class="no">RSA</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="mi">2048</span><span class="p">)</span>
+<span class="n">directory</span> <span class="o">=</span> <span class="s1">'https://acme-v02.api.letsencrypt.org/directory'</span>
+
+<span class="nb">require</span> <span class="s1">'acme-client'</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">private_key: </span><span class="n">private_key</span><span class="p">,</span> <span class="ss">directory: </span><span class="n">directory</span><span class="p">)</span>
+<span class="n">account</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">new_account</span><span class="p">(</span><span class="ss">contact: </span><span class="s1">'mailto:sawanoboriyu+acme@example.com'</span><span class="p">,</span> <span class="ss">terms_of_service_agreed: </span><span class="kp">true</span><span class="p">)</span>
+<span class="nb">puts</span> <span class="n">account</span><span class="p">.</span><span class="nf">kid</span>
+
+<span class="n">order</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">new_order</span><span class="p">(</span><span class="ss">identifiers: </span><span class="p">[</span><span class="s1">'acmev2.example.com'</span><span class="p">])</span>
+<span class="n">authorization</span> <span class="o">=</span> <span class="n">order</span><span class="p">.</span><span class="nf">authorizations</span><span class="p">.</span><span class="nf">first</span>
+
+<span class="n">challenge</span> <span class="o">=</span> <span class="n">authorization</span><span class="p">.</span><span class="nf">http</span>
+
+<span class="n">www_root</span> <span class="o">=</span> <span class="s1">'/var/www/html'</span>
+<span class="no">FileUtils</span><span class="p">.</span><span class="nf">mkdir_p</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span> <span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span> <span class="p">)</span> <span class="p">)</span> <span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span><span class="p">,</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span><span class="p">),</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">file_content</span> <span class="p">)</span>
+
+<span class="n">challenge</span><span class="p">.</span><span class="nf">request_validation</span>
+
+<span class="k">while</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">status</span> <span class="o">==</span> <span class="s1">'pending'</span>
+  <span class="nb">print</span> <span class="s2">"."</span>
+  <span class="nb">sleep</span> <span class="mi">2</span>
+  <span class="n">challenge</span><span class="p">.</span><span class="nf">reload</span>
+<span class="k">end</span>
+<span class="nb">puts</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">status</span>
+<span class="k">raise</span> <span class="k">if</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">status</span> <span class="o">!=</span> <span class="s1">'valid'</span>
+
+<span class="n">csr</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="o">::</span><span class="no">CertificateRequest</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">subject: </span><span class="p">{</span> <span class="ss">common_name: </span><span class="s1">'acmev2.example.com'</span> <span class="p">})</span>
+<span class="n">order</span><span class="p">.</span><span class="nf">finalize</span><span class="p">(</span><span class="ss">csr: </span><span class="n">csr</span><span class="p">)</span>
+<span class="nb">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="k">while</span> <span class="n">order</span><span class="p">.</span><span class="nf">status</span> <span class="o">==</span> <span class="s1">'processing'</span>
+
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"privkey.pem"</span><span class="p">,</span> <span class="n">csr</span><span class="p">.</span><span class="nf">private_key</span><span class="p">.</span><span class="nf">to_pem</span><span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"fullchain.pem"</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="nf">certificate</span><span class="p">)</span>
+
+<span class="n">certs</span> <span class="o">=</span> <span class="n">order</span><span class="p">.</span><span class="nf">certificate</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="s2">"</span><span class="se">\n\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">certs</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">cert</span><span class="o">|</span>
+  <span class="n">new_cert</span> <span class="o">=</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">X509</span><span class="o">::</span><span class="no">Certificate</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">cert</span><span class="p">)</span>
+  <span class="nb">puts</span> <span class="n">new_cert</span><span class="p">.</span><span class="nf">subject</span><span class="p">.</span><span class="nf">to_s</span>
+  <span class="nb">puts</span> <span class="n">new_cert</span><span class="p">.</span><span class="nf">not_after</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>実行してみる。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>bundle <span class="nb">exec </span>ruby ./acmev2.rb
+https://acme-v02.api.letsencrypt.org/acme/acct/xxxxxxxx
+.valid
+/CN<span class="o">=</span>acmev2.example.com/serialNumber<span class="o">=</span>xxxxxxxxxxxxxxxx
+2018-11-26 06:21:39 UTC
+/CN<span class="o">=</span>h2ppy h2cker fake CA
+2021-03-21 02:47:52 UTC
+</pre></div></div>
+
+<h2>
+<span id="rubyのacme-client-v1---v2-まとめ" class="fragment"></span><a href="#ruby%E3%81%AEacme-client-v1---v2-%E3%81%BE%E3%81%A8%E3%82%81"><i class="fa fa-link"></i></a>Rubyのacme-client v1 -&gt; v2 まとめ</h2>
+
+<p>あくまでRubyライブラリ視点なので、そのへん注意で。</p>
+
+<ul>
+<li>ACMEプロトコルがv1からv2になった
+
+<ul>
+<li>(そもそもこれに追随した各種変更でもある)</li>
+</ul>
+</li>
+<li>registrationは要らなくなった</li>
+<li>アカウント(≒秘密鍵)の使い回しはkidもついでに保存しておく選択肢が増えた
+
+<ul>
+<li>正しいkidを使えば、チャレンジの段取りが通しですこしだけ早くなるかもしれない</li>
+</ul>
+</li>
+<li>証明書申請に関する一連のやりとりは<code>Acme::Client::Resources::Order</code>で取りまとめることになった</li>
+<li>[訂正：そうでもなかった]<del>キーペア、中間証明書の取り出しがやや面倒になってる</del>
+
+<ul>
+<li><del>これは簡単なローカルの関数でも対応できるし、せっかくだからメソッドを生やすためにPRするかもしれない</del></li>
+</ul>
+</li>
+<li>ドメインが内部的に全部lowercaseで扱われるようになった。</li>
+</ul>
+
+<h3>
+<span id="付録-wildcardもやっとく" class="fragment"></span><a href="#%E4%BB%98%E9%8C%B2-wildcard%E3%82%82%E3%82%84%E3%81%A3%E3%81%A8%E3%81%8F"><i class="fa fa-link"></i></a>付録: wildcardもやっとく？</h3>
+
+<p>orderのidentifiersに<code>*.</code>で始まるドメイン名を使えばワイルドカード証明書も作れます。というかACMEv2の目玉よね。<br>
+折角だからやっときましょうか。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">order</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">new_order</span><span class="p">(</span><span class="ss">identifiers: </span><span class="p">[</span><span class="s1">'*.test.opsrockin.com'</span><span class="p">])</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::Resources::Order:0x00007fc649b47848</span>
+<span class="o">...</span>
+
+<span class="o">&gt;</span> <span class="n">authorization</span> <span class="o">=</span> <span class="n">order</span><span class="p">.</span><span class="nf">authorizations</span><span class="p">.</span><span class="nf">first</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::Resources::Authorization:0x00007fc64aa71170</span>
+<span class="o">...</span>
+
+<span class="c1"># 例によってHTTP01はなし</span>
+<span class="o">&gt;</span> <span class="n">authorization</span><span class="p">.</span><span class="nf">http01</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+
+
+<span class="o">&gt;</span> <span class="n">challenge</span> <span class="o">=</span> <span class="n">authorization</span><span class="p">.</span><span class="nf">dns01</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::Resources::Challenges::DNS01:0x00007fc64a4fc5c8</span>
+
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">record_type</span>
+<span class="o">=&gt;</span> <span class="s2">"TXT"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">record_name</span>
+<span class="o">=&gt;</span> <span class="s2">"_acme-challenge"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">record_content</span>
+<span class="o">=&gt;</span> <span class="s2">"yo1HkEkMu8q8mebJ4Sr5CY2Gjp6gtoybHNp6WdVKQyM"</span>
+
+<span class="c1"># DNSレコードを作ってくる</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">request_validation</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">reload</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">status</span>
+<span class="o">=&gt;</span> <span class="s2">"valid"</span>
+
+
+<span class="o">&gt;</span> <span class="n">csr</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="o">::</span><span class="no">CertificateRequest</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">subject: </span><span class="p">{</span> <span class="ss">common_name: </span><span class="s1">'*.test.example.com'</span> <span class="p">})</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client::CertificateRequest:0x00007fc649a921a0</span>
+
+<span class="o">&gt;</span> <span class="n">order</span><span class="p">.</span><span class="nf">finalize</span><span class="p">(</span><span class="ss">csr: </span><span class="n">csr</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+
+<span class="c1"># できた</span>
+<span class="o">&gt;</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">X509</span><span class="o">::</span><span class="no">Certificate</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">order</span><span class="p">.</span><span class="nf">certificate</span><span class="p">).</span><span class="nf">subject</span><span class="p">.</span><span class="nf">to_s</span>
+<span class="o">=&gt;</span> <span class="s2">"/CN=*.test.example.com"</span>
+</pre></div></div>

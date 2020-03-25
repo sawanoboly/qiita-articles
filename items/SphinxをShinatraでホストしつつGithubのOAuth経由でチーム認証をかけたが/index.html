@@ -1,0 +1,120 @@
+<p><a href="http://qiita.com/sawanoboly@github/items/be1dbc9f19e93e4b62cf" id="reference-05994fac9164dab978ac">Sphinxで作成したドキュメントをherokuでホスティング、Continuous Documentationなススメ(Basic認証付き)</a> の外伝。<br>
+『Basic認証』 =&gt; 『Github認証+特定のチームに属するかで閲覧可』 に変更してみたコード。</p>
+
+<h2>
+<span id="困った" class="fragment"></span><a href="#%E5%9B%B0%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>困った</h2>
+
+<h3>
+<span id="認証箇所で困った" class="fragment"></span><a href="#%E8%AA%8D%E8%A8%BC%E7%AE%87%E6%89%80%E3%81%A7%E5%9B%B0%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>認証箇所で困った</h3>
+
+<ul>
+<li>Basic認証はRackモジュールだったので<code>publix</code>含む全リクエストが対象だった</li>
+<li>Github連携の<code>sinatra_auth_github</code>はSinatraの仕様に依存、=&gt; <code>public</code>へのアクセスにフィルタがかけられない</li>
+</ul>
+
+<blockquote>
+<p>= 1.0 / 2010-03-23<br>
+-- snip --<br>
+ * Filters do not run when serving static files anymore. (Ryan Tomayko)<br>
+<a href="https://github.com/sinatra/sinatra/blob/master/CHANGES" rel="nofollow noopener" target="_blank">https://github.com/sinatra/sinatra/blob/master/CHANGES</a></p>
+</blockquote>
+
+<p>publicに依存しまくっているSphinxホスティングはsinatra1.0でのこの変更が非常に厳しい。</p>
+
+<h3>
+<span id="モンキーパッチで解決してしまった" class="fragment"></span><a href="#%E3%83%A2%E3%83%B3%E3%82%AD%E3%83%BC%E3%83%91%E3%83%83%E3%83%81%E3%81%A7%E8%A7%A3%E6%B1%BA%E3%81%97%E3%81%A6%E3%81%97%E3%81%BE%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>モンキーパッチで解決してしまった</h3>
+
+<blockquote>
+<p>Important: The following notes on Sinatra::Base and Sinatra::Application are provided for background only - extension authors should not need to modify these classes directly.<br>
+<a href="http://www.sinatrarb.com/extensions.html" rel="nofollow noopener" target="_blank">http://www.sinatrarb.com/extensions.html</a></p>
+</blockquote>
+
+<p>すまない公式、<code>Sinatra::Base</code>オープンです。<code>before</code>フィルタを<code>public(static)</code>配信時にも実行するように猿りました。</p>
+
+<h2>
+<span id="問題のコード" class="fragment"></span><a href="#%E5%95%8F%E9%A1%8C%E3%81%AE%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>問題のコード</h2>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">config.ru</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'sinatra'</span>
+<span class="nb">require</span> <span class="s1">'sinatra_auth_github'</span>
+<span class="n">set</span> <span class="ss">:public_folder</span><span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'/build/html'</span>
+
+<span class="n">use</span> <span class="no">Rack</span><span class="o">::</span><span class="no">Session</span><span class="o">::</span><span class="no">Cookie</span><span class="p">,</span>
+  <span class="ss">:secret</span> <span class="o">=&gt;</span> <span class="no">Digest</span><span class="o">::</span><span class="no">SHA1</span><span class="p">.</span><span class="nf">hexdigest</span><span class="p">(</span><span class="nb">rand</span><span class="p">.</span><span class="nf">to_s</span><span class="p">),</span>
+  <span class="ss">:expire_after</span> <span class="o">=&gt;</span> <span class="mi">3600</span>
+
+<span class="n">set</span> <span class="ss">:github_options</span><span class="p">,</span> <span class="p">{</span>
+  <span class="ss">:scopes</span>    <span class="o">=&gt;</span> <span class="s2">"user"</span><span class="p">,</span>
+  <span class="ss">:secret</span>    <span class="o">=&gt;</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'GITHUB_CLIENT_SECRET'</span><span class="p">],</span>
+  <span class="ss">:client_id</span> <span class="o">=&gt;</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'GITHUB_CLIENT_ID'</span><span class="p">],</span>
+<span class="p">}</span>
+
+<span class="vc">@@github_team</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'GITHUB_TEAM_ID'</span><span class="p">]</span>
+
+<span class="n">register</span> <span class="no">Sinatra</span><span class="o">::</span><span class="no">Auth</span><span class="o">::</span><span class="no">Github</span>
+
+
+<span class="c1">## Monkey for static filter</span>
+<span class="k">module</span> <span class="nn">Sinatra</span>
+  <span class="k">class</span> <span class="nc">Base</span>
+    <span class="nb">class_eval</span> <span class="k">do</span>
+      <span class="k">alias</span> <span class="ss">:org_static!</span> <span class="ss">:static!</span>
+      <span class="k">def</span> <span class="nf">static!</span>
+        <span class="n">filter!</span> <span class="ss">:before</span>
+        <span class="n">org_static!</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="c1">## user is team_member?</span>
+<span class="n">before</span> <span class="k">do</span>
+  <span class="k">if</span> <span class="n">request</span><span class="p">.</span><span class="nf">path_info</span><span class="p">.</span><span class="nf">end_with?</span><span class="p">(</span><span class="s1">'.html'</span><span class="p">)</span>
+    <span class="k">begin</span>
+      <span class="n">body</span> <span class="o">=</span> <span class="n">github_team_authenticate!</span><span class="p">(</span><span class="vc">@@github_team</span><span class="p">)</span>
+    <span class="k">rescue</span>
+      <span class="c1">## return securocat!</span>
+      <span class="n">halt</span> <span class="mi">401</span><span class="p">,</span> <span class="n">body</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+  <span class="k">if</span> <span class="n">request</span><span class="p">.</span><span class="nf">path_info</span> <span class="o">==</span> <span class="s1">'/logout'</span>
+    <span class="n">logout!</span>
+    <span class="n">redirect</span> <span class="s1">'https://github.com'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">get</span> <span class="s1">'/'</span> <span class="k">do</span>
+  <span class="n">redirect</span> <span class="s2">"/index.html"</span><span class="p">,</span> <span class="mi">301</span>
+<span class="k">end</span>
+
+<span class="n">not_found</span> <span class="k">do</span>
+  <span class="k">unless</span> <span class="n">request</span><span class="p">.</span><span class="nf">path_info</span><span class="p">.</span><span class="nf">end_with?</span><span class="p">(</span><span class="s1">'.ico'</span><span class="p">)</span>
+    <span class="n">redirect</span> <span class="s2">"</span><span class="si">#{</span><span class="n">request</span><span class="p">.</span><span class="nf">path_info</span><span class="si">}</span><span class="s2">.html"</span><span class="p">,</span> <span class="mi">301</span>
+  <span class="k">end</span>
+  <span class="n">halt</span> <span class="mi">404</span>
+<span class="k">end</span>
+
+<span class="n">run</span> <span class="no">Sinatra</span><span class="o">::</span><span class="no">Application</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="認証" class="fragment"></span><a href="#%E8%AA%8D%E8%A8%BC"><i class="fa fa-link"></i></a>認証</h2>
+
+<p>とりあえず<code>*.html</code>へのリクエストに対して、Github未ログインorアプリ認証許可なしならGithubへ飛ばします。Github認証が済んでおり、特定のチームに所属するならドキュメントを閲覧OK。</p>
+
+<p>そうでない奴は<code>securocat</code>さんにご登場願う仕様になりました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6e22fa97-da13-c272-c711-20e000c1285d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8999499d86c5186453c3b6eec8397410" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6e22fa97-da13-c272-c711-20e000c1285d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8999499d86c5186453c3b6eec8397410" alt="Denied.png" title="Denied.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/6e22fa97-da13-c272-c711-20e000c1285d.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F6e22fa97-da13-c272-c711-20e000c1285d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=329c7ac386a62a36a077d62209f4b27b 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="モンキーパッチ脱出案" class="fragment"></span><a href="#%E3%83%A2%E3%83%B3%E3%82%AD%E3%83%BC%E3%83%91%E3%83%83%E3%83%81%E8%84%B1%E5%87%BA%E6%A1%88"><i class="fa fa-link"></i></a>モンキーパッチ脱出案？</h2>
+
+<ul>
+<li>RackのミドルウェアとしてSinatraの前で認証をかける</li>
+<li>
+<code>public</code>を使わずあくまで<code>get</code>で処理し、<code>File.exists?</code>と<code>file_send</code>で頑張る</li>
+</ul>
+
+<p>どうしたものかと。</p>

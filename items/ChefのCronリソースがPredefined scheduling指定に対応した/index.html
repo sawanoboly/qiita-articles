@@ -1,0 +1,65 @@
+
+
+<p><code>@reboot</code>とかのアレ。Chef-Clientの<code>11.12</code>以降(多分)で実装されています。</p>
+
+<p><a href="http://en.wikipedia.org/wiki/Cron#Predefined_scheduling_definitions" rel="nofollow noopener" target="_blank">Cron#Predefined_scheduling_definitions | Wikipedia</a></p>
+
+<h2>
+<span id="レシピサンプル" class="fragment"></span><a href="#%E3%83%AC%E3%82%B7%E3%83%94%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB"><i class="fa fa-link"></i></a>レシピサンプル</h2>
+
+<p>リブート時を指定してジョブを登録するには<code>time</code> Resource Attributeを使ってこうする。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">cron.rb</span></div>
+<div class="highlight"><pre><span class="n">cron</span> <span class="s1">'at_reboot'</span> <span class="k">do</span>
+  <span class="n">command</span> <span class="s1">'/bin/true'</span>
+  <span class="n">time</span> <span class="ss">:reboot</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="chef-applyで試してみる" class="fragment"></span><a href="#chef-apply%E3%81%A7%E8%A9%A6%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>chef-applyで試してみる</h2>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">chef-apply_stdout</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-client <span class="nt">-v</span>
+Chef: 11.12.4
+
+
+<span class="nv">$ </span><span class="nb">sudo </span>chef-apply cron.rb 
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> cron[at_reboot] action create
+    - add crontab entry <span class="k">for </span>cron[at_reboot]
+</pre></div>
+</div>
+
+<p>エントリーを確認すると、<code>@reboot</code>なジョブが。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo crontab -l -u root
+# Chef Name: at_reboot
+@reboot /bin/true
+</pre></div></div>
+
+<p>指定できるのは次の通り。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>SPECIAL_TIME_VALUES = [:reboot, :yearly, :annually, :monthly, :weekly, :daily, :midnight, :hourly]
+</pre></div></div>
+
+<h2>
+<span id="消せない件" class="fragment"></span><a href="#%E6%B6%88%E3%81%9B%E3%81%AA%E3%81%84%E4%BB%B6"><i class="fa fa-link"></i></a>消せない件</h2>
+
+<p>Amazon linux+omunibus installのchef-clientで試してるんですが、<code>action :delete</code>でジョブがちゃんと消えない。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo chef-apply cron.rb 
+Recipe: (chef-apply cookbook)::(chef-apply recipe)
+  * cron[at_reboot] action delete
+    - save unmodified crontab
+
+## ?? unmodified ??
+
+$ sudo crontab -l -u root
+@reboot /bin/true
+</pre></div></div>
+
+<p>マークだけ消えた。改行の扱い周りだと思うので、原因調べて治したいとこです。</p>

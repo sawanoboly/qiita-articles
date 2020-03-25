@@ -1,0 +1,1 @@
+Dockerの奴もnginxなので同じHookでいけそう。

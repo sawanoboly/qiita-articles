@@ -1,0 +1,138 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Chefのレシピでソースから何かをmakeしてinstallをするやり方は、個人によってまちまちかと思います。</p>
+
+<p>私はこんな感じでやっています。</p>
+
+<h2>
+<span id="概要" class="fragment"></span><a href="#%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>概要</h2>
+
+<p>Joyent SmartOSにirdサーバデーモンの<code>ngircd</code>をインストールして、サービスとして起動します。</p>
+
+<p>このCookbookはGithubに公開しています。 <a href="https://github.com/higanworks-cookbooks/ngircd_smartos/tree/v0.1.1" rel="nofollow noopener" target="_blank">higanworks-cookbooks/ngircd_smartos(v0.1.1)</a></p>
+
+<p>追記：続編できました！ <a href="http://qiita.com/items/e4d840da4d91b0379c65">[LWRPによる]続・ChefでSourceから何かをインストールするCookbookのウォークスルー</a></p>
+
+<h2>
+<span id="レシピのざっくり解説" class="fragment"></span><a href="#%E3%83%AC%E3%82%B7%E3%83%94%E3%81%AE%E3%81%96%E3%81%A3%E3%81%8F%E3%82%8A%E8%A7%A3%E8%AA%AC"><i class="fa fa-link"></i></a>レシピのざっくり解説</h2>
+
+<ol>
+<li>ローカルに目的のファイルが無かったら取ってくる</li>
+<li>ファイルを取ってきたら<code>make &amp; install</code>、ローカルがあれば何もしない</li>
+<li>サービス登録</li>
+<li>サービススタート</li>
+</ol>
+
+<h3>
+<span id="attributes" class="fragment"></span><a href="#attributes"><i class="fa fa-link"></i></a>attributes</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">attributes/default.rb</span></div>
+<div class="highlight"><pre><span class="c1">## base settings</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'conf_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'/opt/local/etc'</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'conf_motd'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'/opt/local/etc'</span>
+
+
+<span class="c1">## repository</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'site_url'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'http://ngircd.barton.de/pub/ngircd/'</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'ngircd-20.2.tar.gz'</span>
+
+<span class="c1">## for tempolary working</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">]</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:file_cache_path</span><span class="p">],</span> <span class="s1">'ngircd'</span><span class="p">)</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'configure_flags'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">' --prefix=/opt/local --with-openssl'</span>
+</pre></div>
+</div>
+
+<p><code>attributes</code> には環境によって変更するかも、という要素を置いています。<br>
+ローカルのファイルチェックには、<code>file_cache_path</code>を使うようにしているので、 <code>Chef::Config[:file_cache_path]</code>はサーバインスタンスのリブートで<strong>中身が消えないパスに</strong>しておくとよいです。</p>
+
+<h3>
+<span id="recipes" class="fragment"></span><a href="#recipes"><i class="fa fa-link"></i></a>recipes</h3>
+
+<p>リソースごとに注釈をいれてみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">directory</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">]</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:create</span>
+<span class="k">end</span>
+
+<span class="n">bash</span> <span class="s1">'make and install ngircd'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:nothing</span>
+  <span class="n">flags</span> <span class="s1">'-ex'</span>
+  <span class="n">cwd</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">]</span>
+  <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">EOH</span><span class="sh">
+tar xzf </span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">]</span><span class="si">}</span><span class="sh">
+cd </span><span class="si">#{</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">basename</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">],</span> <span class="s1">'.tar.gz'</span><span class="p">)</span><span class="si">}</span><span class="sh">
+./configure </span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'configure_flags'</span><span class="p">]</span><span class="si">}</span><span class="sh">
+make -j2
+make install
+</span><span class="no">EOH</span>
+<span class="k">end</span>
+
+<span class="n">remote_file</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'working_dir'</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">])</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:create_if_missing</span>
+  <span class="n">source</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'site_url'</span><span class="p">]</span> <span class="o">+</span> <span class="n">node</span><span class="p">[</span><span class="s1">'ngircd'</span><span class="p">][</span><span class="s1">'arch_file'</span><span class="p">]</span>
+  <span class="n">notifies</span> <span class="ss">:run</span><span class="p">,</span> <span class="s1">'bash[make and install ngircd]'</span><span class="p">,</span> <span class="ss">:immediately</span>
+<span class="k">end</span>
+
+<span class="n">smf</span> <span class="s1">'ngircd'</span> <span class="k">do</span>
+  <span class="n">start_command</span> <span class="s1">'/opt/local/sbin/ngircd'</span>
+  <span class="n">start_timeout</span> <span class="mi">120</span>
+  <span class="n">stop_command</span> <span class="s1">'/usr/bin/pkill ngircd'</span>
+  <span class="n">stop_timeout</span> <span class="mi">120</span>
+<span class="k">end</span>
+
+<span class="n">service</span> <span class="s1">'ngircd'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:enable</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="directory-nodengircdworking_dir" class="fragment"></span><a href="#directory-nodengircdworking_dir"><i class="fa fa-link"></i></a>directory node['ngircd']['working_dir']</h4>
+
+<p><code>file_cache_path</code>の下に<code>ngircd</code>というディレクトリを作って、<code>ngircd</code>関係はそこにまとめるようにしています。数が増えてくるとよごれるので。</p>
+
+<h4>
+<span id="bash-make-and-install-ngircd" class="fragment"></span><a href="#bash-make-and-install-ngircd"><i class="fa fa-link"></i></a>bash 'make and install ngircd'</h4>
+
+<p>毎回走らないように<code>action :nothing</code>です。<br>
+ヨソから<code>notifies</code>で呼ばれるために定義しています。</p>
+
+<p><code>flags</code>に<code>-e</code>を含めると<code>bash -e</code>となり、途中のコマンドが<code>exit_status ≠ 0</code>の場合止まってもらいます。</p>
+
+<p><code>code</code>は普通のスクリプトです。</p>
+
+<h4>
+<span id="remote_file-filejoinnodengircdworking_dir-nodengircdarch_file" class="fragment"></span><a href="#remote_file-filejoinnodengircdworking_dir-nodengircdarch_file"><i class="fa fa-link"></i></a>remote_file ::File.join(node['ngircd']['working_dir'], node['ngircd']['arch_file'])</h4>
+
+<p><code>action :create_if_missing</code>でローカルにファイルがあったら何もしないという選択を指定してます。<br>
+ただ<code>:create</code>の指定だと、<code>remote_file</code>は毎回取ってきてsha比較などをしますがそこまでのものでもないので。</p>
+
+<p>このリソースにアップデートがあったら(※ファイルを実際に取ってきた)、一つ前の<code>bash[make and install ngircd]</code>に対し<code>run</code>アクションを通知します、<code>:immediately</code>としているのでファイル作成直後に実行されます。</p>
+
+<p><code>:immediately</code>を省略したら実行は後回しにされます、後に<code>service['ngircd']</code>リソースがあり、ngirc本体のインストールを完了させるため<code>bash</code>を即時実行しておく必要があります。</p>
+
+<h4>
+<span id="smf-ngircd" class="fragment"></span><a href="#smf-ngircd"><i class="fa fa-link"></i></a>smf 'ngircd'</h4>
+
+<p>これは<code>smartos</code>用のサービス登録リソースです、<code>svcadm</code>で<code>ngircd</code>を操作出来るようにしています。</p>
+
+<h4>
+<span id="service-ngircd" class="fragment"></span><a href="#service-ngircd"><i class="fa fa-link"></i></a>service 'ngircd'</h4>
+
+<p>サービスをスタートします、<code>bash</code>の実行が終わってなければ当然failします。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>ということでソースから何かを入れるレシピ、私のやり方を紹介してみました。</p>
+
+<p>もっと良い感じのやり方や、こんな時はどうやってるの？という事に興味があればコメント等にて分かる範囲で答えます。</p>
+
+<p>追記：続編できました！ <a href="http://qiita.com/items/e4d840da4d91b0379c65">[LWRPによる]続・ChefでSourceから何かをインストールするCookbookのウォークスルー</a></p>

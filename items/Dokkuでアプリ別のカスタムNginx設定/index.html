@@ -1,0 +1,180 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://github.com/progrium/dokku" rel="nofollow noopener" target="_blank">Dokku</a>はアプリ別のNginx Configを自動作成して名前ベースのアクセスを可能にしている。</p>
+
+<p>アプリによってはNginxで個別設定が行いたいこともある例えば次のようなケース。</p>
+
+<ul>
+<li>静的ファイルは直接Nginxでホストしたい</li>
+<li>IPでアクセス制限をかけたい</li>
+</ul>
+
+<p>アプリにカスタム設定を許すプラグインがこちら。</p>
+
+<p><a href="https://github.com/neam/dokku-nginx-vhosts-custom-configuration" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/neam/dokku-nginx-vhosts-custom-configuration</a></p>
+
+<p>導入にはちょっとDokku本体付属プラグインの<code>nginx-vhosts</code>に手を加える必要がある。<br>
+巻末付録として修正点を書いておいたので、やってみるならそちらも参照で。</p>
+
+<h2>
+<span id="インクルード用nginxconfの追加" class="fragment"></span><a href="#%E3%82%A4%E3%83%B3%E3%82%AF%E3%83%AB%E3%83%BC%E3%83%89%E7%94%A8nginxconf%E3%81%AE%E8%BF%BD%E5%8A%A0"><i class="fa fa-link"></i></a>インクルード用nginx.confの追加</h2>
+
+<p>例えば社内IPからのアクセスのみ許可したいというNginxのコンフィグはこんな感じ。</p>
+
+<div class="code-frame" data-lang="nginx">
+<div class="code-lang"><span class="bold">nginx.inc.conf</span></div>
+<div class="highlight"><pre><span class="k">allow</span> <span class="s">xxx.xxx.xxx.xxx</span><span class="p">;</span>
+<span class="k">allow</span> <span class="s">xxx.xxx.xxxx.xxx/xx</span><span class="p">;</span>
+<span class="k">deny</span>  <span class="s">all</span><span class="p">;</span>
+</pre></div>
+</div>
+
+<p>この<code>nginx.inc.conf</code>をリポジトリに加えよう。</p>
+
+<h2>
+<span id="appのconfigを作成" class="fragment"></span><a href="#app%E3%81%AEconfig%E3%82%92%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>APPのConfigを作成</h2>
+
+<p>設定のキー、<code>NGINX_VHOSTS_CUSTOM_CONFIGURATION</code>にて、インクルードするファイル名を指定します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ dokku config:set &lt;app_name&gt; NGINX_VHOSTS_CUSTOM_CONFIGURATION=nginx.inc.conf
+</pre></div></div>
+
+<p>あとはこれでPushすればOK! インクルード先は<code>server</code>ディレクティブの直下になります。</p>
+
+<p>各ホストから、curlでチェックしてみよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>## 許可されているホストから
+$ curl -k https://sinatra-test.example.com
+Hello world!
+
+
+## 許可されていないホストから
+# curl -k https://sinatra-test.example.com
+&lt;html&gt;
+&lt;head&gt;&lt;title&gt;403 Forbidden&lt;/title&gt;&lt;/head&gt;
+&lt;body bgcolor="white"&gt;
+&lt;center&gt;&lt;h1&gt;403 Forbidden&lt;/h1&gt;&lt;/center&gt;
+&lt;hr&gt;&lt;center&gt;nginx/1.6.0&lt;/center&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</pre></div></div>
+
+<p>効いてるね。</p>
+
+<p>現バージョンの<code>dokku-nginx-vhosts-custom-configuration</code>プラグイン注意点を3つ<br>
+- 内容を有効にするにはアプリをデプロイする必要がある<br>
+- nginxコンフィグにエラーが有る場合、DokkuサーバのNginx全体が多分止まる<br>
+- NGINX_VHOSTS_CUSTOM_CONFIGURATIONをunsetしてもファイルは残る、無効化したいなら空ファイルで上書き</p>
+
+<p>ここらをうまいこと避けたいところ。修正してプルリクをかけようと思う。</p>
+
+<h2>
+<span id="巻末付録本体カスタマイズ" class="fragment"></span><a href="#%E5%B7%BB%E6%9C%AB%E4%BB%98%E9%8C%B2%E6%9C%AC%E4%BD%93%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%9E%E3%82%A4%E3%82%BA"><i class="fa fa-link"></i></a>巻末付録：本体カスタマイズ</h2>
+
+<p>プラグインによって作成される<code>nginx-vhosts-custom-configuration.conf</code>ファイルはどこかでインクルードしないと動作しない。<br>
+追加は2行。<code>#この行追加</code>となっている箇所。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">/var/lib/dokku/plugins/nginx-vhosts/post-deploy</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+<span class="nb">set</span> <span class="nt">-eo</span> pipefail<span class="p">;</span> <span class="o">[[</span> <span class="nv">$DOKKU_TRACE</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> <span class="nb">set</span> <span class="nt">-x</span>
+<span class="nv">APP</span><span class="o">=</span><span class="s2">"</span><span class="nv">$1</span><span class="s2">"</span><span class="p">;</span> <span class="nv">PORT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$2</span><span class="s2">"</span>
+<span class="nv">WILDCARD_SSL</span><span class="o">=</span><span class="s2">"</span><span class="nv">$DOKKU_ROOT</span><span class="s2">/tls"</span>
+<span class="nv">SSL</span><span class="o">=</span><span class="s2">"</span><span class="nv">$DOKKU_ROOT</span><span class="s2">/</span><span class="nv">$APP</span><span class="s2">/tls"</span>
+
+<span class="k">if</span> <span class="o">[[</span> <span class="nt">-f</span> <span class="s2">"</span><span class="nv">$DOKKU_ROOT</span><span class="s2">/VHOST"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then
+  </span><span class="nv">VHOST</span><span class="o">=</span><span class="si">$(</span>&lt; <span class="s2">"</span><span class="nv">$DOKKU_ROOT</span><span class="s2">/VHOST"</span><span class="si">)</span>
+  <span class="nv">SUBDOMAIN</span><span class="o">=</span><span class="k">${</span><span class="nv">APP</span><span class="p">/%\.</span><span class="k">${</span><span class="nv">VHOST</span><span class="k">}</span><span class="p">/</span><span class="k">}</span>
+  <span class="k">if</span> <span class="o">[[</span> <span class="s2">"</span><span class="nv">$APP</span><span class="s2">"</span> <span class="o">==</span> <span class="k">*</span>.<span class="k">*</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> <span class="o">[[</span> <span class="s2">"</span><span class="nv">$SUBDOMAIN</span><span class="s2">"</span> <span class="o">==</span> <span class="s2">"</span><span class="nv">$APP</span><span class="s2">"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then
+    </span><span class="nb">hostname</span><span class="o">=</span><span class="s2">"</span><span class="k">${</span><span class="nv">APP</span><span class="p">/\//-</span><span class="k">}</span><span class="s2">"</span>
+  <span class="k">else
+    </span><span class="nb">hostname</span><span class="o">=</span><span class="s2">"</span><span class="k">${</span><span class="nv">APP</span><span class="p">/\//-</span><span class="k">}</span><span class="s2">.</span><span class="nv">$VHOST</span><span class="s2">"</span>
+  <span class="k">fi
+
+  if</span> <span class="o">[[</span> <span class="nt">-e</span> <span class="s2">"</span><span class="nv">$SSL</span><span class="s2">/server.crt"</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> <span class="o">[[</span> <span class="nt">-e</span> <span class="s2">"</span><span class="nv">$SSL</span><span class="s2">/server.key"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then
+    </span><span class="nv">SSL_INUSE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$SSL</span><span class="s2">"</span>
+    <span class="nv">SSL_DIRECTIVES</span><span class="o">=</span><span class="si">$(</span><span class="nb">cat</span> <span class="o">&lt;&lt;</span><span class="no">EOF</span><span class="sh">
+  ssl_certificate     </span><span class="nv">$SSL_INUSE</span><span class="sh">/server.crt;
+  ssl_certificate_key </span><span class="nv">$SSL_INUSE</span><span class="sh">/server.key;
+</span><span class="no">EOF
+</span><span class="si">)</span>
+  <span class="k">elif</span>  <span class="o">[[</span> <span class="nt">-e</span> <span class="s2">"</span><span class="nv">$WILDCARD_SSL</span><span class="s2">/server.crt"</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> <span class="o">[[</span> <span class="nt">-e</span> <span class="s2">"</span><span class="nv">$WILDCARD_SSL</span><span class="s2">/server.key"</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> <span class="o">[[</span> <span class="nv">$hostname</span> <span class="o">=</span> <span class="sb">`</span>openssl x509 <span class="nt">-in</span> <span class="nv">$WILDCARD_SSL</span>/server.crt <span class="nt">-noout</span> <span class="nt">-subject</span> | <span class="nb">tr</span> <span class="s1">'/'</span> <span class="s1">'\n'</span> | <span class="nb">grep </span><span class="nv">CN</span><span class="o">=</span> | <span class="nb">cut</span> <span class="nt">-c4-</span><span class="sb">`</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then
+    </span><span class="nv">SSL_INUSE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$WILDCARD_SSL</span><span class="s2">"</span>
+    <span class="nv">SSL_DIRECTIVES</span><span class="o">=</span><span class="s2">""</span>
+  <span class="k">fi</span>
+
+  <span class="c"># ssl based nginx.conf</span>
+  <span class="k">if</span> <span class="o">[[</span> <span class="nt">-n</span> <span class="s2">"</span><span class="nv">$SSL_INUSE</span><span class="s2">"</span> <span class="o">]]</span><span class="p">;</span> <span class="k">then
+  </span><span class="nb">cat</span><span class="o">&lt;&lt;</span><span class="no">EOF</span><span class="sh"> &gt; </span><span class="nv">$DOKKU_ROOT</span><span class="sh">/</span><span class="nv">$APP</span><span class="sh">/nginx.conf
+upstream </span><span class="nv">$APP</span><span class="sh"> { server 127.0.0.1:</span><span class="nv">$PORT</span><span class="sh">; }
+server {
+  listen      [::]:80;
+  listen      80;
+  server_name </span><span class="nv">$hostname</span><span class="sh">;
+  return 301 https://</span><span class="se">\$</span><span class="sh">host</span><span class="se">\$</span><span class="sh">request_uri;
+}
+
+server {
+  listen      [::]:443 ssl spdy;
+  listen      443 ssl spdy;
+  server_name </span><span class="nv">$hostname</span><span class="sh">;
+</span><span class="nv">$SSL_DIRECTIVES</span><span class="sh">
+
+  keepalive_timeout   70;
+  add_header          Alternate-Protocol  443:npn-spdy/2;
+
+# この行追加
+  include </span><span class="nv">$DOKKU_ROOT</span><span class="sh">/</span><span class="nv">$APP</span><span class="sh">/nginx.conf.d/*-vhosts-custom-configuration.conf;
+
+  location    / {
+    proxy_pass  http://</span><span class="nv">$APP</span><span class="sh">;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade </span><span class="se">\$</span><span class="sh">http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host </span><span class="se">\$</span><span class="sh">http_host;
+    proxy_set_header X-Forwarded-Proto </span><span class="se">\$</span><span class="sh">scheme;
+    proxy_set_header X-Forwarded-For </span><span class="se">\$</span><span class="sh">remote_addr;
+    proxy_set_header X-Forwarded-Port </span><span class="se">\$</span><span class="sh">server_port;
+    proxy_set_header X-Request-Start </span><span class="se">\$</span><span class="sh">msec;
+  }
+}
+</span><span class="no">EOF
+
+</span>  <span class="nb">echo</span> <span class="s2">"https://</span><span class="nv">$hostname</span><span class="s2">"</span> <span class="o">&gt;</span> <span class="s2">"</span><span class="nv">$DOKKU_ROOT</span><span class="s2">/</span><span class="nv">$APP</span><span class="s2">/URL"</span>
+<span class="k">else</span>
+<span class="c"># default nginx.conf</span>
+  <span class="nb">cat</span><span class="o">&lt;&lt;</span><span class="no">EOF</span><span class="sh"> &gt; </span><span class="nv">$DOKKU_ROOT</span><span class="sh">/</span><span class="nv">$APP</span><span class="sh">/nginx.conf
+upstream </span><span class="nv">$APP</span><span class="sh"> { server 127.0.0.1:</span><span class="nv">$PORT</span><span class="sh">; }
+server {
+  listen      [::]:80;
+  listen      80;
+  server_name </span><span class="nv">$hostname</span><span class="sh">;
+# この行追加
+  include </span><span class="nv">$DOKKU_ROOT</span><span class="sh">/</span><span class="nv">$APP</span><span class="sh">/nginx.conf.d/*-vhosts-custom-configuration.conf;
+  location    / {
+    proxy_pass  http://</span><span class="nv">$APP</span><span class="sh">;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade </span><span class="se">\$</span><span class="sh">http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host </span><span class="se">\$</span><span class="sh">http_host;
+    proxy_set_header X-Forwarded-Proto </span><span class="se">\$</span><span class="sh">scheme;
+    proxy_set_header X-Forwarded-For </span><span class="se">\$</span><span class="sh">remote_addr;
+    proxy_set_header X-Forwarded-Port </span><span class="se">\$</span><span class="sh">server_port;
+    proxy_set_header X-Request-Start </span><span class="se">\$</span><span class="sh">msec;
+  }
+}
+</span><span class="no">EOF
+
+</span>  <span class="nb">echo</span> <span class="s2">"http://</span><span class="nv">$hostname</span><span class="s2">"</span> <span class="o">&gt;</span> <span class="s2">"</span><span class="nv">$DOKKU_ROOT</span><span class="s2">/</span><span class="nv">$APP</span><span class="s2">/URL"</span>
+  <span class="k">fi
+  </span>pluginhook nginx-pre-reload <span class="nv">$APP</span>
+  <span class="nb">sudo</span> /etc/init.d/nginx reload <span class="o">&gt;</span> /dev/null
+<span class="k">fi</span>
+</pre></div>
+</div>
+
+<p>なお、Nginxのincludeはワイルドカードが使われた時、ファイルや親ディレクトリが無くてもエラーにならないのでサーチパスで<code>*</code>を使っています。</p>

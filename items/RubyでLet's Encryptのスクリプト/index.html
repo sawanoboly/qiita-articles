@@ -1,0 +1,490 @@
+<p>RubyのACME-CLIENTがあったので、証明書発行をスクリプトで書いてみた。身内向けのメモだったけど一部削って公開でいいや。</p>
+
+<p>といってもこれをなぞっって少し解説と軽い検証を入れただけです。 <a href="https://github.com/unixcharles/acme-client" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/unixcharles/acme-client</a></p>
+
+<p>以下、Let's EncryptはLEと呼称します。</p>
+
+<h2>
+<span id="環境" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83"><i class="fa fa-link"></i></a>環境</h2>
+
+<ul>
+<li>さくらのクラウドにDebian8 (<a href="https://github.com/higanworks/kitchen-driver-sakuracloud" rel="nofollow noopener" target="_blank">kitchen-driver-sakuracloud</a>使用で作成)
+
+<ul>
+<li>aptでruby入れただけ</li>
+</ul>
+</li>
+<li>WebサーバにNginx
+
+<ul>
+<li>Nginxのrootは <code>/var/www/html;</code>、ここにHTTPチャレンジ用のファイルを置けば良いのだ。</li>
+</ul>
+</li>
+</ul>
+
+<p>最後のコード以外はPryで実行してます。</p>
+
+<h2>
+<span id="ステップ-秘密鍵" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-%E7%A7%98%E5%AF%86%E9%8D%B5"><i class="fa fa-link"></i></a>ステップ 秘密鍵</h2>
+
+<p>今回でてくる秘密鍵は認証とサーバ鍵ペア(正確にはCSR作成用)の2通りがある。まずは認証用。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'openssl'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">private_key</span> <span class="o">=</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">PKey</span><span class="o">::</span><span class="no">RSA</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="mi">2048</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;OpenSSL::PKey::RSA:0x000000028f5a28&gt;</span>
+</pre></div></div>
+
+<p>LE側の管理は鍵単位になるので、一度作ったものを持ちまわるよりは申請ごとに認証鍵を作成し、都度発行で十分そう。</p>
+
+<h2>
+<span id="ステップ-acmeのエンドポイント" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-acme%E3%81%AE%E3%82%A8%E3%83%B3%E3%83%89%E3%83%9D%E3%82%A4%E3%83%B3%E3%83%88"><i class="fa fa-link"></i></a>ステップ ACMEのエンドポイント</h2>
+
+<p>これはLEをつかうので、LEで。ACMEを話せるCAならなんでも利用は可能だ。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">endpoint</span> <span class="o">=</span> <span class="s1">'https://acme-v01.api.letsencrypt.org/'</span>
+<span class="o">=&gt;</span> <span class="s2">"https://acme-v01.api.letsencrypt.org/"</span>
+</pre></div></div>
+
+<h2>
+<span id="ステップ-acmeクライアントの初期化" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-acme%E3%82%AF%E3%83%A9%E3%82%A4%E3%82%A2%E3%83%B3%E3%83%88%E3%81%AE%E5%88%9D%E6%9C%9F%E5%8C%96"><i class="fa fa-link"></i></a>ステップ ACMEクライアントの初期化</h2>
+
+<p>さっきの<code>private_key</code>でクライアントを作成する。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'acme-client'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="o">&gt;</span> <span class="n">client</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">private_key: </span><span class="n">private_key</span><span class="p">,</span> <span class="ss">endpoint: </span><span class="n">endpoint</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Client:0x00000003a0b538</span>
+ <span class="vi">@directory_uri</span><span class="o">=</span><span class="kp">nil</span><span class="p">,</span>
+ <span class="vi">@endpoint</span><span class="o">=</span><span class="s2">"https://acme-v01.api.letsencrypt.org/"</span><span class="p">,</span>
+ <span class="vi">@nonces</span><span class="o">=</span><span class="p">[],</span>
+ <span class="vi">@operation_endpoints</span><span class="o">=</span><span class="p">{</span><span class="s2">"new-authz"</span><span class="o">=&gt;</span><span class="s2">"/acme/new-authz"</span><span class="p">,</span> <span class="s2">"new-cert"</span><span class="o">=&gt;</span><span class="s2">"/acme/new-cert"</span><span class="p">,</span> <span class="s2">"new-reg"</span><span class="o">=&gt;</span><span class="s2">"/acme/new-reg"</span><span class="p">,</span> <span class="s2">"revoke-cert"</span><span class="o">=&gt;</span><span class="s2">"/acme/revoke-cert"</span><span class="p">},</span>
+ <span class="vi">@private_key</span><span class="o">=</span><span class="c1">#&lt;OpenSSL::PKey::RSA:0x000000028f5a28&gt;&gt;</span>
+</pre></div></div>
+
+<p>operation_endpointsで、できる操作とメソッドがわかるね。</p>
+
+<h2>
+<span id="ステップ-caへの公開鍵登録初回" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-ca%E3%81%B8%E3%81%AE%E5%85%AC%E9%96%8B%E9%8D%B5%E7%99%BB%E9%8C%B2%E5%88%9D%E5%9B%9E"><i class="fa fa-link"></i></a>ステップ CAへの公開鍵登録(初回)</h2>
+
+<p>CA側に公開鍵が登録されていない場合は、一旦レジストレーションが必要だ。<br>
+この時に使用する<code>contact:</code> が発行される証明書に記載される...と思って後で見たが見当たらない。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">registration</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">register</span><span class="p">(</span><span class="ss">contact: </span><span class="s1">'mailto:test@example.com'</span><span class="p">)</span>
+
+<span class="o">=&gt;</span> <span class="c1">#&lt;Acme::Resources::Registration:0x00000003aeb1b0</span>
+ <span class="vi">@client</span><span class="o">=</span>
+  <span class="c1">#&lt;Acme::Client:0x00000003a0b538</span>
+   <span class="vi">@connection</span><span class="o">=</span>
+    <span class="c1">#&lt;Faraday::Connection:0x00000003d8ed40</span>
+
+<span class="o">...</span> <span class="c1"># 長いのでレスポンスBodyだけ</span>
+
+           <span class="nb">method</span><span class="o">=</span><span class="ss">:post</span><span class="p">,</span>
+           <span class="n">body</span><span class="o">=</span>
+            <span class="p">{</span><span class="s2">"id"</span><span class="o">=&gt;</span><span class="mi">67672</span><span class="p">,</span>
+             <span class="s2">"key"</span><span class="o">=&gt;</span>
+              <span class="p">{</span><span class="s2">"kty"</span><span class="o">=&gt;</span><span class="s2">"RSA"</span><span class="p">,</span>
+               <span class="s2">"n"</span><span class="o">=&gt;</span>
+                <span class="s2">"nRbHq2AcRPZ(略)"</span><span class="p">,</span>
+               <span class="s2">"e"</span><span class="o">=&gt;</span><span class="s2">"AQAB"</span><span class="p">},</span>
+             <span class="s2">"contact"</span><span class="o">=&gt;</span><span class="p">[</span><span class="s2">"mailto:test@example.com"</span><span class="p">],</span>
+             <span class="s2">"initialIp"</span><span class="o">=&gt;</span><span class="s2">"153.120.168.246"</span><span class="p">,</span>
+             <span class="s2">"createdAt"</span><span class="o">=&gt;</span><span class="s2">"2015-12-10T05:31:45.639166719Z"</span><span class="p">},</span>
+</pre></div></div>
+
+<p>まあいいか。</p>
+
+<h3>
+<span id="ちなみに同じ秘密鍵で再度レジストはできない" class="fragment"></span><a href="#%E3%81%A1%E3%81%AA%E3%81%BF%E3%81%AB%E5%90%8C%E3%81%98%E7%A7%98%E5%AF%86%E9%8D%B5%E3%81%A7%E5%86%8D%E5%BA%A6%E3%83%AC%E3%82%B8%E3%82%B9%E3%83%88%E3%81%AF%E3%81%A7%E3%81%8D%E3%81%AA%E3%81%84"><i class="fa fa-link"></i></a>ちなみに同じ秘密鍵で再度レジストはできない</h3>
+
+<blockquote>
+<p>client.register(contact: 'mailto:<a href="mailto:test@example.com" class="autolink">test@example.com</a>').body<br>
+Acme::Error::Malformed: Registration key is already in use</p>
+
+<p>client.register(contact: 'mailto:<a href="mailto:test2@example.com" class="autolink">test2@example.com</a>')  # アドレス変えても駄目<br>
+Acme::Error::Malformed: Registration key is already in use<br>
+```</p>
+</blockquote>
+
+<p>鍵の単位で管理するのね。</p>
+
+<h2>
+<span id="ステップ-registration-オブジェクトをつかって利用条件に同意" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-registration-%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%82%92%E3%81%A4%E3%81%8B%E3%81%A3%E3%81%A6%E5%88%A9%E7%94%A8%E6%9D%A1%E4%BB%B6%E3%81%AB%E5%90%8C%E6%84%8F"><i class="fa fa-link"></i></a>ステップ registration オブジェクトをつかって利用条件に同意</h2>
+
+<p>登録した鍵に対して、LEでは利用条件に同意することが必要だ。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">ls</span> <span class="n">registration</span> 
+<span class="no">Acme</span><span class="o">::</span><span class="no">Resources</span><span class="o">::</span><span class="no">Registration</span><span class="c1">#methods: agree_terms  contact  get_terms  id  key  next_uri  recover_uri  term_of_service_uri  uri</span>
+<span class="n">instance</span> <span class="ss">variables: </span><span class="vi">@client</span>  <span class="vi">@contact</span>  <span class="vi">@id</span>  <span class="vi">@key</span>  <span class="vi">@next_uri</span>  <span class="vi">@recover_uri</span>  <span class="vi">@term_of_service_uri</span>  <span class="vi">@uri</span>
+</pre></div></div>
+
+<p>利用条件を確認しようとおもえば、<code>#get_terms</code>では生のPDFファイルが来るのでできないこともない。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">registration</span><span class="p">.</span><span class="nf">get_terms</span>
+<span class="o">=&gt;</span> <span class="s2">"%PDF-1.3</span><span class="se">\n</span><span class="s2">%</span><span class="se">\xC4\xE5\xF2\xE5\xEB\xA7\xF3\xA0\xD0\xC4\xC6\n</span><span class="s2">4 0 obj</span><span class="se">\n</span><span class="s2">&lt;&lt; /Length 5 0 R /Filter /FlateDecode &gt;&gt;</span><span class="se">\n</span><span class="s2">stream</span><span class="se">\n</span><span class="s2">x</span><span class="se">\x01\xCD\x9D</span><span class="s2">[s</span><span class="se">\x1C\xB7\x95\xC7\xDF\xE7</span><span class="s2">S</span><span class="se">\xF4</span><span class="s2">#Y%</span><span class="se">\x8F\xA7</span><span class="s2">{</span><span class="se">\xEE\x8F\x8E\xAC</span><span class="s2">r)vv</span><span class="se">\xB5</span><span class="s2">\
+x167</span><span class="se">\xA9\xAD</span><span class="s2">8</span><span class="se">\x0F\xBA\xD0\xA2</span><span class="s2">b</span><span class="se">\x9B\x94</span><span class="s2">)\
+...
+
+
+# PDFのURIだけ確認
+&gt; registration.term_of_service_uri
+=&gt; "</span><span class="n">https</span><span class="ss">:/</span><span class="o">/</span><span class="n">letsencrypt</span><span class="p">.</span><span class="nf">org</span><span class="o">/</span><span class="n">documents</span><span class="o">/</span><span class="no">LE</span><span class="o">-</span><span class="no">SA</span><span class="o">-</span><span class="n">v1</span><span class="o">.</span><span class="mf">0.1</span><span class="o">-</span><span class="no">July</span><span class="o">-</span><span class="mi">27</span><span class="o">-</span><span class="mi">2015</span><span class="p">.</span><span class="nf">pdf</span><span class="s2">"
+</span></pre></div></div>
+
+<h3>
+<span id="同意する" class="fragment"></span><a href="#%E5%90%8C%E6%84%8F%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>同意する</h3>
+
+<p><code>#agree_terms</code> でしれっと利用条件に同意可能。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">registration</span><span class="p">.</span><span class="nf">agree_terms</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+</pre></div></div>
+
+<p>それだけだ。</p>
+
+<h2>
+<span id="ステップ-ドメインのチャレンジを申請する" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E3%81%AE%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%82%92%E7%94%B3%E8%AB%8B%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ステップ ドメインのチャレンジを申請する</h2>
+
+<p>まず一度このクライアントでLE側にドメインを押さえる？ようリクエストする必要がある。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">authorization</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">authorize</span><span class="p">(</span><span class="ss">domain: </span><span class="s1">'le2.opsrockin.com'</span><span class="p">)</span>
+
+<span class="o">...</span> <span class="c1">## ここもBodyだけ載せておく。</span>
+
+             <span class="n">body</span><span class="o">=</span>
+              <span class="p">{</span><span class="s2">"identifier"</span><span class="o">=&gt;</span><span class="p">{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"dns"</span><span class="p">,</span> <span class="s2">"value"</span><span class="o">=&gt;</span><span class="s2">"le2.opsrockin.com"</span><span class="p">},</span>
+               <span class="s2">"status"</span><span class="o">=&gt;</span><span class="s2">"pending"</span><span class="p">,</span>
+               <span class="s2">"expires"</span><span class="o">=&gt;</span><span class="s2">"2015-12-17T06:08:43.266689936Z"</span><span class="p">,</span>
+               <span class="s2">"challenges"</span><span class="o">=&gt;</span>
+                <span class="p">[{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"http-01"</span><span class="p">,</span>
+                  <span class="s2">"status"</span><span class="o">=&gt;</span><span class="s2">"pending"</span><span class="p">,</span>
+                  <span class="s2">"uri"</span><span class="o">=&gt;</span><span class="s2">"https://acme-v01.api.letsencrypt.org/acme/challenge/f_x71jrKndEe_bo7W7yUCp8bXULfwlkDfd7DExxxxx/14795xx"</span><span class="p">,</span>
+                  <span class="s2">"token"</span><span class="o">=&gt;</span><span class="s2">"u73GJj-pi9Z_ac_kN6p4_H7vCsGU186CXwNFTxxxxxw"</span><span class="p">},</span>
+                 <span class="p">{</span><span class="s2">"type"</span><span class="o">=&gt;</span><span class="s2">"tls-sni-01"</span><span class="p">,</span>
+                  <span class="s2">"status"</span><span class="o">=&gt;</span><span class="s2">"pending"</span><span class="p">,</span>
+                  <span class="s2">"uri"</span><span class="o">=&gt;</span><span class="s2">"https://acme-v01.api.letsencrypt.org/acme/challenge/f_x71jrKndEe_bo7W7yUCp8bXULfwlkDfd7DExxxxx/14795xx"</span><span class="p">,</span>
+                  <span class="s2">"token"</span><span class="o">=&gt;</span><span class="s2">"9W00llweMUDvr7nohcy4qVGekAKes85aKL9TCxxxxxo"</span><span class="p">}],</span>
+               <span class="s2">"combinations"</span><span class="o">=&gt;</span><span class="p">[[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]]},</span>
+
+</pre></div></div>
+
+<p><code>"status"=&gt;"pending",</code>となった。他所で同時に押えられるかは未確認。</p>
+
+<h3>
+<span id="追記-subject-alternative-nameを使う場合" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98-subject-alternative-name%E3%82%92%E4%BD%BF%E3%81%86%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>追記: Subject Alternative Nameを使う場合</h3>
+
+<p>CSR作成前にauthorizationからchallenge=&gt;validまでをSANに含めるホスト名すべてで回しておこう。</p>
+
+<h2>
+<span id="ステップ--http01タイプでチャレンジする" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97--http01%E3%82%BF%E3%82%A4%E3%83%97%E3%81%A7%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ステップ  http01タイプでチャレンジする</h2>
+
+<p><code>#http01</code>でチャレンジ内容を受け取ろう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; challenge = authorization.http01
+
+&gt; ls challenge
+Acme::Resources::Challenges::Base#methods: client  error  status  token  uri  verify_status
+Acme::Resources::Challenges::HTTP01#methods: content_type  file_content  filename  request_verification
+instance variables: @client  @status  @token  @uri
+</pre></div></div>
+
+<p>チャレンジの内訳を確認する。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span>
+<span class="o">=&gt;</span> <span class="s2">".well-known/acme-challenge/tQZUjb4U-qAMP8K3df1Hlzau3Up_DxxxxxxxxxxxxxxxN2zwPsI"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">file_content</span>
+<span class="o">=&gt;</span> <span class="s2">"tQZUjb4U-qAMP8K3df1Hlzau3Up_DeDwvdl2N2zwPsI.4gOs-zxxxxxxxxxxxxxelUCeJ0QfxDLGeMQ"</span>
+
+<span class="o">&gt;</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">content_type</span>
+<span class="o">=&gt;</span> <span class="s2">"text/plain"</span>
+</pre></div></div>
+
+<h3>
+<span id="チャレンジのレスポンスを設置しよう" class="fragment"></span><a href="#%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E3%81%AE%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9%E3%82%92%E8%A8%AD%E7%BD%AE%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>チャレンジのレスポンスを設置しよう</h3>
+
+<p>レスポンスを返すため、ディレクトリを作成してファイルを設置する。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="o">&gt;</span> <span class="n">www_root</span> <span class="o">=</span> <span class="s1">'/var/www/html'</span>
+<span class="o">=&gt;</span> <span class="s2">"/var/www/html"</span>
+
+<span class="o">&gt;</span> <span class="no">FileUtils</span><span class="p">.</span><span class="nf">mkdir_p</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span> <span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span> <span class="p">)</span> <span class="p">)</span> <span class="p">)</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"/var/www/html/.well-known/acme-challenge"</span><span class="p">]</span>
+
+<span class="o">&gt;</span> <span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span><span class="p">,</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span><span class="p">),</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">file_content</span> <span class="p">)</span>
+<span class="o">=&gt;</span> <span class="mi">87</span>
+</pre></div></div>
+
+<h4>
+<span id="curlでちょっと確認する" class="fragment"></span><a href="#curl%E3%81%A7%E3%81%A1%E3%82%87%E3%81%A3%E3%81%A8%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>curlでちょっと確認する。</h4>
+
+<p>あ、<code>Content-Type: application/octet-stream</code>だ。<br>
+必須なのか実は確認してないけど、nginxのデフォルトを変えてきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -i http://le2.opsrockin.com/.well-known/acme-challenge/GP_AD5A_RR_cSeWLyiDVbgKTwfxxxxxxxxa4
+HTTP/1.1 200 OK
+Server: nginx/1.6.2
+Date: Thu, 10 Dec 2015 06:26:35 GMT
+Content-Type: application/octet-stream
+Content-Length: 87
+Last-Modified: Thu, 10 Dec 2015 06:24:46 GMT
+Connection: keep-alive
+ETag: "56691aae-57"
+Accept-Ranges: bytes
+</pre></div></div>
+
+<p><code>default_type</code>でいいよね。</p>
+
+<div class="code-frame" data-lang="nginx"><div class="highlight"><pre><span class="k">nginx.conf:</span>     <span class="s">default_type</span> <span class="nc">application/octet-stream</span><span class="p">;</span>
+<span class="k">=&gt;</span> <span class="s">nginx.conf:</span>     <span class="s">default_type</span> <span class="nc">text/plain</span><span class="p">;</span>
+</pre></div></div>
+
+<p>はいOK。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -i http://le2.opsrockin.com/.well-known/acme-challenge/GP_AD5A_RR_cSeWLyiDVbgKTwfmrxxxxxxxxxxzXUua4
+HTTP/1.1 200 OK
+Server: nginx/1.6.2
+Date: Thu, 10 Dec 2015 06:30:35 GMT
+Content-Type: text/plain
+Content-Length: 87
+Last-Modified: Thu, 10 Dec 2015 06:24:46 GMT
+Connection: keep-alive
+ETag: "56691aae-57"
+Accept-Ranges: bytes
+</pre></div></div>
+
+<h2>
+<span id="チャレンジ対応okをleに通知" class="fragment"></span><a href="#%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8%E5%AF%BE%E5%BF%9Cok%E3%82%92le%E3%81%AB%E9%80%9A%E7%9F%A5"><i class="fa fa-link"></i></a>チャレンジ対応OKをLEに通知</h2>
+
+<p><code>#request_verification</code>するだけだ。数秒とかからずに<code>valid</code>となる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; challenge.verify_status
+=&gt; "pending"
+
+&gt; challenge.request_verification
+=&gt; true
+
+&gt; challenge.verify_status
+=&gt; "valid"
+
+</pre></div></div>
+
+<h2>
+<span id="ステップ-csrを作成する" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-csr%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ステップ CSRを作成する</h2>
+
+<p>CSR作成用の鍵は<code>Acme::Client::CertificateRequest</code>の作成時、ついでに作ってくれる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>csr = Acme::Client::CertificateRequest.new(names: %w[le2.opsrockin.com])
+=&gt; #&lt;Acme::CertificateRequest:0x00000003b3c8f8
+ @common_name="le2.opsrockin.com",
+ @csr=#&lt;OpenSSL::X509::Request:0x00000003b3c588&gt;,
+ @digest=#&lt;OpenSSL::Digest::SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&gt;,
+ @names=["le2.opsrockin.com"],
+ @private_key=#&lt;OpenSSL::PKey::RSA:0x00000003b3c8a8&gt;,
+ @subject={"CN"=&gt;"le2.opsrockin.com"}&gt;
+
+</pre></div></div>
+
+<h3>
+<span id="追記-subject-alternative-name時のcsr" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98-subject-alternative-name%E6%99%82%E3%81%AEcsr"><i class="fa fa-link"></i></a>追記 Subject Alternative Name時のCSR</h3>
+
+<p>このようにCSRを作成しましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>csr = Acme::Client::CertificateRequest.new(common_name: @domain, names: all_domains)
+</pre></div></div>
+
+<h2>
+<span id="ステップ-csrから証明書発行を申請する" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-csr%E3%81%8B%E3%82%89%E8%A8%BC%E6%98%8E%E6%9B%B8%E7%99%BA%E8%A1%8C%E3%82%92%E7%94%B3%E8%AB%8B%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ステップ CSRから証明書発行を申請する</h2>
+
+<p>これは特に言うこともなく。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; certificate = client.new_certificate(csr) 
+=&gt; #&lt;Acme::Certificate:0x00000003cd2690
+ @request=
+  #&lt;Acme::CertificateRequest:0x00000003b3c8f8
+   @common_name="le2.opsrockin.com",
+   @csr=#&lt;OpenSSL::X509::Request:0x00000003b3c588&gt;,
+   @digest=#&lt;OpenSSL::Digest::SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855&gt;,
+   @names=["le2.opsrockin.com"],
+   @private_key=#&lt;OpenSSL::PKey::RSA:0x00000003b3c8a8&gt;,
+   @subject={"CN"=&gt;"le2.opsrockin.com"}&gt;,
+ @x509=
+  #&lt;OpenSSL::X509::Certificate subject=#&lt;OpenSSL::X509::Name:0x00000003cc7830&gt;, issuer=#&lt;OpenSSL::X509::Name:0x00000003cc77b8&gt;, serial=#&lt;OpenSSL::BN:0x00000003cc7740&gt;, not_before=2015-12-10 05:35:00 UTC, not_after=2016-03-09 05:35:00 UTC&gt;,
+ @x509_chain=
+  [#&lt;OpenSSL::X509::Certificate subject=#&lt;OpenSSL::X509::Name:0x00000003c6f950&gt;, issuer=#&lt;OpenSSL::X509::Name:0x00000003c6f8d8&gt;, serial=#&lt;OpenSSL::BN:0x00000003c6f860&gt;, not_before=2015-10-19 22:33:36 UTC, not_after=2020-10-19 22:33:36 UTC&gt;]&gt;
+</pre></div></div>
+
+<h2>
+<span id="ステップ-作られた証明書を確認しよう" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%97-%E4%BD%9C%E3%82%89%E3%82%8C%E3%81%9F%E8%A8%BC%E6%98%8E%E6%9B%B8%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>ステップ 作られた証明書を確認しよう</h2>
+
+<p><code>certificate</code>にもろもろとしまわれる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; ls certificate 
+Acme::Certificate#methods: chain_to_pem  common_name  fullchain_to_pem  request  to_der  to_pem  x509  x509_chain  x509_fullchain
+instance variables: @request  @x509  @x509_chain
+</pre></div></div>
+
+<p>適当にメソッド。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; certificate.common_name
+=&gt; "le2.opsrockin.com"
+
+&gt; puts certificate.fullchain_to_pem
+-----BEGIN CERTIFICATE-----
+MIIFBjCCA+6gAwIBAgISAc04ag6Lc50CXERQXuZf8oaLMA0GCSqGSIb3DQEBCwUA
+MEoxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MSMwIQYDVQQD
+
+# -- snip 
+</pre></div></div>
+
+<p>期限もOKだ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; certificate.x509.not_after
+=&gt; 2016-03-09 05:35:00 UTC
+</pre></div></div>
+
+<h3>
+<span id="ファイルに書き出す" class="fragment"></span><a href="#%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AB%E6%9B%B8%E3%81%8D%E5%87%BA%E3%81%99"><i class="fa fa-link"></i></a>ファイルに書き出す</h3>
+
+<p>とりあえず手元に確保しておわりと。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"privkey.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">request</span><span class="p">.</span><span class="nf">private_key</span><span class="p">.</span><span class="nf">to_pem</span><span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"cert.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">to_pem</span><span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"chain.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">chain_to_pem</span><span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"fullchain.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">fullchain_to_pem</span><span class="p">)</span>
+</pre></div></div>
+
+<h2>
+<span id="最後に通してやってみよう" class="fragment"></span><a href="#%E6%9C%80%E5%BE%8C%E3%81%AB%E9%80%9A%E3%81%97%E3%81%A6%E3%82%84%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>最後に通してやってみよう</h2>
+
+<p>ここまでの手順を1つのRubyスクリプトファイルにしたらこのくらいの分量。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">le.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'openssl'</span>
+
+<span class="n">private_key</span> <span class="o">=</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">PKey</span><span class="o">::</span><span class="no">RSA</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="mi">2048</span><span class="p">)</span>
+<span class="n">endpoint</span> <span class="o">=</span> <span class="s1">'https://acme-v01.api.letsencrypt.org/'</span>
+
+<span class="nb">require</span> <span class="s1">'acme-client'</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">private_key: </span><span class="n">private_key</span><span class="p">,</span> <span class="ss">endpoint: </span><span class="n">endpoint</span><span class="p">)</span>
+<span class="n">registration</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">register</span><span class="p">(</span><span class="ss">contact: </span><span class="s1">'mailto:test@example.com'</span><span class="p">)</span>
+<span class="n">registration</span><span class="p">.</span><span class="nf">agree_terms</span>
+
+
+<span class="n">authorization</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">authorize</span><span class="p">(</span><span class="ss">domain: </span><span class="s1">'le2.opsrockin.com'</span><span class="p">)</span>
+<span class="n">challenge</span> <span class="o">=</span> <span class="n">authorization</span><span class="p">.</span><span class="nf">http01</span>
+
+<span class="n">www_root</span> <span class="o">=</span> <span class="s1">'/var/www/html'</span>
+<span class="no">FileUtils</span><span class="p">.</span><span class="nf">mkdir_p</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span> <span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span> <span class="p">)</span> <span class="p">)</span> <span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span> <span class="n">www_root</span><span class="p">,</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">filename</span><span class="p">),</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">file_content</span> <span class="p">)</span>
+
+
+<span class="n">challenge</span><span class="p">.</span><span class="nf">request_verification</span>
+
+<span class="k">until</span> <span class="n">challenge</span><span class="p">.</span><span class="nf">verify_status</span> <span class="o">==</span> <span class="s2">"valid"</span> <span class="k">do</span>
+  <span class="nb">print</span> <span class="s2">"."</span>
+  <span class="nb">sleep</span> <span class="mi">1</span>
+<span class="k">end</span>
+<span class="nb">puts</span> <span class="s2">""</span>
+
+<span class="n">csr</span> <span class="o">=</span> <span class="no">Acme</span><span class="o">::</span><span class="no">Client</span><span class="o">::</span><span class="no">CertificateRequest</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">names: </span><span class="sx">%w[le2.opsrockin.com]</span><span class="p">)</span>
+<span class="c1">## SAN時</span>
+<span class="c1"># csr = Acme::Client::CertificateRequest.new(common_name: 'le2.opsrockin.com', names: %w[le2.opsrockin.com www.lele2.opsrockin.com mail.le2.opsrockin.com])</span>
+
+<span class="n">certificate</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="nf">new_certificate</span><span class="p">(</span><span class="n">csr</span><span class="p">)</span> 
+
+
+<span class="nb">puts</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">common_name</span>
+<span class="nb">puts</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">x509</span><span class="p">.</span><span class="nf">not_after</span>
+
+
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"privkey.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">request</span><span class="p">.</span><span class="nf">private_key</span><span class="p">.</span><span class="nf">to_pem</span><span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"cert.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">to_pem</span><span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"chain.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">chain_to_pem</span><span class="p">)</span>
+<span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="s2">"fullchain.pem"</span><span class="p">,</span> <span class="n">certificate</span><span class="p">.</span><span class="nf">fullchain_to_pem</span><span class="p">)</span>
+</pre></div>
+</div>
+
+<p>実行して、問題なし。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ruby ./le.rb 
+.
+le2.opsrockin.com
+2016-03-09 05:50:00 UTC
+</pre></div></div>
+
+<h2>
+<span id="再作成など" class="fragment"></span><a href="#%E5%86%8D%E4%BD%9C%E6%88%90%E3%81%AA%E3%81%A9"><i class="fa fa-link"></i></a>再作成など</h2>
+
+<p>これを10連発くらいしたら<code>Too many certificates</code>で止められた。<br>
+同じドメインでの申請に対して、レジストする鍵が毎回違ってもよいことが確認できたのでよしとする。</p>
+
+<blockquote>
+<p>Error creating new cert :: Too many certificates already issued for: opsrockin.com (Acme::Error)</p>
+</blockquote>
+
+<p>対象が<code>opsrockin.com</code>となっていることから、TLD+1階層で制限がかかるのかな。属性型は持ってないので試せないな。</p>
+
+<p>ちなみにIaaSベンダ(例えばAmazonのEC2)で割り当てられるパブリックホスト名は、ドメインごとブラックリストの模様(そりゃそーか)。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1dc5b28a-e528-a9f2-a6e8-f3641e0c416c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7c145aa35d6c1906dc723ea201476b45" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1dc5b28a-e528-a9f2-a6e8-f3641e0c416c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7c145aa35d6c1906dc723ea201476b45" alt="スクリーンショット_12_10_15__4_22_PM.jpg" title="スクリーンショット_12_10_15__4_22_PM.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1dc5b28a-e528-a9f2-a6e8-f3641e0c416c.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1dc5b28a-e528-a9f2-a6e8-f3641e0c416c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=f0f09400d44772fa72ecc5e8e789f0e8 1x" loading="lazy"></a></p>
+
+<p>TLSにしたぞ。</p>
+
+<h2>
+<span id="追記-dnsでチャレンジ" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98-dns%E3%81%A7%E3%83%81%E3%83%A3%E3%83%AC%E3%83%B3%E3%82%B8"><i class="fa fa-link"></i></a>追記: DNSでチャレンジ</h2>
+
+<p>この記事を書いた時には無かった気がする、StagingでDNSチャレンジができるようになっていた。</p>
+
+<p>Stagingのエンドポイントを使うには、こっち。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>endpoint = 'https://acme-staging.api.letsencrypt.org'
+</pre></div></div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; ls authorization
+Acme::Resources::Authorization#methods: dns01  domain  http01  status
+instance variables: @client  @dns01  @domain  @http01  @status
+</pre></div></div>
+
+<p>おお。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; challenge = authorization.dns01
+
+&gt; ls challenge
+Acme::Resources::Challenges::Base#methods: client  error  status  token  uri  verify_status
+Acme::Resources::Challenges::DNS01#methods: record_content  record_name  record_type  request_verification
+instance variables: @client  @status  @token  @uri
+</pre></div></div>
+
+<p>TXTレコードに設定すべき内容が取得できた。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; challenge.record_name
+=&gt; "_acme-challenge"
+
+&gt; challenge.record_content
+=&gt; "b882d484905b48bff678b520b9263d9345e7e11e67f67d95d7bbd36e65c3ea43"
+</pre></div></div>
+
+<p>レコードを設置したら、あとはHTTPと同様に、<code>#request_verification</code>してstatusの更新をまてばよいはず。</p>
+
+<h2>
+<span id="追記-revokeは" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98-revoke%E3%81%AF"><i class="fa fa-link"></i></a>追記: Revokeは？</h2>
+
+<p><del>いま実装中。</del>Revokeには申請時の秘密鍵と、証明書用の秘密鍵の両方が使える。</p>
+
+<p>申請時の秘密鍵を使う場合、クライアントのインスタンスから。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>certificate = OpenSSL::X509::Certificate.new File.read('mycert.pem')
+@client.revoke_certificate(certificate)
+</pre></div></div>
+
+<p>証明書用の秘密鍵の場合、クラスメソッドで。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>certificate = OpenSSL::X509::Certificate.new File.read('mycert.pem')
+Acme::Client.revoke_certificate(certificate, private_key: private_key, endpoint: endpoint)
+</pre></div></div>

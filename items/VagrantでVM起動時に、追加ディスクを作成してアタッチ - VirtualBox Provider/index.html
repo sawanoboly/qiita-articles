@@ -1,0 +1,71 @@
+
+
+<p>VagrantでVMを作ってプロビジョニングをテストする際に、起動ディスク以外おｎディスクがアタッチされている状況を再現したい事もあります。<br>
+対象がPublic/PrivateなIaaSならEC2(EBS)だったり、CloudStack, OpenStackでも結構見られる状況かなと。</p>
+
+<p>確認したのは<code>Vagrant 1.6.2</code>。</p>
+
+<p>ざっとこんな感じで記述します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Vagrantfile</span></div>
+<div class="highlight"><pre><span class="c1"># -- snip --</span>
+    <span class="n">config</span><span class="p">.</span><span class="nf">vm</span><span class="p">.</span><span class="nf">define</span> <span class="n">machine</span> <span class="k">do</span> <span class="o">|</span><span class="n">config</span><span class="o">|</span>
+
+      <span class="n">config</span><span class="p">.</span><span class="nf">vm</span><span class="p">.</span><span class="nf">provider</span> <span class="ss">:virtualbox</span> <span class="k">do</span> <span class="o">|</span><span class="n">vb</span><span class="o">|</span>
+        <span class="n">at_disk</span> <span class="o">=</span> <span class="s1">'tmp/name_of_file.vdi'</span>
+        <span class="k">unless</span> <span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="n">at_disk</span><span class="p">)</span>
+          <span class="n">vb</span><span class="p">.</span><span class="nf">customize</span> <span class="p">[</span><span class="s1">'createhd'</span><span class="p">,</span> <span class="s1">'--filename'</span><span class="p">,</span> <span class="n">at_disk</span><span class="p">,</span> <span class="s1">'--size'</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">]</span>
+        <span class="k">end</span>
+        <span class="n">vb</span><span class="p">.</span><span class="nf">customize</span> <span class="p">[</span><span class="s1">'storageattach'</span><span class="p">,</span> <span class="ss">:id</span><span class="p">,</span> <span class="s1">'--storagectl'</span><span class="p">,</span> <span class="s1">'IDE Controller'</span><span class="p">,</span> <span class="s1">'--port'</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">'--device'</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s1">'--type'</span><span class="p">,</span> <span class="s1">'hdd'</span><span class="p">,</span> <span class="s1">'--medium'</span><span class="p">,</span> <span class="n">at_disk</span><span class="p">]</span>
+        <span class="k">end</span>
+      <span class="k">end</span>
+
+    <span class="k">end</span>
+<span class="c1"># -- snip --</span>
+</pre></div>
+</div>
+
+<p>この記述で、次のような挙動になります。</p>
+
+<ul>
+<li>vagrant up時に仮想ディスクファイルを(作成して)アタッチ</li>
+<li>reset/reload時は内容残したままリブート</li>
+<li>vagrant destroy時に一緒に削除</li>
+</ul>
+
+<p>デフォルトではdestroy時、一緒に消えることに注意です。</p>
+
+<p>ついでに、<code>customize</code>についてはVBoxManageに渡すオプションを記述すればよいので、他のカスタマイズは<code>VBoxManage</code>本体のヘルプが参考になるはず。</p>
+
+<p>例えば<code>storageattach</code>。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>VBoxManage storageattach    &lt;uuid|vmname&gt;
+                            --storagectl &lt;name&gt;
+                            [--port &lt;number&gt;]
+                            [--device &lt;number&gt;]
+                            [--type dvddrive|hdd|fdd]
+                            [--medium none|emptydrive|additions|
+                                      &lt;uuid|filename&gt;|host:&lt;drive&gt;|iscsi]
+                            [--mtype normal|writethrough|immutable|shareable|
+                                     readonly|multiattach]
+                            [--comment &lt;text&gt;]
+                            [--setuuid &lt;uuid&gt;]
+                            [--setparentuuid &lt;uuid&gt;]
+                            [--passthrough on|off]
+                            [--tempeject on|off]
+                            [--nonrotational on|off]
+                            [--discard on|off]
+                            [--bandwidthgroup &lt;name&gt;]
+                            [--forceunmount]
+                            [--server &lt;name&gt;|&lt;ip&gt;]
+                            [--target &lt;target&gt;]
+                            [--tport &lt;port&gt;]
+                            [--lun &lt;lun&gt;]
+                            [--encodedlun &lt;lun&gt;]
+                            [--username &lt;username&gt;]
+                            [--password &lt;password&gt;]
+                            [--initiator &lt;initiator&gt;]
+                            [--intnet]
+
+</pre></div></div>

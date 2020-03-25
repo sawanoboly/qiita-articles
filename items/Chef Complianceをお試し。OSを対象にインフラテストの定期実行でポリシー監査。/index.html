@@ -1,0 +1,201 @@
+<p><a href="https://www.chef.io/solutions/audit-compliance/" rel="nofollow noopener" target="_blank">Auditing and Compliance with Chef</a></p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffe8acd3a-b763-5051-60ab-af78e8486ec6.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4890a36b50888fd4d00eb6016940c639" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffe8acd3a-b763-5051-60ab-af78e8486ec6.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4890a36b50888fd4d00eb6016940c639" alt="スクリーンショット_11_10_15__1_12_PM.jpg" title="スクリーンショット_11_10_15__1_12_PM.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/fe8acd3a-b763-5051-60ab-af78e8486ec6.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ffe8acd3a-b763-5051-60ab-af78e8486ec6.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=9c54a3c1fb60e6c9b944cf992b6b49bb 1x" loading="lazy"></a></p>
+
+<p>先日Chef IncがVulcanoSecっちゅーところを買収し、Chef Complianceをリリースしました。うん触ってみよう。</p>
+
+<h2>
+<span id="chef-compliance" class="fragment"></span><a href="#chef-compliance"><i class="fa fa-link"></i></a>Chef Compliance</h2>
+
+<p>ざっとこんなツールです。</p>
+
+<ul>
+<li>OSのパッチ状況検出 (Linux/Windows)</li>
+<li>テストスイートInSpecのリモート実行
+
+<ul>
+<li>リモート系はSSHまたはWinRMを経由、エージェント不要</li>
+</ul>
+</li>
+<li>レポート作成</li>
+<li>WebUIとAPI</li>
+<li>スケジュール</li>
+</ul>
+
+<p>適当に作成したUbuntu14にプリセットの監査をかけると、SSH越しで色々と調べてレポートを作ってくれました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1744c967-ea71-dc3e-ceea-b5b831c5f334.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c06823519983e2af25932bbb85b55630" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1744c967-ea71-dc3e-ceea-b5b831c5f334.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c06823519983e2af25932bbb85b55630" alt="Chef_Compliance_Dashboard.jpg" title="Chef_Compliance_Dashboard.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1744c967-ea71-dc3e-ceea-b5b831c5f334.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1744c967-ea71-dc3e-ceea-b5b831c5f334.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=11c8bcbc451708f57e1639f9fd74f37c 1x" loading="lazy"></a></p>
+
+<p>なるほどねー。OSの自前管理を含むシステムを運用する場合の監査タスクに良さそう。</p>
+
+<h2>
+<span id="インストールセットアップ" class="fragment"></span><a href="#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>インストール＆セットアップ</h2>
+
+<p>RPMまたはDEBがこちらで配布されています(0.9.1)。</p>
+
+<p><a href="https://downloads.chef.io/compliance/" class="autolink" rel="nofollow noopener" target="_blank">https://downloads.chef.io/compliance/</a></p>
+
+<blockquote>
+<p>注： ノードの数についてChef Incに質問してもらったら、RPM, DEBで配布しているローカルセットアップ版は、25ノードまでで使ってほしいなーとのことです。コード側では特に制限かかっては無さそうなので、自主的に問い合わせ系。</p>
+
+<p><a href="https://twitter.com/dai_lxr/status/664445935036928000" class="autolink" rel="nofollow noopener" target="_blank">https://twitter.com/dai_lxr/status/664445935036928000</a></p>
+</blockquote>
+
+<p>とりあえずVagrantのVMにセットアップしてみます。private_networkを当てておくとよいです。</p>
+
+<p>セットアップは次の手順。これだけでHTTP/HTTPSの</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ dpkg -i chef-compliance_0.9.1-1_amd64.deb 
+$ chef-compliance-ctl reconfigure
+$ chef-compliance-ctl user-create [username] [password]
+</pre></div></div>
+
+<p>Chef-Serverやその他アドオンたちと同じですね。<br>
+nginx/postgresなども/opt以下にまとめて入るので、他のサービスが動いていないサーバにスタンドアローンで入れるのがよいです。</p>
+
+<p>できたらHTTPSで開きます。ログインユーザはさっき作ったやつ。</p>
+
+<h2>
+<span id="コンプライアンスプロファイルとinspec" class="fragment"></span><a href="#%E3%82%B3%E3%83%B3%E3%83%97%E3%83%A9%E3%82%A4%E3%82%A2%E3%83%B3%E3%82%B9%E3%83%97%E3%83%AD%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%A8inspec"><i class="fa fa-link"></i></a>コンプライアンスプロファイルとInSpec</h2>
+
+<p>InSpecについてはまずここを一読。(単品で別のエントリは書くかも。)</p>
+
+<p><a href="https://www.chef.io/blog/2015/11/04/the-road-to-inspec/" title="The Road to InSpec | Chef Blog" rel="nofollow noopener" target="_blank">The Road to InSpec | Chef Blog</a></p>
+
+<p>InSpecは単品でも使えますが、Chef Complianceのポリシーとして使うには、それぞれに影響度合いを数値でつけます。</p>
+
+<p>プリセットから1つ拾ってみます。</p>
+
+<ul>
+<li>TCPのSYN cookieが有効だったら影響度1.0</li>
+</ul>
+
+<p>なポリシー記述とテストケースは次のようになってます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">sysctl_ipv4_spec.rb</span></div>
+<div class="highlight"><pre><span class="o">...</span>
+<span class="n">control</span> <span class="s1">'sysctl-ipv4-9.2'</span> <span class="k">do</span>
+  <span class="n">impact</span> <span class="mf">1.0</span>
+  <span class="n">title</span> <span class="s1">'Enable TCP syn-cookies'</span>
+  <span class="n">desc</span> <span class="s1">'
+    Avoid DoS TCP SYN attacks, by enabling SYN cookies.
+  '</span>
+  <span class="n">describe</span> <span class="n">kernel_parameter</span><span class="p">(</span><span class="s1">'net.ipv4.tcp_syncookies'</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">its</span><span class="p">(</span><span class="ss">:value</span><span class="p">)</span> <span class="p">{</span> <span class="n">should</span> <span class="n">eq</span> <span class="mi">1</span> <span class="p">}</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+
+<p>UIではこんな感じで。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdba8fdd2-c6b9-395c-c5f2-8cd83421097d.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b1544c725f2ef726c15e4749ce9bb831" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdba8fdd2-c6b9-395c-c5f2-8cd83421097d.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=b1544c725f2ef726c15e4749ce9bb831" alt="スクリーンショット_11_10_15__1_24_PM.jpg" title="スクリーンショット_11_10_15__1_24_PM.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/dba8fdd2-c6b9-395c-c5f2-8cd83421097d.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdba8fdd2-c6b9-395c-c5f2-8cd83421097d.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=2a01288e888fb6e11c349aef0a259814 1x" loading="lazy"></a></p>
+
+<p>作成したポリシー(InSpecテストケース+重み付け)は、ZIPかTARのアーカイブにしてUIまたはAPIからChef Complianceに登録します。これをまとめる単位がプロファイルかな。</p>
+
+<h3>
+<span id="セキュリティベースライン重視" class="fragment"></span><a href="#%E3%82%BB%E3%82%AD%E3%83%A5%E3%83%AA%E3%83%86%E3%82%A3%E3%83%99%E3%83%BC%E3%82%B9%E3%83%A9%E3%82%A4%E3%83%B3%E9%87%8D%E8%A6%96"><i class="fa fa-link"></i></a>セキュリティベースライン重視</h3>
+
+<p>Chef Complianceを触ってまずギョッとしたのが、Center for Internet Security(以下CIS)の配布するCIS Security Benchmarksを同梱していたこと。</p>
+
+<p><a href="https://benchmarks.cisecurity.org/" title="Center for Internet Security" rel="nofollow noopener" target="_blank">SECURE CONFIGURATION BENCHMARKS | CIS</a></p>
+
+<p>PDFで案内される内容の一例がこちら。</p>
+
+<blockquote>
+
+<h2>
+<span id="22-set-nodev-option-for-tmp-partition-scored" class="fragment"></span><a href="#22-set-nodev-option-for-tmp-partition-scored"><i class="fa fa-link"></i></a>2.2 Set nodev option for /tmp Partition (Scored)</h2>
+
+<p>The nodev mount option specifies that the filesystem cannot contain special devices.</p>
+</blockquote>
+
+<p>上記のような指針をspecに起こして収録されていました。</p>
+
+<ul>
+<li>CIS Ubuntu 14.04 LTS Server Benchmark Level 1</li>
+<li>CIS Ubuntu 14.04 LTS Server Benchmark Level 2</li>
+</ul>
+
+<p>画面でみるとこちら。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3cbb656d-d286-b528-f8a4-db030ca1f687.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3024d8a2bab8f6d0fd0e30abc14220cc" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3cbb656d-d286-b528-f8a4-db030ca1f687.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=3024d8a2bab8f6d0fd0e30abc14220cc" alt="スクリーンショット_11_10_15__1_46_PM.jpg" title="スクリーンショット_11_10_15__1_46_PM.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/3cbb656d-d286-b528-f8a4-db030ca1f687.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3cbb656d-d286-b528-f8a4-db030ca1f687.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=18df1f29dd5b2cf22bfbd391d0023bd0 1x" loading="lazy"></a></p>
+
+<p>実際のポリシーファイル群。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree /opt/chef-compliance/embedded/service/compliance-profiles/cis/cis-ubuntu-level1/
+/opt/chef-compliance/embedded/service/compliance-profiles/cis/cis-ubuntu-level1/
+├── metadata.rb
+├── README.md
+└── test
+    ├── 01_patches_spec.rb
+    ├── 02_filesystem_spec.rb
+    ├── 03_secure_boot_spec.rb
+    ├── 04_process_hardening_spec.rb
+    ├── 05_os_services_spec.rb
+    ├── 06_special_services_spec.rb
+    ├── 07_network_firewall_spec.rb
+    ├── 08_logging_auditing_spec.rb
+    ├── 09_system_access_spec.rb
+    ├── 10_user_accounts_spec.rb
+    ├── 11_warning_banner_spec.rb
+    ├── 12_file_system_permission_spec.rb
+    └── 13_user_group_settings_spec.rb
+
+1 directory, 15 files
+</pre></div></div>
+
+<p>おお、よくコードに起こしたなあ。。</p>
+
+<h2>
+<span id="api" class="fragment"></span><a href="#api"><i class="fa fa-link"></i></a>API</h2>
+
+<p>APIはありますが、Chef Docsではドキュメントがまだありません。</p>
+
+<p>しかし <a href="http://docs.vulcanosec.com/#api-reference" rel="nofollow noopener" target="_blank">VulcanoSec API Reference</a></p>
+
+<p>現状のChef Complianceアプリケーションは<a href="http://vulcanosec.com" rel="nofollow noopener" target="_blank">VulcanoSec</a>のロゴ差し替え＆機能ちょっと減らした版なので、このドキュメントの内容がそのまま使えました。</p>
+
+<p>Basic認証でトークンを発行して、期限内持ちまわるタイプ。<br>
+プロファイルを取るならこんな感じ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -k -X POST https://127.0.0.1/api/oauth/token   -u testuser:testpass   -d "grant_type=client_credentials"
+{"access_token":"y0IPr/YwUmKJJzKFfOTgd4gOYLQQrInh6wM7X9cl8YWgui02lutqFnJ16BGvnf4j4sbXZ/A2GecCwdmvF94kEg==","expires_in":16556,"token_type":"vulcanosec token"}
+
+
+$ curl -k -X GET https://127.0.0.1/api/user/compliance -u "y0IPr/YwUmKJJzKFfOTgd4gOYLQQrInh6wM7X9cl8YWgui02lutqFnJ16BGvnf4j4sbXZ/A2GecCwdmvF94kEg==:" | jq .
+{
+  "cis": {
+    "cis-ubuntu-level2": {
+      "copyright_email": "support@chef.io",
+      "copyright": "Chef Software, Inc.",
+      "id": "cis-ubuntu-level2",
+      "owner": "cis",
+      "name": "cis/cis-ubuntu-level2",
+      "title": "CIS Ubuntu 14.04 LTS Server Benchmark Level 2",
+      "version": "1.0.1",
+      "summary": "CIS Ubuntu 14.04 LTS Server Benchmark",
+      "description": "# CIS Ubuntu 14.04 LTS Server Benchmark\n\ncopyright: 2015, Vulcano Security GmbH\nlicense: All rights reserved\n",
+      "license": "Proprietary, All rights reserved"
+    },
+    "cis-ubuntu-level1": {
+      "copyright_email": "support@chef.io",
+      "copyright": "Chef Software, Inc.",
+      "id": "cis-ubuntu-level1",
+      "owner": "cis",
+      "name": "cis/cis-ubuntu-level1",
+
+...
+</pre></div></div>
+
+<p>認証がちょっと不便かな。。でもNodeの登録削除ができるので十分でしょう。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>インフラにあるマネージドOSにテストをかけたいが、なにからやったらいいのかしら？ とか、ここは見とけっていうオススメテストケースが配布されていたらいいのになー、とかって割と聞く話です。<br>
+そういう場合に、こういったデフォルトでベースラインセキュリティの監査をタップリめにやってくれるプロダクトもアリですね。</p>
+
+<p>もちろんテストケースのカスタマイズもすぐ書けますよね。Serverspecで慣れてるでしょう。</p>

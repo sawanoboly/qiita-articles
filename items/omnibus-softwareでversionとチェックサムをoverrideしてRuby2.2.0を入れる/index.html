@@ -1,0 +1,25 @@
+<p><a href="https://github.com/chef/omnibus" rel="nofollow noopener" target="_blank">chef/omnibus</a>で依存ソフトをビルドする際に、ソースアーカイブのチェックサムを要求するものがある。例えば<a href="https://github.com/chef/omnibus-software/blob/master/config/software/ruby.rb" rel="nofollow noopener" target="_blank">Ruby</a>。</p>
+
+<p>バージョン番号だけなら簡単に指定できるけど、チェックサムが必要な場合の書式がなかなか分からなかったので調べた。</p>
+
+<p><a href="https://github.com/chef/omnibus/pull/94" rel="nofollow noopener" target="_blank">project overrides of software definitions #94</a></p>
+
+<p>上記のIssueで様々な議論がなされたあと、次のような書式にひとまず落ち着いたようだ。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">projects/mysoftware.rb</span></div>
+<div class="highlight"><pre><span class="n">override</span> <span class="ss">:ruby</span><span class="p">,</span>
+<span class="ss">version: </span><span class="s2">"2.2.0"</span><span class="p">,</span>
+<span class="ss">source: </span><span class="p">{</span>
+<span class="ss">md5: </span><span class="s2">"cd03b28fd0b555970f5c4fd481700852"</span>
+<span class="p">}</span>
+<span class="n">dependency</span> <span class="s2">"ruby"</span>
+
+<span class="n">override</span> <span class="ss">:rubygems</span><span class="p">,</span> <span class="ss">version: </span><span class="s2">"2.4.5"</span>
+<span class="n">dependency</span> <span class="s2">"rubygems"</span>
+<span class="n">override</span> <span class="ss">:bundler</span><span class="p">,</span> <span class="ss">version: </span><span class="s1">'1.8.2'</span>
+<span class="n">dependency</span> <span class="s2">"bundler"</span>
+</pre></div>
+</div>
+
+<p>変更時の差分を見るとブロックでもいけそうな気がする。</p>

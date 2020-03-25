@@ -1,0 +1,155 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://github.com/applicationsonline/librarian" rel="nofollow noopener" target="_blank">Librarian-chef</a> を使い、bundlerのように必要なcookbookを管理する。</p>
+
+<h2>
+<span id="chefのセットアップ" class="fragment"></span><a href="#chef%E3%81%AE%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>Chefのセットアップ</h2>
+
+<p>毎度つかうものなので、<code>git clone</code>一発でchef-client系をセットアップ出来るようにした。</p>
+
+<p>Ubuntu: <a href="https://github.com/higanworks/chef-with-ruby_precise-x86_64" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/chef-with-ruby_precise-x86_64</a><br>
+CentOS: <a href="https://github.com/higanworks/chef-with-ruby_CentOS-x86_64" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/chef-with-ruby_CentOS-x86_64</a></p>
+
+<p>セットアップはREADMEにあるようにコマンド2つ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ apt-get install git
+$ git clone https://github.com/higanworks/chef-with-ruby_`lsb_release -cs`-`uname -i`.git /opt/ruby-chef
+</pre></div></div>
+
+<p>以降はとりあえずUbuntuで上記を使った場合の<code>chef-solo</code>発動までを紹介。</p>
+
+<h2>
+<span id="cheffile作業ディレクトリへ" class="fragment"></span><a href="#cheffile%E4%BD%9C%E6%A5%AD%E3%83%87%E3%82%A3%E3%83%AC%E3%82%AF%E3%83%88%E3%83%AA%E3%81%B8"><i class="fa fa-link"></i></a>Cheffile作業ディレクトリへ</h2>
+
+<p>リポジトリをクローンしたら /opt/ruby-chef で作業する。</p>
+
+<p><code>cd /opt/ruby-chef</code></p>
+
+<p>サンプルではcookbooksもこの下に置かれるようにしている。</p>
+
+<p><code>librarian-chef</code>は必要なCookbookの名前と所在、依存を<strong>Cheffile</strong>に書き、<code>install</code>サブコマンドでCookbooksディレクトリを形成する。<br>
+集めた結果を<code>Cheffile.lock</code>に書く、lockを元に作る<code>deployment</code>モードこそ無さそうだがとてもbundlerのようだ。</p>
+
+<p>Cheffile.sample をそのまま使う場合はCheffileとしてコピー。<br>
+<code>cp Cheffile.sample Cheffile</code></p>
+
+<p>空のCheffileを作る場合は<br>
+<code>./bin/librarian-chef init</code></p>
+
+<h2>
+<span id="cheffileからcookbooksの準備" class="fragment"></span><a href="#cheffile%E3%81%8B%E3%82%89cookbooks%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>Cheffileからcookbooksの準備</h2>
+
+<p>chefファイルにcookbookの名前と所在を書く、とりあえずsoloなのでこのサーバに必要なものだけ記述。</p>
+
+<p><code>nginx</code>と<code>redis</code>と<code>monit</code>を導入したい、ついでにruby(rvm)。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Cheffile(sample)</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="c1">#^syntax detection</span>
+
+<span class="n">site</span> <span class="s1">'http://community.opscode.com/api/v1'</span>
+
+<span class="n">cookbook</span> <span class="s1">'apt'</span>
+
+<span class="c1"># external</span>
+<span class="n">cookbook</span> <span class="s1">'rvm'</span><span class="p">,</span>
+  <span class="ss">:git</span> <span class="o">=&gt;</span> <span class="s1">'https://github.com/fnichol/chef-rvm'</span>
+
+<span class="c1"># my cookbooks</span>
+<span class="n">cookbook</span> <span class="s1">'nginx_ppa'</span><span class="p">,</span>
+  <span class="ss">:git</span> <span class="o">=&gt;</span> <span class="s1">'https://github.com/higanworks-cookbooks/nginx_ppa.git'</span>
+
+<span class="n">cookbook</span> <span class="s1">'monit_binaries'</span><span class="p">,</span>
+  <span class="ss">:git</span> <span class="o">=&gt;</span> <span class="s1">'https://github.com/higanworks-cookbooks/monit_binaries.git'</span>
+
+<span class="n">cookbook</span> <span class="s1">'redis_src'</span><span class="p">,</span>
+  <span class="ss">:git</span> <span class="o">=&gt;</span> <span class="s1">'https://github.com/higanworks-cookbooks/redis_src.git'</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="cookbookインストール" class="fragment"></span><a href="#cookbook%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>Cookbookインストール</h3>
+
+<p><code>./bin/librarian-chef install</code> と叩き、<code>./cookbooks</code>の下にCookbookを集めてくる。</p>
+
+<div class="code-frame" data-lang="実行結果"><div class="highlight"><pre># ./bin/librarian-chef install
+# ./bin/librarian-chef show
+apt (1.4.8)
+monit_binaries (0.0.3)
+nginx_ppa (0.0.1)
+redis_src (0.0.1)
+rvm (0.9.1)
+</pre></div></div>
+
+<p>もちろんこれを<code>knife cookbook upload</code>するような運用もあり。</p>
+
+<h2>
+<span id="レシピの適用" class="fragment"></span><a href="#%E3%83%AC%E3%82%B7%E3%83%94%E3%81%AE%E9%81%A9%E7%94%A8"><i class="fa fa-link"></i></a>レシピの適用</h2>
+
+<h3>
+<span id="単一のレシピ適用" class="fragment"></span><a href="#%E5%8D%98%E4%B8%80%E3%81%AE%E3%83%AC%E3%82%B7%E3%83%94%E9%81%A9%E7%94%A8"><i class="fa fa-link"></i></a>単一のレシピ適用</h3>
+
+<p>solo用のサンプルコンフィグがついているので叩く。<br>
+適用したいレシピは<code>-o</code>で指定できる。</p>
+
+<div class="code-frame" data-lang="実行結果"><div class="highlight"><pre># ./bin/chef-solo -c solo.rb -o nginx_ppa::default
+-- snip --
+[2012-09-19T20:29:28-07:00] INFO: Processing package[nginx] action install (nginx_ppa::default line 34)
+-- snip --
+
+# nginx -v
+nginx version: nginx/1.2.3
+</pre></div></div>
+
+<h3>
+<span id="jsonの構成ファイルを用いた複数のレシピ適用" class="fragment"></span><a href="#json%E3%81%AE%E6%A7%8B%E6%88%90%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E7%94%A8%E3%81%84%E3%81%9F%E8%A4%87%E6%95%B0%E3%81%AE%E3%83%AC%E3%82%B7%E3%83%94%E9%81%A9%E7%94%A8"><i class="fa fa-link"></i></a>Jsonの構成ファイルを用いた複数のレシピ適用</h3>
+
+<p><code>-o</code>の直接指定ではなく、<code>chef-solo</code>に<code>-j</code>でjsonによる構成ファイルを渡す。<br>
+色々入れて、rvmでruby1.9.3を使えるようにしておいてねというコース。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">sample.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+   </span><span class="nl">"rvm"</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"default_ruby"</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s2">"system"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"rubies"</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+         </span><span class="s2">"ruby-1.9.3-p194"</span><span class="w">
+      </span><span class="p">]</span><span class="w">
+   </span><span class="p">},</span><span class="w">
+   </span><span class="nl">"run_list"</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+      </span><span class="s2">"recipe[apt]"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"recipe[nginx_ppa]"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"recipe[monit_binaries]"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"recipe[redis_src]"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"recipe[rvm::system]"</span><span class="w">
+   </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<p>Roleも書ける。</p>
+
+<div class="code-frame" data-lang="実行結果"><div class="highlight"><pre># ./bin/chef-solo -c solo.rb -j ./sample.json
+[2012-09-19T20:28:35-07:00] INFO: *** Chef 10.14.2 ***
+[2012-09-19T20:28:35-07:00] INFO: Setting the run_list to ["recipe[apt]", "recipe[nginx_ppa]", "recipe[monit_binaries]", "recipe[redis_src]", "recipe[rvm::system]"] from JSON
+[2012-09-19T20:28:35-07:00] INFO: Run List is [recipe[apt], recipe[nginx_ppa], recipe[monit_binaries], recipe[redis_src], recipe[rvm::system]]
+
+-- snip --
+
+# redis-server -v
+Redis server version 2.4.16 (04a08723:1)
+
+# monit -V
+This is Monit version 5.5
+Copyright (C) 2001-2012 Tildeslash Ltd. All Rights Reserved.
+
+# nginx -v
+nginx version: nginx/1.2.3
+</pre></div></div>
+
+<p>あとは設定ファイルをテンプレートにレシピを書いて、構成をバージョン管理していく。</p>

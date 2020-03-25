@@ -1,0 +1,48 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>optparseの使い方を知ったので、Rakeで使ってみた。<br>
+直接渡すのは多分ムリなので、ENVでもらって配列に。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="c1"># -*- coding: utf-8 -*-</span>
+
+<span class="nb">require</span> <span class="s1">'optparse'</span>
+
+<span class="n">argv_array</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s2">"ARGV"</span><span class="p">]</span> <span class="p">?</span> <span class="p">(</span><span class="no">ENV</span><span class="p">[</span><span class="s2">"ARGV"</span><span class="p">]).</span><span class="nf">split</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span> <span class="p">:</span> <span class="p">[]</span>
+
+<span class="n">options</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="no">OptionParser</span><span class="p">.</span><span class="nf">new</span> <span class="k">do</span> <span class="o">|</span><span class="n">opts</span><span class="o">|</span>
+  <span class="n">opts</span><span class="p">.</span><span class="nf">banner</span> <span class="o">=</span> <span class="s1">'Usage: rake [rake_options] task  ARGV="[options]"'</span>
+
+  <span class="n">opts</span><span class="p">.</span><span class="nf">on</span><span class="p">(</span><span class="s1">'-e'</span><span class="p">,</span> <span class="s1">'--environment ENVIRONMENT'</span><span class="p">)</span> <span class="p">{</span><span class="o">|</span><span class="n">v</span><span class="o">|</span> <span class="n">options</span><span class="p">[</span><span class="ss">:rake_env</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">}</span>
+  <span class="n">opts</span><span class="p">.</span><span class="nf">on</span><span class="p">(</span><span class="s1">'-p'</span><span class="p">,</span> <span class="s1">'--port PORT_NUM'</span><span class="p">)</span> <span class="p">{</span><span class="o">|</span><span class="n">v</span><span class="o">|</span> <span class="n">options</span><span class="p">[</span><span class="ss">:port</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">.</span><span class="nf">to_i</span><span class="p">}</span>
+<span class="k">end</span><span class="p">.</span><span class="nf">parse!</span><span class="p">(</span><span class="n">argv_array</span><span class="p">)</span>
+
+<span class="n">desc</span> <span class="s2">"print parsed options."</span>
+<span class="n">task</span> <span class="ss">:print_opt</span> <span class="k">do</span>
+  <span class="nb">p</span> <span class="n">options</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>パースしたいオプションは<code>ARGV=""</code>とまとめて放り込む仕様。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">shell_output</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rake print_opt <span class="nv">ARGV</span><span class="o">=</span><span class="s2">"-h"</span>
+Usage: rake <span class="o">[</span>rake_options] task  <span class="nv">ARGV</span><span class="o">=</span><span class="s2">"[options]"</span>
+    <span class="nt">-e</span>, <span class="nt">--environment</span> ENVIRONMENT
+    <span class="nt">-p</span>, <span class="nt">--port</span> PORT_NUM
+
+
+<span class="nv">$ </span>rake print_opt <span class="nv">ARGV</span><span class="o">=</span><span class="s2">"-e production -p 8875"</span>
+<span class="o">{</span>:rake_env<span class="o">=&gt;</span><span class="s2">"production"</span>, :port<span class="o">=&gt;</span>8875<span class="o">}</span>
+</pre></div>
+</div>
+
+<p>取ってつけた感はあるけども、書式のチェックは楽になるかも。</p>

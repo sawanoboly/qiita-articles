@@ -1,0 +1,259 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://www.proftpd.org/" rel="nofollow noopener" target="_blank">ProFTPd</a>のユーザ管理をChefのCookbookでしたいという話があって、リストのファイルを見てみると1行1レコード、コロン区切りのファイルでした。各フィールドは<code>/etc/passwd</code>と同じです。</p>
+
+<p>通常ユーザ管理はCLI(ftpasswd)でやるとのことでしたが、どうせ中身が正しければちゃんと動くのでRubyで取り扱ってみます。</p>
+
+<h2>
+<span id="サンプルのftpdpasswdファイル" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AEftpdpasswd%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB"><i class="fa fa-link"></i></a>サンプルのftpd.passwdファイル</h2>
+
+<p>さて、サンプルの<code>ftpd.passwd</code>を用意しました。<br>
+ユーザは<code>hoge1-3</code>の3名分、パスワードはそれぞれ<code>password1-3</code>を<code>salted hash(SHA512)</code>に加工しています。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">ftpd.passwd</span></div>
+<div class="highlight"><pre>hoge1:$6$17ed5828ed832c5$3KWXpvu9tyOF5UEGswbahSQVAYRMt7ZEoxiMOT./8or8ipRrpL090sD.AowBeFyDAEIxBhxzG4DA/nqnzhHWR1:99:99:hoge1-san:/home/hoge1:/sbin/nologin
+hoge2:$6$1a4a5969f81da2d$kT.LO1omkKavQs/kkh24ZnZO5o/FxlFfjVMverUr9iA4pL/iiEBCNwla.pLi3zlHAhCA4jr056msXD5CwAGk/.:99:99:hoge2-san:/home/hoge2:/sbin/nologin
+hoge3:$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs.16UGNn0:99:99:hoge3-san:/home/hoge3:/sbin/nologin
+</pre></div>
+</div>
+
+<h3>
+<span id="unix_cryptで認証文字列を生成するメソッド" class="fragment"></span><a href="#unix_crypt%E3%81%A7%E8%AA%8D%E8%A8%BC%E6%96%87%E5%AD%97%E5%88%97%E3%82%92%E7%94%9F%E6%88%90%E3%81%99%E3%82%8B%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89"><i class="fa fa-link"></i></a><code>unix_crypt</code>で認証文字列を生成するメソッド</h3>
+
+<p><code>RubyGems:unix_crypt</code>をつかって、プレーンパスワードから<code>/etc/shadow</code>で見かける形式に変換するサンプルです。<br>
+記事中のサンプルで<code>#build_encrypt_by_plane</code>が出てきますがこのような処理をしています。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">unix_crypt_example.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'openssl'</span>
+<span class="nb">require</span> <span class="s1">'unix_crypt'</span>
+
+<span class="k">def</span> <span class="nf">_make_salt_by_plane</span><span class="p">(</span><span class="n">password</span><span class="p">)</span>
+  <span class="no">OpenSSL</span><span class="o">::</span><span class="no">Digest</span><span class="o">::</span><span class="no">MD5</span><span class="p">.</span><span class="nf">hexdigest</span><span class="p">(</span><span class="n">password</span> <span class="o">+</span> <span class="s1">'salt_me'</span><span class="p">).</span><span class="nf">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">15</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">build_encrypt_by_plane</span><span class="p">(</span><span class="n">password</span><span class="p">,</span> <span class="n">type</span> <span class="o">=</span> <span class="ss">:SHA512</span><span class="p">)</span> <span class="c1"># [:MD5, :SHA256, :SHA512]</span>
+  <span class="no">UnixCrypt</span><span class="p">.</span><span class="nf">const_get</span><span class="p">(</span><span class="n">type</span><span class="p">).</span><span class="nf">build</span><span class="p">(</span><span class="n">password</span><span class="p">,</span> <span class="n">_make_salt_by_plane</span><span class="p">(</span><span class="n">password</span><span class="p">))</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>saltはランダムで生成するべきなのですが、Chefなどで管理する際に毎回更新されて多少うっとおしくなる事を考慮して今回は固定文字列にしています。<br>
+ランダムかつ毎回更新されないようにするには、<code>UnixCrypt.valid?($plainpass, $encrypted_strings)</code>でパスワードが更新されているかのチェックを行うなど工夫の余地がありますね。</p>
+
+<p><code>#build_encrypt_by_plane</code>実行すると<code>salted hash</code>を出力します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Pry_build_encrypt_by_plane</span></div>
+<div class="highlight"><pre>pry<span class="o">(</span>main<span class="o">)&gt;</span> build_encrypt_by_plane<span class="o">(</span><span class="s1">'password3'</span><span class="o">)</span>
+<span class="o">=&gt;</span> <span class="s2">"</span><span class="nv">$6$f22eb55ffd0731f$FhoAmeAQmcqsGbEnRJWLuqv</span><span class="s2">.AwlpYHiRz8xecGE.0teBnIY3pzko2y7lRl.rXcUraZVLJ4Kc.vF5EUU5HjTir0"</span>
+</pre></div>
+</div>
+
+<p>プレーンパスワード自体をどこに保管するかはそれなりに課題ですが、とりあえず棚上げしておきます。</p>
+
+<h2>
+<span id="csvtableとして読み込む" class="fragment"></span><a href="#csvtable%E3%81%A8%E3%81%97%E3%81%A6%E8%AA%AD%E3%81%BF%E8%BE%BC%E3%82%80"><i class="fa fa-link"></i></a>CSV.tableとして読み込む</h2>
+
+<p>では各フィールドに名前をつけつつ、カラムの区切りにコロンを指定して<code>ftpd.passwd</code>を読み込んでみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_read_from_ftp_passwd</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'csv'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span> <span class="o">=</span> <span class="no">CSV</span><span class="p">.</span><span class="nf">table</span><span class="p">(</span><span class="s1">'ftpd.passwd'</span><span class="p">,</span> <span class="p">{</span><span class="ss">:headers</span> <span class="o">=&gt;</span> <span class="p">[</span><span class="s1">'name'</span><span class="p">,</span> <span class="s1">'encrypt'</span><span class="p">,</span> <span class="s1">'uid'</span><span class="p">,</span> <span class="s1">'gid'</span> <span class="p">,</span><span class="s1">'info'</span> <span class="p">,</span><span class="s1">'home'</span> <span class="p">,</span><span class="s1">'shell'</span><span class="p">],</span> <span class="ss">:col_sep</span> <span class="o">=&gt;</span> <span class="s1">':'</span><span class="p">})</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Table mode:col_or_row row_count:4&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge1" encrypt:"$6$17ed5828ed832c5$3KWXpvu9tyOF5UEGswbahSQVAYRMt7ZEoxiMOT./8or8ipRrpL090sD.AowBeFyDAEIxBhxzG4DA/nqnzhHWR1" uid:99 gid:99 info:"hoge1-san" home:"/home/hoge1" shell:"/sbin/nologin"&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge2" encrypt:"$6$1a4a5969f81da2d$kT.LO1omkKavQs/kkh24ZnZO5o/FxlFfjVMverUr9iA4pL/iiEBCNwla.pLi3zlHAhCA4jr056msXD5CwAGk/." uid:99 gid:99 info:"hoge2-san" home:"/home/hoge2" shell:"/sbin/nologin"&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="ss">:info</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="s2">"hoge3-san"</span>
+</pre></div>
+</div>
+
+<p>ファイルの各行が<code>CSV::ROW</code>のオブジェクトになって色々と取り回しやすくなりましたね。</p>
+
+<h2>
+<span id="表示するstringに変換する-to_csv" class="fragment"></span><a href="#%E8%A1%A8%E7%A4%BA%E3%81%99%E3%82%8Bstring%E3%81%AB%E5%A4%89%E6%8F%9B%E3%81%99%E3%82%8B-to_csv"><i class="fa fa-link"></i></a>表示する(Stringに変換する) [to_csv]</h2>
+
+<p>無事にRubyのオブジェクトとして取り込めたので、<code>:write_headers</code>オプションの有り無しで表示してみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_show</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="nb">puts</span> <span class="n">table</span><span class="p">.</span><span class="nf">to_csv</span><span class="p">(</span><span class="ss">:write_headers</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span> <span class="ss">:col_sep</span> <span class="o">=&gt;</span> <span class="s1">':'</span><span class="p">)</span>
+<span class="nb">name</span><span class="ss">:encrypt:uid:gid:info:home:shell</span>
+<span class="n">hoge1</span><span class="p">:</span><span class="vg">$6$17ed5828ed832c5$3KWXpvu9tyOF5UEGswbahSQVAYRMt7ZEoxiMOT</span><span class="p">.</span><span class="nf">/</span><span class="mi">8</span><span class="n">or8ipRrpL090sD</span><span class="o">.</span><span class="no">AowBeFyDAEIxBhxzG4DA</span><span class="o">/</span><span class="n">nqnzhHWR1</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge1</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge1</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="n">hoge2</span><span class="p">:</span><span class="vg">$6$1a4a5969f81da2d$kT</span><span class="o">.</span><span class="no">LO1omkKavQs</span><span class="o">/</span><span class="n">kkh24ZnZO5o</span><span class="o">/</span><span class="no">FxlFfjVMverUr9iA4pL</span><span class="o">/</span><span class="n">iiEBCNwla</span><span class="p">.</span><span class="nf">pLi3zlHAhCA4jr056msXD5CwAGk</span><span class="o">/.</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge2</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge2</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="n">hoge3</span><span class="p">:</span><span class="vg">$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs</span><span class="o">.</span><span class="mi">16</span><span class="no">UGNn0</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge3</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge3</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="nb">puts</span> <span class="n">table</span><span class="p">.</span><span class="nf">to_csv</span><span class="p">(</span><span class="ss">:write_headers</span> <span class="o">=&gt;</span> <span class="kp">false</span><span class="p">,</span> <span class="ss">:col_sep</span> <span class="o">=&gt;</span> <span class="s1">':'</span><span class="p">)</span>
+<span class="n">hoge1</span><span class="p">:</span><span class="vg">$6$17ed5828ed832c5$3KWXpvu9tyOF5UEGswbahSQVAYRMt7ZEoxiMOT</span><span class="p">.</span><span class="nf">/</span><span class="mi">8</span><span class="n">or8ipRrpL090sD</span><span class="o">.</span><span class="no">AowBeFyDAEIxBhxzG4DA</span><span class="o">/</span><span class="n">nqnzhHWR1</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge1</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge1</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="n">hoge2</span><span class="p">:</span><span class="vg">$6$1a4a5969f81da2d$kT</span><span class="o">.</span><span class="no">LO1omkKavQs</span><span class="o">/</span><span class="n">kkh24ZnZO5o</span><span class="o">/</span><span class="no">FxlFfjVMverUr9iA4pL</span><span class="o">/</span><span class="n">iiEBCNwla</span><span class="p">.</span><span class="nf">pLi3zlHAhCA4jr056msXD5CwAGk</span><span class="o">/.</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge2</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge2</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="n">hoge3</span><span class="p">:</span><span class="vg">$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs</span><span class="o">.</span><span class="mi">16</span><span class="no">UGNn0</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge3</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge3</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+</pre></div>
+</div>
+
+<p>加工後に保存する際の中身としても問題なさそうです。</p>
+
+<h2>
+<span id="探す-find-find_by_index" class="fragment"></span><a href="#%E6%8E%A2%E3%81%99-find-find_by_index"><i class="fa fa-link"></i></a>探す [find, find_by_index]</h2>
+
+<p>では<code>CSV.table</code>から任意のレコードを探してみます。</p>
+
+<h3>
+<span id="ユーザ名から行get" class="fragment"></span><a href="#%E3%83%A6%E3%83%BC%E3%82%B6%E5%90%8D%E3%81%8B%E3%82%89%E8%A1%8Cget"><i class="fa fa-link"></i></a>ユーザ名から行Get</h3>
+
+<p>行を取得するには<code>#find</code>を使います。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_find_by_name</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">user</span> <span class="o">=</span> <span class="n">table</span><span class="p">.</span><span class="nf">find</span> <span class="p">{</span> <span class="o">|</span><span class="n">row</span><span class="o">|</span> <span class="n">row</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'hoge2'</span> <span class="p">}</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge2" encrypt:"$6$1a4a5969f81da2d$kT.LO1omkKavQs/kkh24ZnZO5o/FxlFfjVMverUr9iA4pL/iiEBCNwla.pLi3zlHAhCA4jr056msXD5CwAGk/." uid:99 gid:99 info:"hoge2-san" home:"/home/hoge2" shell:"/sbin/nologin"&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">user</span><span class="p">[</span><span class="ss">:encrypt</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="s2">"$6$1a4a5969f81da2d$kT.LO1omkKavQs/kkh24ZnZO5o/FxlFfjVMverUr9iA4pL/iiEBCNwla.pLi3zlHAhCA4jr056msXD5CwAGk/."</span><span class="sb">```
+</span></pre></div>
+</div>
+
+<p>最初にヒットしたものを<code>CSV::ROW</code>として利用できます。</p>
+
+<h3>
+<span id="目的ユーザの行インデックスを取得する" class="fragment"></span><a href="#%E7%9B%AE%E7%9A%84%E3%83%A6%E3%83%BC%E3%82%B6%E3%81%AE%E8%A1%8C%E3%82%A4%E3%83%B3%E3%83%87%E3%83%83%E3%82%AF%E3%82%B9%E3%82%92%E5%8F%96%E5%BE%97%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>目的ユーザの行インデックスを取得する</h3>
+
+<p><code>#find_index</code>ではヒットしたレコードのインデックスを得られます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_find_by_index</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">.</span><span class="nf">find_index</span> <span class="p">{</span><span class="o">|</span><span class="n">x</span><span class="o">|</span> <span class="n">x</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'hoge3'</span><span class="p">}</span>
+<span class="o">=&gt;</span> <span class="mi">2</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge3" encrypt:"$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs.16UGNn0" uid:99 gid:99 info:"hoge3-san" home:"/home/hoge3" shell:"/sbin/nologin"&gt;</span>
+</pre></div>
+</div>
+
+<p>インデックスを使っても目的の行を取得することができます。</p>
+
+<h2>
+<span id="検索して更新する" class="fragment"></span><a href="#%E6%A4%9C%E7%B4%A2%E3%81%97%E3%81%A6%E6%9B%B4%E6%96%B0%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>検索して更新する</h2>
+
+<p>先程の<code>#find_index</code>を利用して、新しいパスワードを設定してみます。ユーザ<code>hoge3</code>に対しパスワードを<code>update_passwd3</code>とします。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_update</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge3" encrypt:"$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs.16UGNn0" uid:99 gid:99 info:"hoge3-san" home:"/home/hoge3" shell:"/sbin/nologin"&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="p">(</span><span class="n">table</span><span class="p">[</span><span class="n">table</span><span class="p">.</span><span class="nf">find_index</span> <span class="p">{</span><span class="o">|</span><span class="n">x</span><span class="o">|</span> <span class="n">x</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'hoge3'</span><span class="p">}])[</span><span class="ss">:encrypt</span><span class="p">]</span> <span class="o">=</span> <span class="n">build_encrypt_by_plane</span><span class="p">(</span><span class="s1">'update_passwd3'</span><span class="p">)</span>
+<span class="o">=&gt;</span> <span class="s2">"$6$fd75fc6a14847b3$CHMTRMkQg3WHqTh.6OrTiahpuPvnoO4IFWFRHWjepXujMdb8NcJFwqeuSH4OCcgi8jaZu.q1Ht7e13RK9YKwW."</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge3" encrypt:"$6$fd75fc6a14847b3$CHMTRMkQg3WHqTh.6OrTiahpuPvnoO4IFWFRHWjepXujMdb8NcJFwqeuSH4OCcgi8jaZu.q1Ht7e13RK9YKwW." uid:99 gid:99 info:"hoge3-san" home:"/home/hoge3" shell:"/sbin/nologin"&gt;</span>
+</pre></div>
+</div>
+
+<p><code>encrypt</code>フィールドの中身が更新されました、行単位の更新も同じように可能です。</p>
+
+<h2>
+<span id="加える-" class="fragment"></span><a href="#%E5%8A%A0%E3%81%88%E3%82%8B-"><i class="fa fa-link"></i></a>加える [&lt;&lt;]</h2>
+
+<p>新しいユーザを作成する要領です。</p>
+
+<p><code>CSV::Row</code>のインスタンスを任意の内容で作成し、<code>#&lt;&lt;</code>でテーブルに行を追加します。<br>
+ユーザ<code>hoge4</code>をパスワード<code>password4</code>で作成します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_find</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">new_row</span> <span class="o">=</span> <span class="no">CSV</span><span class="o">::</span><span class="no">Row</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+  <span class="p">[</span><span class="ss">:name</span><span class="p">,</span><span class="ss">:encrypt</span><span class="p">,</span><span class="ss">:uid</span><span class="p">,</span><span class="ss">:gid</span><span class="p">,</span><span class="ss">:info</span><span class="p">,</span><span class="ss">:home</span><span class="p">,</span><span class="ss">:shell</span><span class="p">],</span>  
+  <span class="p">[</span><span class="s1">'hoge4'</span><span class="p">,</span> <span class="n">build_encrypt_by_plane</span><span class="p">(</span><span class="s1">'password4'</span><span class="p">),</span> <span class="mi">99</span><span class="p">,</span> <span class="mi">99</span><span class="p">,</span> <span class="s1">'hoge4-san'</span><span class="p">,</span> <span class="s1">'/home/hoge4'</span><span class="p">,</span> <span class="s1">'/sbin/nologin'</span><span class="p">]</span>  
+<span class="p">)</span>  
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge4" encrypt:"$6$b0782018ad3bf4a$hGkXfKKV0wY0OM2KcvvhLs86izBDd46HEwf1ZgD0NIHdmj7n.J54S/p0IHQ43AVUlgyb/nLDexXIvYE1qjkRg0" uid:99 gid:99 info:"hoge4-san" home:"/home/hoge4" shell:"/sbin/nologin"&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span> <span class="o">&lt;&lt;</span> <span class="n">new_row</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Table mode:col_or_row row_count:5&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge4" encrypt:"$6$b0782018ad3bf4a$hGkXfKKV0wY0OM2KcvvhLs86izBDd46HEwf1ZgD0NIHdmj7n.J54S/p0IHQ43AVUlgyb/nLDexXIvYE1qjkRg0" uid:99 gid:99 info:"hoge4-san" home:"/home/hoge4" shell:"/sbin/nologin"&gt;</span>
+
+<span class="c1">## 既に居るユーザなら追加しない</span>
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span> <span class="o">&lt;&lt;</span> <span class="n">new_row</span> <span class="k">unless</span> <span class="n">table</span><span class="p">.</span><span class="nf">find</span> <span class="p">{</span><span class="o">|</span><span class="n">row</span><span class="o">|</span> <span class="n">row</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'hoge4'</span> <span class="p">}</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+
+</pre></div>
+</div>
+
+<p><code>#push</code>で複数のレコードを同時に追加もできるようです。</p>
+
+<h2>
+<span id="削除する-delete-delete_if" class="fragment"></span><a href="#%E5%89%8A%E9%99%A4%E3%81%99%E3%82%8B-delete-delete_if"><i class="fa fa-link"></i></a>削除する [delete, delete_if]</h2>
+
+<p>任意の行を削除するには<code>#delete</code> または <code>#delete_if</code>です。<br>
+ユーザ<code>hoge2</code>の行を削除します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_delete</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">.</span><span class="nf">delete</span> <span class="n">table</span><span class="p">.</span><span class="nf">find_index</span> <span class="p">{</span><span class="o">|</span><span class="n">x</span><span class="o">|</span> <span class="n">x</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'hoge2'</span><span class="p">}</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Row name:"hoge2" encrypt:"$6$1a4a5969f81da2d$kT.LO1omkKavQs/kkh24ZnZO5o/FxlFfjVMverUr9iA4pL/iiEBCNwla.pLi3zlHAhCA4jr056msXD5CwAGk/." uid:99 gid:99 info:"hoge2-san" home:"/home/hoge2" shell:"/sbin/nologin"&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">.</span><span class="nf">delete</span> <span class="n">table</span><span class="p">.</span><span class="nf">find_index</span> <span class="p">{</span><span class="o">|</span><span class="n">x</span><span class="o">|</span> <span class="n">x</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'hoge2'</span><span class="p">}</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="kp">nil</span><span class="p">,</span> <span class="kp">nil</span><span class="p">]</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="nb">puts</span> <span class="n">table</span><span class="p">.</span><span class="nf">to_csv</span><span class="p">(</span><span class="ss">:write_headers</span> <span class="o">=&gt;</span> <span class="kp">false</span><span class="p">,</span> <span class="ss">:col_sep</span> <span class="o">=&gt;</span> <span class="s1">':'</span><span class="p">)</span>
+<span class="n">hoge1</span><span class="p">:</span><span class="vg">$6$17ed5828ed832c5$3KWXpvu9tyOF5UEGswbahSQVAYRMt7ZEoxiMOT</span><span class="p">.</span><span class="nf">/</span><span class="mi">8</span><span class="n">or8ipRrpL090sD</span><span class="o">.</span><span class="no">AowBeFyDAEIxBhxzG4DA</span><span class="o">/</span><span class="n">nqnzhHWR1</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge1</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge1</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="n">hoge3</span><span class="p">:</span><span class="vg">$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs</span><span class="o">.</span><span class="mi">16</span><span class="no">UGNn0</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge3</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge3</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+
+<span class="c1"># -------Reload table</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">table</span><span class="p">.</span><span class="nf">delete_if</span> <span class="p">{</span><span class="o">|</span><span class="n">row</span><span class="o">|</span> <span class="n">row</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'hoge2'</span><span class="p">}</span>
+<span class="o">=&gt;</span> <span class="c1">#&lt;CSV::Table mode:col_or_row row_count:3&gt;</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="nb">puts</span> <span class="n">table</span><span class="p">.</span><span class="nf">to_csv</span><span class="p">(</span><span class="ss">:write_headers</span> <span class="o">=&gt;</span> <span class="kp">false</span><span class="p">,</span> <span class="ss">:col_sep</span> <span class="o">=&gt;</span> <span class="s1">':'</span><span class="p">)</span>
+<span class="n">hoge1</span><span class="p">:</span><span class="vg">$6$17ed5828ed832c5$3KWXpvu9tyOF5UEGswbahSQVAYRMt7ZEoxiMOT</span><span class="p">.</span><span class="nf">/</span><span class="mi">8</span><span class="n">or8ipRrpL090sD</span><span class="o">.</span><span class="no">AowBeFyDAEIxBhxzG4DA</span><span class="o">/</span><span class="n">nqnzhHWR1</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge1</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge1</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="n">hoge3</span><span class="p">:</span><span class="vg">$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs</span><span class="o">.</span><span class="mi">16</span><span class="no">UGNn0</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge3</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge3</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+</pre></div>
+</div>
+
+<p><code>#delete</code> は indexを渡すと消してくれるんですが、消すとindexが詰められて普通に<code>Fixnum</code>を渡すと冪等にならないので<code>find</code>を使っています。<br>
+<code>#delete_if</code>は戻りのオブジェクトが<code>CSV::Table</code>なので、対象のレコードがあってもなくても結果に違いがありません。</p>
+
+<p>この点はちょっと注意が必要かもしれませんね。</p>
+
+<h2>
+<span id="書き出す" class="fragment"></span><a href="#%E6%9B%B8%E3%81%8D%E5%87%BA%E3%81%99"><i class="fa fa-link"></i></a>書き出す</h2>
+
+<p>加工が終わったらファイルに書き出します。Chefなら<code>Resource::File</code>または<code>LWRP</code>でやるところですがとりあえず<code>File.open</code>で。<br>
+先程の<code>user2</code>を消す処理を施した内容で出力してみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Pry_output_to_file</span></div>
+<div class="highlight"><pre><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">File</span><span class="p">.</span><span class="nf">open</span><span class="p">(</span><span class="s1">'ftpd.passwd_new'</span><span class="p">,</span><span class="s1">'w'</span><span class="p">)</span> <span class="p">{</span><span class="o">|</span><span class="n">f</span><span class="o">|</span> <span class="n">f</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="n">table</span><span class="p">.</span><span class="nf">to_csv</span><span class="p">(</span><span class="ss">:write_headers</span> <span class="o">=&gt;</span> <span class="kp">false</span><span class="p">,</span> <span class="ss">:col_sep</span> <span class="o">=&gt;</span> <span class="s1">':'</span><span class="p">))}</span>
+<span class="o">=&gt;</span> <span class="mi">308</span>
+
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="p">.</span><span class="nf">cat</span> <span class="n">ftpd</span><span class="p">.</span><span class="nf">passwd_new</span>
+<span class="n">hoge1</span><span class="p">:</span><span class="vg">$6$17ed5828ed832c5$3KWXpvu9tyOF5UEGswbahSQVAYRMt7ZEoxiMOT</span><span class="p">.</span><span class="nf">/</span><span class="mi">8</span><span class="n">or8ipRrpL090sD</span><span class="o">.</span><span class="no">AowBeFyDAEIxBhxzG4DA</span><span class="o">/</span><span class="n">nqnzhHWR1</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge1</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge1</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+<span class="n">hoge3</span><span class="p">:</span><span class="vg">$6$031669a10a1ff3b$BNDb4nGS1cxGfJzKJntaegQZ8NkOKFKr2S6zJsyFO5Ph6TbD0nCMUtbIVN1KqPhUIItcLU35I2gHjs</span><span class="o">.</span><span class="mi">16</span><span class="no">UGNn0</span><span class="p">:</span><span class="mi">99</span><span class="p">:</span><span class="mi">99</span><span class="ss">:hoge3</span><span class="o">-</span><span class="n">san</span><span class="ss">:/</span><span class="n">home</span><span class="o">/</span><span class="n">hoge3</span><span class="ss">:/</span><span class="n">sbin</span><span class="o">/</span><span class="n">nologin</span>
+</pre></div>
+</div>
+
+<p>構成管理フレームワークを使わない場合は、元のファイルを事前にコピーなどしておくと良いかもしれませんな。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>使いやすいCRUDのインターフェイスがなかったり、ぱっと見よく分からんフォーマットの生ファイルも、そもそもそれを使うプログラムがパースしやすいようになっています。合わせてあげるのはそれほど難しいことではないのかもしれません。<br>
+なお、<code>httpd</code>の設定とかはおとなしくテンプレート使います。</p>

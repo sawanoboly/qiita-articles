@@ -1,0 +1,166 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>bindで管理しているDNSのゾーンをAWSのRoute53に移行したくなったので作成。<br>
+ゾーンファイルを読み込んでRoute53上にレコードを登録します。</p>
+
+<p>ついでに御存知の通り<code>dig</code>コマンドの出力はゾーンファイルにそのまま使えるので、digの結果パイプでスクリプトに渡せばroute53に適当に登録する実験も。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">to_route53.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'zonefile'</span>
+<span class="nb">require</span> <span class="s1">'route53'</span>
+
+<span class="n">my_access_key</span> <span class="o">=</span> <span class="s1">'REPLACE_TO_YOUR_KEY'</span>
+<span class="n">my_secret_key</span> <span class="o">=</span> <span class="s1">'REPLACE_TO_YOUR_SECRET'</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="s1">'example.com.'</span>
+<span class="n">zone_id</span> <span class="o">=</span> <span class="s1">'/hostedzone/ZONEID'</span>
+
+<span class="n">default_ttl</span> <span class="o">=</span> <span class="s1">'600'</span>
+<span class="n">conn</span> <span class="o">=</span> <span class="no">Route53</span><span class="o">::</span><span class="no">Connection</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">my_access_key</span><span class="p">,</span><span class="n">my_secret_key</span><span class="p">,</span><span class="s1">'2011-05-05'</span> <span class="p">,</span> <span class="s1">'https://route53.amazonaws.com/'</span><span class="p">,</span><span class="kp">false</span><span class="p">)</span>
+<span class="c1">## you may need to use this blanch due to ssl verify error.</span>
+<span class="c1">## https://github.com/higanworks/ruby_route_53/tree/add_option_ssl_no_verify</span>
+<span class="c1"># conn = Route53::Connection.new(my_access_key,my_secret_key,'2011-05-05' , 'https://route53.amazonaws.com/',false , true)</span>
+
+<span class="n">mng_zone</span> <span class="o">=</span> <span class="no">Route53</span><span class="o">::</span><span class="no">Zone</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span><span class="n">zone_id</span><span class="p">,</span><span class="n">conn</span><span class="p">)</span>
+
+<span class="n">zonefile</span> <span class="o">=</span> <span class="no">Zonefile</span><span class="p">.</span><span class="nf">from_file</span><span class="p">(</span><span class="s1">'./example.com.zone'</span><span class="p">)</span>
+<span class="c1"># zonefile = Zonefile.new($stdin.read)</span>
+
+<span class="k">def</span> <span class="nf">build_namelist</span><span class="p">(</span><span class="n">records</span><span class="p">)</span>
+  <span class="n">records</span><span class="p">.</span><span class="nf">map</span><span class="p">{</span><span class="o">|</span><span class="n">obj</span><span class="o">|</span> <span class="n">obj</span><span class="p">[</span><span class="ss">:name</span><span class="p">]}.</span><span class="nf">uniq</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">build_hostlist</span><span class="p">(</span><span class="nb">name</span><span class="p">,</span> <span class="n">records</span><span class="p">)</span>
+  <span class="n">hosts</span> <span class="o">=</span> <span class="p">[]</span>
+  <span class="n">records</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">rec</span><span class="o">|</span>
+    <span class="n">hosts</span> <span class="o">&lt;&lt;</span> <span class="n">rec</span><span class="p">[</span><span class="ss">:host</span><span class="p">]</span> <span class="k">if</span> <span class="nb">name</span> <span class="o">==</span> <span class="n">rec</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span>
+  <span class="k">end</span>
+  <span class="n">hosts</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">build_mx_hostlist</span><span class="p">(</span><span class="n">records</span><span class="p">)</span>
+  <span class="n">records</span><span class="p">.</span><span class="nf">map</span><span class="p">{</span><span class="o">|</span><span class="n">mx</span><span class="o">|</span> <span class="p">[</span><span class="n">mx</span><span class="p">[</span><span class="ss">:pri</span><span class="p">].</span><span class="nf">to_s</span><span class="p">,</span> <span class="n">mx</span><span class="p">[</span><span class="ss">:host</span><span class="p">]].</span><span class="nf">join</span><span class="p">(</span><span class="s1">' '</span><span class="p">)}</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">prepare_ttl</span><span class="p">(</span><span class="nb">name</span><span class="p">,</span> <span class="n">records</span><span class="p">)</span>
+  <span class="n">records</span><span class="p">.</span><span class="nf">select</span><span class="p">{</span><span class="o">|</span><span class="n">x</span><span class="o">|</span> <span class="n">x</span><span class="p">[</span><span class="ss">:name</span><span class="p">]</span> <span class="o">==</span> <span class="n">records</span><span class="p">}.</span><span class="nf">first</span><span class="p">.</span><span class="nf">tap</span> <span class="k">do</span> <span class="o">|</span><span class="n">x</span><span class="o">|</span>
+    <span class="k">break</span> <span class="n">x</span><span class="p">[</span><span class="ss">:ttl</span><span class="p">]</span> <span class="k">if</span> <span class="n">x</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="sx">%w(a cname txt mx)</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">w</span><span class="o">|</span>
+  <span class="n">namelist</span> <span class="o">=</span> <span class="n">build_namelist</span><span class="p">(</span><span class="n">zonefile</span><span class="p">.</span><span class="nf">records</span><span class="p">[</span><span class="n">w</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">])</span>
+
+  <span class="n">namelist</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="nb">name</span><span class="o">|</span>
+    <span class="n">hosts</span> <span class="o">=</span> <span class="n">build_hostlist</span><span class="p">(</span><span class="nb">name</span><span class="p">,</span> <span class="n">zonefile</span><span class="p">.</span><span class="nf">records</span><span class="p">[</span><span class="n">w</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">])</span>
+    <span class="n">ttl</span> <span class="o">=</span> <span class="n">prepare_ttl</span><span class="p">(</span><span class="nb">name</span><span class="p">,</span> <span class="n">zonefile</span><span class="p">.</span><span class="nf">records</span><span class="p">[</span><span class="n">w</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">])</span> <span class="o">||</span> <span class="n">default_ttl</span>
+    <span class="k">case</span> <span class="n">w</span>
+    <span class="k">when</span> <span class="s1">'a'</span>
+      <span class="k">if</span>  <span class="nb">name</span> <span class="o">==</span> <span class="s1">'@'</span>
+        <span class="n">new_name</span> <span class="o">=</span> <span class="n">domain</span>
+      <span class="k">elsif</span> <span class="nb">name</span><span class="p">.</span><span class="nf">end_with?</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span>
+        <span class="n">new_name</span> <span class="o">=</span> <span class="nb">name</span>
+      <span class="k">else</span>
+        <span class="n">new_name</span> <span class="o">=</span> <span class="p">[</span><span class="nb">name</span> <span class="p">,</span><span class="n">domain</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span>
+      <span class="k">end</span>
+      <span class="n">new_record</span> <span class="o">=</span> <span class="no">Route53</span><span class="o">::</span><span class="no">DNSRecord</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">new_name</span><span class="p">,</span> <span class="n">w</span><span class="p">.</span><span class="nf">to_s</span><span class="p">.</span><span class="nf">upcase</span> <span class="p">,</span> <span class="n">ttl</span><span class="p">.</span><span class="nf">to_s</span><span class="p">,</span> <span class="n">hosts</span> <span class="p">,</span><span class="n">mng_zone</span><span class="p">)</span>
+    <span class="k">when</span> <span class="s1">'cname'</span>
+      <span class="k">if</span> <span class="nb">name</span><span class="p">.</span><span class="nf">end_with?</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span>
+        <span class="n">new_name</span> <span class="o">=</span> <span class="nb">name</span>
+      <span class="k">else</span>
+        <span class="n">hosts</span><span class="p">.</span><span class="nf">map!</span><span class="p">{</span><span class="o">|</span><span class="n">h</span><span class="o">|</span> <span class="p">[</span><span class="n">h</span><span class="p">,</span><span class="n">domain</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)}</span>
+        <span class="n">new_name</span> <span class="o">=</span> <span class="p">[</span><span class="nb">name</span> <span class="p">,</span><span class="n">domain</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span>
+      <span class="k">end</span>
+      <span class="n">new_record</span> <span class="o">=</span> <span class="no">Route53</span><span class="o">::</span><span class="no">DNSRecord</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">new_name</span><span class="p">,</span> <span class="n">w</span><span class="p">.</span><span class="nf">to_s</span><span class="p">.</span><span class="nf">upcase</span> <span class="p">,</span> <span class="n">ttl</span><span class="p">.</span><span class="nf">to_s</span><span class="p">,</span> <span class="n">hosts</span> <span class="p">,</span><span class="n">mng_zone</span><span class="p">)</span>
+    <span class="k">when</span> <span class="s1">'txt'</span>
+      <span class="n">zonefile</span><span class="p">.</span><span class="nf">records</span><span class="p">[</span><span class="n">w</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">].</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">record</span><span class="o">|</span>
+        <span class="n">new_record</span> <span class="o">=</span> <span class="no">Route53</span><span class="o">::</span><span class="no">DNSRecord</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">w</span><span class="p">.</span><span class="nf">to_s</span><span class="p">.</span><span class="nf">upcase</span> <span class="p">,</span> <span class="n">record</span><span class="p">[</span><span class="ss">:ttl</span><span class="p">]</span> <span class="o">||</span> <span class="n">default_ttl</span><span class="p">,</span> <span class="p">[</span><span class="n">record</span><span class="p">[</span><span class="ss">:text</span><span class="p">]]</span> <span class="p">,</span><span class="n">mng_zone</span><span class="p">)</span>
+    <span class="nb">puts</span> <span class="n">new_record</span>
+        <span class="n">new_record</span><span class="p">.</span><span class="nf">create</span>
+      <span class="k">end</span>
+      <span class="k">next</span>
+    <span class="k">when</span> <span class="s1">'mx'</span>
+      <span class="n">hosts</span> <span class="o">=</span> <span class="n">build_mx_hostlist</span><span class="p">(</span><span class="n">zonefile</span><span class="p">.</span><span class="nf">records</span><span class="p">[</span><span class="n">w</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">])</span>
+      <span class="n">new_record</span> <span class="o">=</span> <span class="no">Route53</span><span class="o">::</span><span class="no">DNSRecord</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="nb">name</span><span class="p">,</span> <span class="n">w</span><span class="p">.</span><span class="nf">to_s</span><span class="p">.</span><span class="nf">upcase</span> <span class="p">,</span> <span class="n">ttl</span><span class="p">.</span><span class="nf">to_s</span><span class="p">,</span> <span class="n">hosts</span> <span class="p">,</span><span class="n">mng_zone</span><span class="p">)</span>
+    <span class="k">else</span>
+      <span class="nb">puts</span> <span class="s2">"Unsupport resource type detected. -&gt; </span><span class="si">#{</span><span class="n">w</span><span class="p">.</span><span class="nf">to_s</span><span class="p">.</span><span class="nf">upcase</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">end</span>
+
+    <span class="n">new_record</span><span class="p">.</span><span class="nf">create</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="使い方" class="fragment"></span><a href="#%E4%BD%BF%E3%81%84%E6%96%B9"><i class="fa fa-link"></i></a>使い方</h2>
+
+<h3>
+<span id="共通準備" class="fragment"></span><a href="#%E5%85%B1%E9%80%9A%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>共通準備</h3>
+
+<p>先にAWS Route53で移行対象のドメインをHosted Zonesに追加しておきます。<br>
+次に下記の箇所を各自のものに差し替えます。</p>
+
+<ul>
+<li>my_access_key = 'REPLACE_TO_YOUR_KEY'</li>
+<li>my_secret_key = 'REPLACE_TO_YOUR_SECRET'</li>
+<li>domain = 'example.com.'</li>
+<li>zone_id = '/hostedzone/ZONEID'</li>
+</ul>
+
+<h3>
+<span id="zoneファイルから" class="fragment"></span><a href="#zone%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%8B%E3%82%89"><i class="fa fa-link"></i></a>Zoneファイルから</h3>
+
+<ul>
+<li>zonefile = Zonefile.from_file('./example.com.zone')</li>
+</ul>
+
+<p>ここを自前のゾーンファイルに差し替えて実行すればOK。</p>
+
+<p><code>ruby ./to_route53.rb</code></p>
+
+<h3>
+<span id="digの出力から" class="fragment"></span><a href="#dig%E3%81%AE%E5%87%BA%E5%8A%9B%E3%81%8B%E3%82%89"><i class="fa fa-link"></i></a>digの出力から</h3>
+
+<p>zonefileを<code>$stdin</code>から作成するように切り替えます。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="c1"># zonefile = Zonefile.from_file('./example.com.zone')</span>
+<span class="n">zonefile</span> <span class="o">=</span> <span class="no">Zonefile</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="vg">$stdin</span><span class="p">.</span><span class="nf">read</span><span class="p">)</span>
+</pre></div></div>
+
+<p>で、パイプで渡します、必要なレコードをdigりましょう。</p>
+
+<p><code>dig hoge.example.com @8.8.8.8 | ruby ./to_route53.rb</code></p>
+
+<p>ローカルキャッシュを使われるとCNAMEがAに差し替わることがあるので、他所に聞きましょう。例ではGoogleの Public DNSを問い合わせ先に指定しています。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>dig hoge.example.com @8.8.8.8 | bundle <span class="nb">exec </span>ruby ./to_route53.rb
+hoge.l.example.com. A 600 192.168.15.73,192.168.15.75,192.168.15.71
+hoge.example.com. CNAME 600 hoge.l.example.com
+</pre></div></div>
+
+<p>こんなかんじでクエリ結果をroute53にもりもり登録出来ます。</p>
+
+<h2>
+<span id="後処理" class="fragment"></span><a href="#%E5%BE%8C%E5%87%A6%E7%90%86"><i class="fa fa-link"></i></a>後処理</h2>
+
+<p>レジストリのNSを<code>awsdns</code>に向けたら移行完了です、念のためレコードの確認はしておきましょう。</p>
+
+<h2>
+<span id="追記sslベリファイエラーが起こるとき" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98ssl%E3%83%99%E3%83%AA%E3%83%95%E3%82%A1%E3%82%A4%E3%82%A8%E3%83%A9%E3%83%BC%E3%81%8C%E8%B5%B7%E3%81%93%E3%82%8B%E3%81%A8%E3%81%8D"><i class="fa fa-link"></i></a>追記：SSLベリファイエラーが起こるとき</h2>
+
+<p>環境によっては<code>ruby_route53</code>の実行時にSSLベリファイエラーでコケることがあります。<br>
+その時はこちらのブランチを使います。</p>
+
+<p><code>https://github.com/higanworks/ruby_route_53/tree/add_option_ssl_no_verify</code></p>
+
+<p>で、<code>Route53::Connection.new</code>の引数に最後一つ<code>true</code>を追加すれば実行できます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># conn = Route53::Connection.new(my_access_key,my_secret_key,'2011-05-05' , 'https://route53.amazonaws.com/',false)
+conn = Route53::Connection.new(my_access_key,my_secret_key,'2011-05-05' , 'https://route53.amazonaws.com/',false , true)
+</pre></div></div>

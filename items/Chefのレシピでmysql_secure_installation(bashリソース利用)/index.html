@@ -1,0 +1,92 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>まず<code>mysql_secure_installation</code>するじゃないですか。もののついでにChefでやっておこうと思いました。</p>
+
+<p><code>mysql_secure_installation</code>実行時の質問を抜粋。</p>
+
+<ol>
+<li>Change the root password [Y/n]</li>
+<li>Remove anonymous users? [Y/n]</li>
+<li>Disallow root login remotely? [Y/n] </li>
+<li>Remove test database and access to it? [Y/n] </li>
+<li>Reload privilege tables now? [Y/n]</li>
+</ol>
+
+<p>で、同様のことを実施。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">mysql_secure_install.rb</span></div>
+<div class="highlight"><pre><span class="n">bash</span> <span class="s1">'mysql_secure_install emulate'</span> <span class="k">do</span>
+  <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">"EOH"</span><span class="sh">
+    /usr/bin/mysqladmin drop test -f
+    /usr/bin/mysql -e "delete from user where user = '';" -D mysql
+    /usr/bin/mysql -e "delete from user where user = 'root' and host = </span><span class="se">\'</span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="ss">:hostname</span><span class="p">]</span><span class="si">}</span><span class="se">\'</span><span class="sh">;" -D mysql
+    /usr/bin/mysql -e "SET PASSWORD FOR 'root'@'::1' = PASSWORD('newpassword');" -D mysql
+    /usr/bin/mysql -e "SET PASSWORD FOR 'root'@'127.0.0.1' = PASSWORD('newpassword');" -D mysql
+    /usr/bin/mysql -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('newpassword');" -D mysql
+    /usr/bin/mysqladmin flush-privileges -pnewpassword
+</span><span class="no">  EOH</span>
+  <span class="n">action</span> <span class="ss">:run</span>
+  <span class="n">only_if</span> <span class="s2">"/usr/bin/mysql -u root -e 'show databases;'"</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>パスワードは<code>encrypted_data_bag</code>に置くとして、フルbashじゃないですか。</p>
+
+<blockquote>
+<p>追記： <code>3. Disallow root login remotely? [Y/n]</code>に当たる処理はコメント欄にある方が適切です。</p>
+</blockquote>
+
+<h2>
+<span id="result" class="fragment"></span><a href="#result"><i class="fa fa-link"></i></a>result</h2>
+
+<p>試してみます、パスワード無しでmysqlに接続できるようなら<code>mysql_secure_installation</code>相当の処理をさせます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">chef-apply</span></div>
+<div class="highlight"><pre><span class="c"># cat &lt;&lt;'EOL' | chef-apply -s</span>
+<span class="o">&gt;</span> bash <span class="s1">'mysql_secure_install emulate'</span> <span class="k">do</span>
+<span class="o">&gt;</span>   code &lt;&lt;-<span class="s2">"EOH"</span>
+<span class="o">&gt;</span>     /usr/bin/mysqladmin drop <span class="nb">test</span> <span class="nt">-f</span>
+<span class="o">&gt;</span>     /usr/bin/mysql <span class="nt">-e</span> <span class="s2">"delete from user where user = '';"</span> <span class="nt">-D</span> mysql
+<span class="o">&gt;</span>     /usr/bin/mysql <span class="nt">-e</span> <span class="s2">"delete from user where user = 'root' and host = </span><span class="se">\'</span><span class="s2">#{node[:hostname]}</span><span class="se">\'</span><span class="s2">;"</span> <span class="nt">-D</span> mysql
+<span class="o">&gt;</span>     /usr/bin/mysql <span class="nt">-e</span> <span class="s2">"SET PASSWORD FOR 'root'@'::1' = PASSWORD('newpassword');"</span> <span class="nt">-D</span> mysql
+<span class="o">&gt;</span>     /usr/bin/mysql <span class="nt">-e</span> <span class="s2">"SET PASSWORD FOR 'root'@'127.0.0.1' = PASSWORD('newpassword');"</span> <span class="nt">-D</span> mysql
+<span class="o">&gt;</span>     /usr/bin/mysql <span class="nt">-e</span> <span class="s2">"SET PASSWORD FOR 'root'@'localhost' = PASSWORD('newpassword');"</span> <span class="nt">-D</span> mysql
+<span class="o">&gt;</span>     /usr/bin/mysqladmin flush-privileges <span class="nt">-pnewpassword</span>
+<span class="o">&gt;</span>   EOH
+<span class="o">&gt;</span>   action :run
+<span class="o">&gt;</span>   only_if <span class="s2">"/usr/bin/mysql -u root -e 'show databases;'"</span>
+<span class="o">&gt;</span> end
+<span class="o">&gt;</span> EOL
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> bash[mysql_secure_install emulate] action run
+    - execute <span class="s2">"bash"</span>  <span class="s2">"/tmp/chef-script20130822-12249-10qdpq7-0"</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">mysql_user_table</span></div>
+<div class="highlight"><pre><span class="c"># mysql -e 'select user,host,password from user;' -D mysql -pnewpassword</span>
++------+-----------+-------------------------------------------+
+| user | host      | password                                  |
++------+-----------+-------------------------------------------+
+| root | localhost | <span class="k">*</span>FE4F2D624C07AAEBB979DA5C980D0250C37D8F63 |
+| root | 127.0.0.1 | <span class="k">*</span>FE4F2D624C07AAEBB979DA5C980D0250C37D8F63 |
+| root | ::1       | <span class="k">*</span>FE4F2D624C07AAEBB979DA5C980D0250C37D8F63 |
++------+-----------+-------------------------------------------+
+</pre></div>
+</div>
+
+<p>まあできてるか。</p>
+
+<p>２度目以降は<code>only_if</code>が効いてお断りしてくれます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>Recipe: (chef-apply cookbook)::(chef-apply recipe)
+  * bash[mysql_secure_install emulate] action run (skipped due to only_if)
+</pre></div></div>

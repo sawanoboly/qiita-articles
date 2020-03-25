@@ -1,0 +1,52 @@
+<p>HTTP/2のServer Pushって、Linkヘッダに対象のURIを入れたら<a href="https://h2o.examp1e.net" rel="nofollow noopener" target="_blank">h2o</a>とかがよろしくやってくれるそうだよ。</p>
+
+<p>じゃあRails4.2でLinkヘッダを差し込んで見る。</p>
+
+<h2>
+<span id="precompiled-assets" class="fragment"></span><a href="#precompiled-assets"><i class="fa fa-link"></i></a>Precompiled Assets</h2>
+
+<p>さて、renderに応じて必要なassetsの実際のパスが必要だね。<code>Rails.application.assets_manifest</code>に格納されているみたい。</p>
+
+<p>ちなみにフロント側のmrubyなどで現役Assetsのパスを拾いたい場合、パスがそれぞれ<code>.sprockets-manifest-(MD5ハッシュ).json</code>に書いてあるので、それを使うとよさそう。</p>
+
+<h2>
+<span id="linkヘッダの付与" class="fragment"></span><a href="#link%E3%83%98%E3%83%83%E3%83%80%E3%81%AE%E4%BB%98%E4%B8%8E"><i class="fa fa-link"></i></a>Linkヘッダの付与</h2>
+
+<p>とりあえずコントローラがこうだとします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>class ResourceController &lt; ApplicationController
+
+  def index
+  end
+
+end
+</pre></div></div>
+
+<p>やってみたアプリではフロントをRiotで書いたSPAにしてあるので、実際のコードも上記のまんまだったりします。</p>
+
+<p>とくにいじってないRailsなので<code>application.css</code>,<code>application.js</code>に対応するファイルをpush対象とすればよさげ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>class ResourceController &lt; ApplicationController
+  before_action :prepare_link_header # for server push
+
+  def index
+  end
+
+  protected
+
+  def prepare_link_header
+    push_keys = ['application.css', 'application.js']
+    prefix = String.new('/assets/')
+    push_paths = push_keys.map { |k| prefix + Rails.application.assets_manifest.assets[k] }
+
+    response.headers["Link"] = push_paths.map{|p| "&lt;#{p}&gt;; rel=preload"}.join("\n")
+  end
+
+end
+</pre></div></div>
+
+<p>一旦全部コントローラに書いてみた。これで一旦動作を確認しよう。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb735b894-f66e-e551-4246-b5ec9a7f9549.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=13c4e767f96cddbd0cac7b764e1bc672" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb735b894-f66e-e551-4246-b5ec9a7f9549.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=13c4e767f96cddbd0cac7b764e1bc672" alt="pushed.jpg" title="pushed.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/b735b894-f66e-e551-4246-b5ec9a7f9549.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fb735b894-f66e-e551-4246-b5ec9a7f9549.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=08df56b96acf1ea6b7662ec39ebb0395 1x" loading="lazy"></a></p>
+
+<p>pushedきたわ。</p>

@@ -1,0 +1,44 @@
+<p>気づいたら500くらいのリポジトリがあり、PRをたまに放置してしまっているのです。<br>
+とりいそぎプライベートトークンを発行し、その権限で取れるリポジトリ一覧からPR数だけ取得してみた。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'octokit'</span>
+
+<span class="vi">@client</span> <span class="o">=</span> <span class="no">Octokit</span><span class="o">::</span><span class="no">Client</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">:access_token</span> <span class="o">=&gt;</span> <span class="no">ENV</span><span class="p">[</span><span class="s2">"GH_TOKEN"</span><span class="p">])</span>
+<span class="vi">@client</span><span class="p">.</span><span class="nf">auto_paginate</span> <span class="o">=</span> <span class="kp">true</span>
+
+<span class="n">task</span> <span class="ss">:default</span> <span class="k">do</span>
+  <span class="n">repos</span> <span class="o">=</span> <span class="vi">@client</span><span class="p">.</span><span class="nf">repos</span>
+  <span class="n">repos</span><span class="p">.</span><span class="nf">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">repo</span><span class="o">|</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="vi">@client</span><span class="p">.</span><span class="nf">pull_requests</span><span class="p">(</span><span class="n">repo</span><span class="p">.</span><span class="nf">full_name</span><span class="p">,</span> <span class="ss">status: </span><span class="s2">"open"</span><span class="p">).</span><span class="nf">length</span>
+    <span class="nb">puts</span> <span class="p">[</span><span class="n">count</span><span class="p">,</span> <span class="n">repo</span><span class="p">.</span><span class="nf">full_name</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s2">" - "</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>担当やオーナで絞れば精度も良くなるが、とりいそぎ全部だ。</p>
+
+<h2>
+<span id="実行" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>実行。</h2>
+
+<p>まずは数と名前だけずらずらと。0はスキップでよかったかな。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ rake
+
+(略)
+
+0 - giraffi/dokku-pg-plugin
+0 - giraffi/dokku-postgresql-plugin
+1 - giraffi/dokku-slack - 
+0 - giraffi/dokku_sample_ruby
+
+(略)
+</pre></div></div>
+
+<p>完全放置(一例)発見!! ごめんなさい。</p>
+
+<p><a href="https://github.com/giraffi/dokku-slack/pull/1" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/giraffi/dokku-slack/pull/1</a></p>
+
+<p>あああ、丸一年放置していたのだね。ちょっとリマインダを開発しよう。</p>

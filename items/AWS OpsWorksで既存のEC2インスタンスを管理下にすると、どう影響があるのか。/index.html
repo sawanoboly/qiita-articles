@@ -1,0 +1,281 @@
+<p>OpsWorksは専用のインスタンスだけでなく、OpsWorks-Agentを導入することで既存のEC2インスタンスや他の環境にあるサーバを管理することができます。</p>
+
+<p>追加費用がかかるかどうかは、対象の環境で決まります。実はEC2にOpsWorks-Agentを入れる場合は費用がかかりません。</p>
+
+<ul>
+<li>EC2インスタンス - 無料</li>
+<li>EC2でないサーバ - 有料</li>
+</ul>
+
+<h2>
+<span id="opsworks管理下にしてよくなること" class="fragment"></span><a href="#opsworks%E7%AE%A1%E7%90%86%E4%B8%8B%E3%81%AB%E3%81%97%E3%81%A6%E3%82%88%E3%81%8F%E3%81%AA%E3%82%8B%E3%81%93%E3%81%A8"><i class="fa fa-link"></i></a>OpsWorks管理下にして、よくなること</h2>
+
+<ul>
+<li>ログインユーザの集中管理ができるようになる
+
+<ul>
+<li>loginのみとかsudoあり(Windowsならg:Administrator)とかのパーミッション
+
+<ul>
+<li>権限はスタック単位で変更</li>
+</ul>
+</li>
+<li>ユーザはIAMと連携</li>
+</ul>
+</li>
+<li>運用タスクをまとめてといろいろ出来るようになる
+
+<ul>
+<li>コマンド実行</li>
+<li>構成変更(Chefのレシピ)</li>
+<li>まとめられる単位はスタック全体、レイヤ。単品実行も一応OK。</li>
+</ul>
+</li>
+</ul>
+
+<p>等々、詳しいことはドキュメントとか、ムック本の『クラウド開発徹底攻略』を参照するとよかったりします。</p>
+
+<blockquote>
+<p>infrastructure-classをec2で使用するにはスタックのVPCとEC2のVPCをあわせる必要があります。infrastructure-classをon-premisesで登録する場合はVPCが関係ありませんが、無料かどうかは聞いていません。</p>
+</blockquote>
+
+<h2>
+<span id="opsworks-agent導入の影響" class="fragment"></span><a href="#opsworks-agent%E5%B0%8E%E5%85%A5%E3%81%AE%E5%BD%B1%E9%9F%BF"><i class="fa fa-link"></i></a>OpsWorks-Agent導入の影響</h2>
+
+<p>さて、それなら使ってみようか？となる際に、OpsWorks-Agentのインストールで少々構成が変わるのでまとめてみました。</p>
+
+<p>現行のChef12スタックでは主に次の影響があります。</p>
+
+<ul>
+<li>mot.dのバナーが変わる</li>
+<li>monitが(コンフィグ上書きで)インストールされる</li>
+<li>
+<code>/home/</code>にあるユーザで、同名は公開鍵が上書きされる</li>
+<li>hostsがスタックのインスタンス書き換わる</li>
+</ul>
+
+<p>で実際どんな感じでしょう？</p>
+
+<p>わりと影響を受けるタイプのAMIとして、<a href="https://aws.amazon.com/marketplace/pp/B00LWHVJH8" rel="nofollow noopener" target="_blank">WordPress powered by AMIMOTO (HVM)</a>を例に確認してみます。</p>
+
+<p>OpsWorks-Agentの導入は、ウィザードにそえばOKです。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1fa45cea-d048-5eb2-f5f3-b1d8f3de9fde.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1a0cb7fd082f41866a55dc30b1c1212a" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1fa45cea-d048-5eb2-f5f3-b1d8f3de9fde.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1a0cb7fd082f41866a55dc30b1c1212a" alt="Register_Instances_-_oldman_–_AWS_OpsWorks.jpg" title="Register_Instances_-_oldman_–_AWS_OpsWorks.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1fa45cea-d048-5eb2-f5f3-b1d8f3de9fde.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1fa45cea-d048-5eb2-f5f3-b1d8f3de9fde.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=7d6c64c47f7adb65a5f776c56d3644a9 1x" loading="lazy"></a></p>
+
+<p>なおaws-cliやChefも入りますが、/opt以下に閉じ込める形で同梱されています。大抵の環境では影響ないと思います。</p>
+
+<h3>
+<span id="motdのバナーが変わる" class="fragment"></span><a href="#motd%E3%81%AE%E3%83%90%E3%83%8A%E3%83%BC%E3%81%8C%E5%A4%89%E3%82%8F%E3%82%8B"><i class="fa fa-link"></i></a>mot.dのバナーが変わる</h3>
+
+<p>OpsWorks-Agentはバナーを書き換えます。</p>
+
+<p>導入前がこんなだったとしても、</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>Last login: Wed Apr  6 16:50:19 2016 from zaq3a55b3c8.zaq.ne.jp
+      ___         _            __
+     / _ | __ _  (_)_ _  ___  / /____
+    / __ |/  ' \/ /  ' \/ _ \/ __/ _ \
+   /_/ |_/_/_/_/_/_/_/_/\___/\__/\___/
+
+https://aws.amazon.com/amazon-linux-ami/2016.03-release-notes/
+
+ Nginx 1.9.15, PHP 5.6.21, Percona MySQL 5.6.29, WP-CLI 0.23.1
+
+ amimoto     http://www.amimoto-ami.com/
+ digitalcube https://en.digitalcube.jp/
+
+12 package(s) needed for security, out of 36 available
+Run "sudo yum update" to apply all updates.
+</pre></div></div>
+
+<p>導入後はこんな風に。そっけない。。<br>
+↓↓↓↓</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>Last login: Mon May 23 13:27:06 2016 from kd111107182054.au-net.ne.jp
+ This instance is managed with AWS OpsWorks.
+
+   ######  OpsWorks Summary  ######
+   Operating System: amazon 2016.03
+   OpsWorks Instance: ip-10-0-1-233
+   OpsWorks Instance ID: 90ce398d-ab61-454e-b601-dfe772133ddf
+   OpsWorks Layers: 
+   OpsWorks Stack: old-instances
+   EC2 Region: ap-northeast-1
+   EC2 Availability Zone: ap-northeast-1c
+   EC2 Instance ID: i-8af7ac05
+   Public IP: 52.196.235.47
+   Private IP: 10.0.1.233
+   VPC ID: vpc-xxxxxxx
+   Subnet ID: subnet-xxxxxxx
+
+ Visit http://aws.amazon.com/opsworks for more information.
+</pre></div></div>
+
+<p>まあこれはよしとしましょう。</p>
+
+<h3>
+<span id="monitがコンフィグ上書きでインストールされる" class="fragment"></span><a href="#monit%E3%81%8C%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%82%B0%E4%B8%8A%E6%9B%B8%E3%81%8D%E3%81%A7%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%95%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a>monitが(コンフィグ上書きで)インストールされる</h3>
+
+<p>環境によってはこれが一番影響が大きいかな。monitを既に利用している環境だと、事前にいくらか調整をしておくのがよいです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo monit summary
+monit: Cannot translate 'ip-10-0-1-233' to FQDN name -- Name or service not known
+The Monit daemon 5.2.5 uptime: 20m 
+
+Process 'php-fpm'                   running
+Directory 'php_tmp'                 accessible
+Directory 'php_session'             accessible
+Directory 'php_log'                 accessible
+Process 'nginx'                     running
+Directory 'nginx_cache'             accessible
+Directory 'nginx_lib'               accessible
+Directory 'nginx_lib_tmp'           accessible
+Directory 'nginx_log'               accessible
+Process 'mysql'                     running
+Process 'memcached'                 running
+Process 'crond'                     running
+System 'system_ip-10-0-1-233'       running
+</pre></div></div>
+
+<p>OpsWorks-Agentインストール前のmonit.conf</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">/etc/monit.conf</span></div>
+<div class="highlight"><pre>## This file modified by chef for 
+
+set daemon 30
+  with start delay 5
+
+set httpd port 2812 and
+  use address localhost
+  allow localhost
+
+
+include /etc/monit.d/*
+</pre></div>
+</div>
+
+<p>OpsWorks-Agentの導入後にmonit summaryを見ると、なんか少なくなってます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo monit summary
+The Monit daemon 5.2.5 uptime: 22m 
+
+Process 'opsworks-agent'            running
+File 'opsworks-agent-statistic-daemons-log' accessible
+File 'opsworks-agent-keep-alive-daemons-log' accessible
+System 'system_ip-10-0-1-233'       running
+</pre></div></div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>/etc/monit.conf 
+set daemon 60
+set mailserver localhost
+set eventqueue
+    basedir /var/monit
+    slots 100
+set logfile syslog
+Include /etc/monit.d/*.monitrc
+set httpd port 2812 and use the address localhost
+  allow localhost
+</pre></div></div>
+
+<p>monitを既に導入している場合、include用のファイル名を<code>monit.d/*.monitrc</code>に適合するように変更すれば元々あったコンフィグをまた使うことができます。</p>
+
+<p>とりあえず<code>/etc/monit.d/</code>以下はこんな状況になっていたりするので、</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo find /etc/monit.d/ -type f
+/etc/monit.d/
+/etc/monit.d/opsworks-agent.monitrc
+/etc/monit.d/memcached
+/etc/monit.d/nginx
+/etc/monit.d/crond
+/etc/monit.d/mysql
+/etc/monit.d/php-fpm
+/etc/monit.d/logging
+</pre></div></div>
+
+<p>たとえばfindでごっそり変更してmonitをリロードします。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo find /etc/monit.d -name '*monitrc' -prune -o -type f -exec mv {}{,.monitrc} \;
+$ find /etc/monit.d/
+/etc/monit.d/
+/etc/monit.d/crond.monitrc
+/etc/monit.d/nginx.monitrc
+/etc/monit.d/logging.monitrc
+/etc/monit.d/memcached.monitrc
+/etc/monit.d/php-fpm.monitrc
+/etc/monit.d/opsworks-agent.monitrc
+/etc/monit.d/mysql.monitrc
+</pre></div></div>
+
+<p>そしたら元からあったモニタリングも復活しますね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo monit summary
+The Monit daemon 5.2.5 uptime: 0m 
+
+Process 'php-fpm'                   running
+Directory 'php_tmp'                 accessible
+Directory 'php_session'             accessible
+Directory 'php_log'                 accessible
+Process 'opsworks-agent'            running
+File 'opsworks-agent-statistic-daemons-log' accessible
+File 'opsworks-agent-keep-alive-daemons-log' accessible
+Process 'nginx'                     running
+Directory 'nginx_cache'             accessible
+Directory 'nginx_lib'               accessible
+Directory 'nginx_lib_tmp'           accessible
+Directory 'nginx_log'               accessible
+Process 'mysql'                     running
+Process 'memcached'                 running
+Process 'crond'                     running
+System 'system_ip-10-0-1-233.localdomain' running
+</pre></div></div>
+
+<p><code>M/Monit</code>等導入済みで、<code>monit.conf</code>がもうちょい複雑ー、というケースもありそうですが、そういう所は自分でなんとかできるでしょう。</p>
+
+<h3>
+<span id="homeにあるユーザでローカルとiamが同名の場合公開鍵が上書きされる" class="fragment"></span><a href="#home%E3%81%AB%E3%81%82%E3%82%8B%E3%83%A6%E3%83%BC%E3%82%B6%E3%81%A7%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%A8iam%E3%81%8C%E5%90%8C%E5%90%8D%E3%81%AE%E5%A0%B4%E5%90%88%E5%85%AC%E9%96%8B%E9%8D%B5%E3%81%8C%E4%B8%8A%E6%9B%B8%E3%81%8D%E3%81%95%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a><code>/home/</code>にあるユーザで、ローカルとIAMが同名の場合公開鍵が上書きされる</h3>
+
+<p>これも段取り次第では戸惑うかもしれません。<code>ec2-user</code>は勝手に消えたりしないので大事にはならないと思います。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ls /home/
+ec2-user
+</pre></div></div>
+
+<p>とりあえず上書きされる予定のユーザを作って、適当な公開鍵をおいておきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo useradd -m sawanoboly
+[root@ip-10-0-1-233 ec2-user]# ls /home/
+ec2-user  sawanoboly
+
+
+$ sudo su sawanoboly -
+$ cd
+$ sh-keygen -t rsa -b 2048 
+...
+
+$ cat .ssh/id_rsa.pub | tee .ssh/authorized_keys
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC21yE8iItAbdZM9qIcirNkky5AuM6XbBsWZgkHlQ1khtNv8/C2ClYgUicCa0wfRBvq+HEdA9OLNx6kUAP9/Mu6m0+GYKP4u0SLz7+CYLch/R9A8wWJ/U3x5vC2zADvRM8SMcgxCU8Ne0ConAA/NeN8bgOs+xo5Jbv/BJ+DMlxeZhcOUJTST5df15ZdpseXjP3+ZWNnVYJfTUUec/Qb8UMjy83/6prL4x31eWKb7VvAeqSK69mJ3fHKeYTO6vs6Q2pJu3PYSDfXDxShMaqmeOaNaeH936UTuCm8RLb4KWTWWdtZMCfVyWct1gailCazi4eaOwLLz8MWysdo6YG4dQ+N sawanoboly@ip-10-0-1-233
+</pre></div></div>
+
+<p>で、OpsWorksのPermission画面でユーザ設定をちょこちょことつけてみます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F920e7235-13ca-006b-3cde-b8b1b2c390d5.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5cc06d068a04f0a0db452b1178b09e34" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F920e7235-13ca-006b-3cde-b8b1b2c390d5.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5cc06d068a04f0a0db452b1178b09e34" alt="Permissions_-_old-instances_–_AWS_OpsWorks.jpg" title="Permissions_-_old-instances_–_AWS_OpsWorks.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/920e7235-13ca-006b-3cde-b8b1b2c390d5.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F920e7235-13ca-006b-3cde-b8b1b2c390d5.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=f54beef04016b13cea4f24850efee531 1x" loading="lazy"></a></p>
+
+<p>OpsWorks-AgentによりChefが実行されるので、すぐユーザが増えてます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo ls /home/
+ec2-user  sawanoboly  webnoboly
+</pre></div></div>
+
+<p>既存ユーザの公開鍵がOpsWorks登録のものに書き換わりました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo cat /home/sawanoboly/.ssh/authorized_keys
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDK8O+7ANkBxa42yCVjd3xxofOhzUO1ThMDkdgnuw5AS.......
+</pre></div></div>
+
+<p>Permision操作の挙動は既存の<code>.ssh</code>ディレクトリの状況によって色々変わったりもするので、害のない範囲で試してからをおすすめします。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>もし個別にSSHログインして、それぞれ同じ作業とかをするようなEC2インスタンスが残っているならば、OpsWorks-Agentを突っ込んで、まとめて適用できるようにするのもよいかもしれません。</p>

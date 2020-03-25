@@ -1,0 +1,42 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>ほぼ本家<a href="https://rvm.io/integration/god/" rel="nofollow noopener" target="_blank">Using RVM with God</a> からの引用。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">cli</span></div>
+<div class="highlight"><pre>rvm wrapper 1.9.3-p194@fluentd bootup fluentd 
+</pre></div>
+</div>
+
+<p>とすると<code>/usr/local/rvm/bin/bootup_fluentd</code> というラッパーコマンドが完成する。</p>
+
+<p>中身はこう。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">/usr/local/rvm/bin/bootup_fluentd</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+
+<span class="k">if</span> <span class="o">[[</span> <span class="nt">-s</span> <span class="s2">"/usr/local/rvm/environments/ruby-1.9.3-p194@fluentd"</span> <span class="o">]]</span>
+<span class="k">then
+  </span><span class="nb">source</span> <span class="s2">"/usr/local/rvm/environments/ruby-1.9.3-p194@fluentd"</span>
+  <span class="nb">exec </span>fluentd <span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span>
+<span class="k">else
+  </span><span class="nb">echo</span> <span class="s2">"ERROR: Missing RVM environment file: '/usr/local/rvm/environments/ruby-1.9.3-p194@fluentd'"</span> <span class="o">&gt;</span>&amp;2
+  <span class="nb">exit </span>1
+<span class="k">fi</span>
+</pre></div>
+</div>
+
+<p>rvmのbin以下にもshbang用のアレコレあるけど、UPstart等から起動するにはこうしておくのがいい。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ruby
+-bash: ruby: command not found
+$ /usr/local/rvm/bin/bootup_fluentd --version
+fluentd 0.10.24
+</pre></div></div>
+
+<p>このようにRuby．．．なにそれ？という状態からも一発稼働。</p>

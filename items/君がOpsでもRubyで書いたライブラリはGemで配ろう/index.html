@@ -1,0 +1,338 @@
+
+
+<p><code>Infrastracture as code</code>流行の副産物として、もうOpsはある程度Rubyでライブラリを書けるようになりました。</p>
+
+<p>折角Rubyでライブラリを書いたなら、安全＆ラクに配布するためGemパッケージにしましょう、出来る人には今更でしょうが知らない人は真似してみてね。<br>
+ちなみに意外と誤解されてる点、<code>gemにする＝Rubygems.orgで公開する</code>、ではありません、してもOKというだけで。</p>
+
+<h2>
+<span id="目標" class="fragment"></span><a href="#%E7%9B%AE%E6%A8%99"><i class="fa fa-link"></i></a>目標</h2>
+
+<p>gemファイルを置いて、gemコマンドで自分のライブラリをサーバに導入する。</p>
+
+<p>こんなかんじで。<br>
+<code>gem install -l my_libs-0.0.1.gem</code></p>
+
+<p>じゃあやってみましょう。</p>
+
+<h2>
+<span id="gemの雛形をつくろう" class="fragment"></span><a href="#gem%E3%81%AE%E9%9B%9B%E5%BD%A2%E3%82%92%E3%81%A4%E3%81%8F%E3%82%8D%E3%81%86"><i class="fa fa-link"></i></a>Gemの雛形をつくろう</h2>
+
+<p>Gemの作り方は色々あるようですが、私はもっぱらbundlerです。<br>
+<code>bundle gem</code>で必要なファイル群を作成します、便利ですね。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>bundle gem my_libs
+      create  my_libs/Gemfile
+      create  my_libs/Rakefile
+      create  my_libs/LICENSE.txt
+      create  my_libs/README.md
+      create  my_libs/.gitignore
+      create  my_libs/my_libs.gemspec
+      create  my_libs/lib/my_libs.rb
+      create  my_libs/lib/my_libs/version.rb
+</pre></div>
+</div>
+
+<p>作られたファイルで、触るのはこれだけ。</p>
+
+<table>
+<thead>
+<tr>
+<th>ファイル名</th>
+<th>役割</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>my_libs.gemspec</td>
+<td>gemの説明と、依存する他のrubygemsがあればそれを記述します。設定ファイルのコメントくらいに捉えていればOK。</td>
+</tr>
+<tr>
+<td>lib/my_libs/version.rb</td>
+<td>このgemバージョンを書きます、zoneファイルのシリアルよろしく何かする度適当に増やしていきましょう。</td>
+</tr>
+<tr>
+<td>lib/my_libs.rb</td>
+<td>自前の関数をここに書きましょう。</td>
+</tr>
+</tbody>
+</table>
+
+<p>メインは<code>lib/my_libs.rb</code>です。</p>
+
+<h2>
+<span id="概要をgemspecに" class="fragment"></span><a href="#%E6%A6%82%E8%A6%81%E3%82%92gemspec%E3%81%AB"><i class="fa fa-link"></i></a>概要をgemspecに</h2>
+
+<p>初めにこのGemが何するものぞを記述する必要があります、特に難しいことではありません。</p>
+
+<p><code>my_libs.gemspec</code>の初期状態はこのようになっています。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">my_libs.gemspec(initial)</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+<span class="n">lib</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'../lib'</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+<span class="vg">$LOAD_PATH</span><span class="p">.</span><span class="nf">unshift</span><span class="p">(</span><span class="n">lib</span><span class="p">)</span> <span class="k">unless</span> <span class="vg">$LOAD_PATH</span><span class="p">.</span><span class="nf">include?</span><span class="p">(</span><span class="n">lib</span><span class="p">)</span>
+<span class="nb">require</span> <span class="s1">'my_libs/version'</span>
+
+<span class="no">Gem</span><span class="o">::</span><span class="no">Specification</span><span class="p">.</span><span class="nf">new</span> <span class="k">do</span> <span class="o">|</span><span class="n">spec</span><span class="o">|</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">name</span>          <span class="o">=</span> <span class="s2">"my_libs"</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">version</span>       <span class="o">=</span> <span class="no">MyLibs</span><span class="o">::</span><span class="no">VERSION</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">authors</span>       <span class="o">=</span> <span class="p">[</span><span class="s2">"sawanoboly"</span><span class="p">]</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">email</span>         <span class="o">=</span> <span class="p">[</span><span class="s2">"sawanoboriyu@higanworks.com"</span><span class="p">]</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">description</span>   <span class="o">=</span> <span class="sx">%q{TODO: Write a gem description}</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">summary</span>       <span class="o">=</span> <span class="sx">%q{TODO: Write a gem summary}</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">homepage</span>      <span class="o">=</span> <span class="s2">""</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">license</span>       <span class="o">=</span> <span class="s2">"MIT"</span>
+
+  <span class="n">spec</span><span class="p">.</span><span class="nf">files</span>         <span class="o">=</span> <span class="sb">`git ls-files`</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="vg">$/</span><span class="p">)</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">executables</span>   <span class="o">=</span> <span class="n">spec</span><span class="p">.</span><span class="nf">files</span><span class="p">.</span><span class="nf">grep</span><span class="p">(</span><span class="sr">%r{^bin/}</span><span class="p">)</span> <span class="p">{</span> <span class="o">|</span><span class="n">f</span><span class="o">|</span> <span class="no">File</span><span class="p">.</span><span class="nf">basename</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="p">}</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">test_files</span>    <span class="o">=</span> <span class="n">spec</span><span class="p">.</span><span class="nf">files</span><span class="p">.</span><span class="nf">grep</span><span class="p">(</span><span class="sr">%r{^(test|spec|features)/}</span><span class="p">)</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">require_paths</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"lib"</span><span class="p">]</span>
+
+  <span class="n">spec</span><span class="p">.</span><span class="nf">add_development_dependency</span> <span class="s2">"bundler"</span><span class="p">,</span> <span class="s2">"~&gt; 1.3"</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">add_development_dependency</span> <span class="s2">"rake"</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>親切なことに<strong>TODO</strong>がありますね、<code>my_libs.gemspec</code>この２行を編集します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">my_libs.gemspec</span></div>
+<div class="highlight"><pre>  <span class="n">spec</span><span class="p">.</span><span class="nf">description</span>   <span class="o">=</span> <span class="sx">%q{TODO: Write a gem description}</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">summary</span>       <span class="o">=</span> <span class="sx">%q{TODO: Write a gem summary}</span>
+</pre></div>
+</div>
+
+<p><code>description</code>と<code>summary</code>は意味的にそのままですが、今回は特に区別しません。短めにgemの説明を書いておきましょう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">my_libs.gemspec</span></div>
+<div class="highlight"><pre>  <span class="n">spec</span><span class="p">.</span><span class="nf">description</span>   <span class="o">=</span> <span class="sx">%q{ruby sample libs for me}</span>
+  <span class="n">spec</span><span class="p">.</span><span class="nf">summary</span>       <span class="o">=</span> <span class="sx">%q{ruby sample libs for me}</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="依存するrubygems" class="fragment"></span><a href="#%E4%BE%9D%E5%AD%98%E3%81%99%E3%82%8Brubygems"><i class="fa fa-link"></i></a>依存するRubyGems</h3>
+
+<p>自前ライブラリ内で他のgemを使いたいことがある場合は<code>my_libs.gemspec</code>に追加しておきます。</p>
+
+<p>RubyGems.orgで公開されている<code>twitter</code>が必要なら適当な箇所に１行この様に書けばOK、<code>gem install</code>実行時に警告を出してくれます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">my_libs.gemspec</span></div>
+<div class="highlight"><pre>  <span class="n">spec</span><span class="p">.</span><span class="nf">add_dependency</span> <span class="s1">'twitter'</span>
+</pre></div>
+</div>
+
+<p>今回は特に何も追加せずに先へいきましょう。</p>
+
+<h2>
+<span id="my_libを読み込んでみる" class="fragment"></span><a href="#my_lib%E3%82%92%E8%AA%AD%E3%81%BF%E8%BE%BC%E3%82%93%E3%81%A7%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>my_libを読み込んでみる</h2>
+
+<p>この時点ですでに他のgemのように機能します、中身はカラですが読み込んでみましょう。<br>
+Rubyの対話型インタプリタ<code>Irb</code>を起動します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Irb</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>bundle <span class="nb">exec </span>irb
+<span class="o">&gt;</span> require <span class="s1">'my_libs'</span>
+ <span class="o">=&gt;</span> <span class="nb">true</span> 
+<span class="o">&gt;</span> MyLibs
+MyLibs
+<span class="o">&gt;</span> MyLibs::VERSION
+ <span class="o">=&gt;</span> <span class="s2">"0.0.1"</span> 
+</pre></div>
+</div>
+
+<h2>
+<span id="ライブラリを書こう" class="fragment"></span><a href="#%E3%83%A9%E3%82%A4%E3%83%96%E3%83%A9%E3%83%AA%E3%82%92%E6%9B%B8%E3%81%93%E3%81%86"><i class="fa fa-link"></i></a>ライブラリを書こう</h2>
+
+<p>では<code>my_libs/lib/my_libs.rb</code>に自前ライブラリを書いて行きましょう、初期状態は下記です。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">my_libs/lib/my_libs.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s2">"my_libs/version"</span>
+
+<span class="k">module</span> <span class="nn">MyLibs</span>
+  <span class="c1"># Your code goes here...</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>こちらもわかりやすく<strong><code># Your code goes here…</code></strong>となっています。</p>
+
+<p>サンプルとして外から呼べる<code>hello</code>とinclude/extend用の<code>hello2</code>メソッドを実装します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">my_libs/lib/my_libs.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s2">"my_libs/version"</span>
+
+<span class="k">module</span> <span class="nn">MyLibs</span>
+  <span class="k">def</span> <span class="nc">self</span><span class="o">.</span><span class="nf">hello</span>
+    <span class="s1">'hello gem!'</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">hello2</span>
+    <span class="s1">'hello gem! 2'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>モジュールを記述したので、先程の要領で読み込んで使っていきましょう。</p>
+
+<h2>
+<span id="ライブラリのメソッドを実行しよう" class="fragment"></span><a href="#%E3%83%A9%E3%82%A4%E3%83%96%E3%83%A9%E3%83%AA%E3%81%AE%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89%E3%82%92%E5%AE%9F%E8%A1%8C%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>ライブラリのメソッドを実行しよう</h2>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Irb</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>bundle <span class="nb">exec </span>irb
+<span class="o">&gt;</span> require <span class="s1">'my_libs'</span>
+ <span class="o">=&gt;</span> <span class="nb">true</span> 
+
+<span class="o">&gt;</span> MyLibs.methods<span class="o">(</span><span class="nb">false</span><span class="o">)</span>
+ <span class="o">=&gt;</span> <span class="o">[</span>:hello] 
+
+<span class="o">&gt;</span> MyLibs.hello
+ <span class="o">=&gt;</span> <span class="s2">"hello gem!"</span> 
+
+<span class="o">&gt;</span> include MyLibs
+ <span class="o">=&gt;</span> Object 
+
+<span class="o">&gt;</span> self.methods.include?<span class="o">(</span>:hello2<span class="o">)</span>
+ <span class="o">=&gt;</span> <span class="nb">true</span> 
+
+<span class="o">&gt;</span> hello2
+ <span class="o">=&gt;</span> <span class="s2">"hello gem! 2"</span> 
+</pre></div>
+</div>
+
+<p><code>require 'my_libs'</code>から後なら<code>MyLibsモジュール</code>が使えるようになっていますね。<br>
+これを<code>gem install</code>で使えるようにするために、gemパッケージにします。</p>
+
+<h2>
+<span id="gemをビルドしよう" class="fragment"></span><a href="#gem%E3%82%92%E3%83%93%E3%83%AB%E3%83%89%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>Gemをビルドしよう</h2>
+
+<p><code>bundle gem</code>で作った雛形にはgemパッケージ用のタスクが含まれています。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rake <span class="nt">-vT</span>
+rake build    <span class="c"># Build my_libs-0.0.1.gem into the pkg directory.</span>
+rake <span class="nb">install</span>  <span class="c"># Build and install my_libs-0.0.1.gem into system gems.</span>
+rake release  <span class="c"># Create tag v0.0.1 and build and push my_libs-0.0.1.gem to Rubygems</span>
+</pre></div>
+</div>
+
+<p>このうち<code>rake build</code>がgemファイルを作るタスクです、早速実行してみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rake build
+my_libs 0.0.1 built to pkg/my_libs-0.0.1.gem.
+
+<span class="nv">$ </span><span class="nb">ls </span>pkg/
+my_libs-0.0.1.gem
+</pre></div>
+</div>
+
+<p><code>pkg/</code>以下にgemファイルができました。<code>my_libs-0.0.1.gem</code>とバージョン情報が付与されてますね。</p>
+
+<p>試しにバージョンを更新してみましょう、ライブラリは特に変更せず。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">my_libs/lib/my_libs/version.rb</span></div>
+<div class="highlight"><pre><span class="k">module</span> <span class="nn">MyLibs</span>
+  <span class="no">VERSION</span> <span class="o">=</span> <span class="s2">"0.0.2"</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>再び<code>rake build</code></p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rake build
+my_libs 0.0.2 built to pkg/my_libs-0.0.2.gem.
+<span class="nv">$ </span><span class="nb">ls </span>pkg/
+my_libs-0.0.1.gem   my_libs-0.0.2.gem
+</pre></div>
+</div>
+
+<p>目論見通り<code>my_libs-0.0.2.gem</code>となりました。</p>
+
+<p>これでGemファイルが作れるようになったので、配布したいサーバに適当な手段で持っていきましょう。</p>
+
+<h2>
+<span id="作ったgemをインストールしよう" class="fragment"></span><a href="#%E4%BD%9C%E3%81%A3%E3%81%9Fgem%E3%82%92%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%97%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>作ったGemをインストールしよう</h2>
+
+<p>ローカルのgemファイルをインストールするには、<code>gem install</code>時に<code>-l</code>オプションでファイル名を指定します。<br>
+※ 依存にRubyGemsで公開されているGemがある時は、<code>-b</code> オプションにしましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>gem <span class="nb">install</span> <span class="nt">-l</span> pkg/my_libs-0.0.2.gem <span class="nt">-V</span>
+Installing gem my_libs-0.0.2
+PATH_TO_RUBY/gems/my_libs-0.0.2/.gitignore
+PATH_TO_RUBY/gems/my_libs-0.0.2/Gemfile
+PATH_TO_RUBY/gems/my_libs-0.0.2/LICENSE.txt
+PATH_TO_RUBY/gems/my_libs-0.0.2/README.md
+PATH_TO_RUBY/gems/my_libs-0.0.2/Rakefile
+PATH_TO_RUBY/gems/my_libs-0.0.2/lib/my_libs.rb
+PATH_TO_RUBY/gems/my_libs-0.0.2/lib/my_libs/version.rb
+PATH_TO_RUBY/gems/my_libs-0.0.2/my_libs.gemspec
+Successfully installed my_libs-0.0.2
+1 gem installed
+</pre></div>
+</div>
+
+<p>一旦インストールしてしまえばあとは通常のgemsと扱いは変わりません。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>gem list | <span class="nb">grep </span>my_libs
+my_libs <span class="o">(</span>0.0.2<span class="o">)</span>
+</pre></div>
+</div>
+
+<p>ついでに実行テストをしてみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>ruby <span class="nt">-e</span> <span class="s2">"require 'my_libs'; puts MyLibs.hello"</span>
+hello gem!
+</pre></div>
+</div>
+
+<p>できましたね。</p>
+
+<h2>
+<span id="最後に" class="fragment"></span><a href="#%E6%9C%80%E5%BE%8C%E3%81%AB"><i class="fa fa-link"></i></a>最後に</h2>
+
+<p>一つ注意点として、作成するmodule,classの一番親に来る名前は他と被らないようにしましょう。</p>
+
+<p>これはOKですが、</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">sample.rb</span></div>
+<div class="highlight"><pre><span class="k">module</span> <span class="nn">MyOriginModule</span>
+  <span class="k">class</span> <span class="nc">File</span>
+    <span class="c1"># hogehogehoge</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>この様にド頭に一般名称などを持ってくると他のモジュールとミックスされて、<strong>色々と他人がヒドイ目に遭う</strong>のでお気をつけて。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">sample.rb</span></div>
+<div class="highlight"><pre><span class="k">class</span> <span class="nc">File</span>
+    <span class="c1"># hogehogehoge</span>
+<span class="k">end</span>
+</pre></div>
+</div>

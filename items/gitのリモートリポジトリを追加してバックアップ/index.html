@@ -1,0 +1,107 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>共用のリポジトリに上げるほどでも無い運用ツールなどをgitのリモートを使って適当にBackupする。<br>
+下手にアーカイブなんかを作るよりも使い勝手が良いのでhookも使って自動化しておくのがよい。</p>
+
+<h2>
+<span id="リモート側受け入れ準備" class="fragment"></span><a href="#%E3%83%AA%E3%83%A2%E3%83%BC%E3%83%88%E5%81%B4%E5%8F%97%E3%81%91%E5%85%A5%E3%82%8C%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>リモート側受け入れ準備</h2>
+
+<p>まず取りたい場所に空のリポジトリを作成します。<br>
+リモートにはURLを指定出来るので、リソースとして使用出来るところならどこでも良い。ディレクトリを作ってgit initする。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">git_initialize</span></div>
+<div class="highlight"><pre><span class="nb">mkdir </span>repo01 <span class="o">&amp;&amp;</span>  <span class="nb">cd </span>repo01
+git init
+git config <span class="nt">--add</span> receive.denyCurrentBranch ignore
+</pre></div>
+</div>
+
+<p>denyCurrentBranch をしてPushを受け入れるようにしたらとりあえず準備OK。</p>
+
+<h2>
+<span id="ローカルでリモート追加" class="fragment"></span><a href="#%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%A7%E3%83%AA%E3%83%A2%E3%83%BC%E3%83%88%E8%BF%BD%E5%8A%A0"><i class="fa fa-link"></i></a>ローカルでリモート追加</h2>
+
+<p>作業中のリポジトリで、リモートを追加しよう。urlで指定。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>git remote add remote1 file:///mnt/repo1
+git remote add remote2 ssh://your_server/opt/repo1
+</pre></div></div>
+
+<p>ローカルファイル、マウントしたNFSやssh越しなどお好みで。</p>
+
+<p>addしたら remote show で接続できているか確認する。情報が取れたらOK。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">CUI_output(Local)</span></div>
+<div class="highlight"><pre>  <span class="nv">$ </span>git remote show remote2
+<span class="k">*</span> remote remote2
+  Fetch URL: ssh://your_server/opt/repo1
+  Push  URL: ssh://your_server/opt/repo1
+  HEAD branch: <span class="o">(</span>unknown<span class="o">)</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="pushする" class="fragment"></span><a href="#push%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>pushする</h2>
+
+<p>remote1にmasterをPushする。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>git push remote1 master
+</pre></div></div>
+
+<h3>
+<span id="pushされた内容の反映" class="fragment"></span><a href="#push%E3%81%95%E3%82%8C%E3%81%9F%E5%86%85%E5%AE%B9%E3%81%AE%E5%8F%8D%E6%98%A0"><i class="fa fa-link"></i></a>pushされた内容の反映</h3>
+
+<p>pushだけでは見える形で反映されないのでresetしてあげる。<br>
+git statusを見れば理由がわかるので詳しいことは省略。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">CUI_output(Remote)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">ls</span> <span class="nt">-a</span>
+./  ../ .git
+
+<span class="nv">$ </span>git reset <span class="nt">--hard</span> HEAD
+<span class="nv">$ </span><span class="nb">ls</span> <span class="nt">-a</span>
+./  ../ README .git
+
+</pre></div>
+</div>
+
+<h2>
+<span id="hookで自動化" class="fragment"></span><a href="#hook%E3%81%A7%E8%87%AA%E5%8B%95%E5%8C%96"><i class="fa fa-link"></i></a>hookで自動化</h2>
+
+<h3>
+<span id="リモートで自動-reset---hard" class="fragment"></span><a href="#%E3%83%AA%E3%83%A2%E3%83%BC%E3%83%88%E3%81%A7%E8%87%AA%E5%8B%95-reset---hard"><i class="fa fa-link"></i></a>リモートで自動 reset --hard</h3>
+
+<p>サンプルからpost-receiveを用意。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>cp .git/hooks/post-receive.sample .git/hooks/post-receive
+chmod +x .git/hooks/post-receive
+</pre></div></div>
+
+<p>最後にこんなかんじで追記しておくとpush完了後にresetがかかる。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">post-receive</span></div>
+<div class="highlight"><pre><span class="nt">--</span> snip <span class="nt">--</span>
+<span class="nb">cd</span> ..
+git <span class="nt">--git-dir</span><span class="o">=</span>.git reset <span class="nt">--hard</span> HEAD
+</pre></div>
+</div>
+
+<h3>
+<span id="ローカルコミット時に自動push" class="fragment"></span><a href="#%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%82%B3%E3%83%9F%E3%83%83%E3%83%88%E6%99%82%E3%81%AB%E8%87%AA%E5%8B%95push"><i class="fa fa-link"></i></a>ローカルコミット時に自動push</h3>
+
+<p>ローカルの方はpost-commitに書いておく。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">post-commit</span></div>
+<div class="highlight"><pre><span class="nt">--</span> snip <span class="nt">--</span>
+git push remote1 master
+</pre></div>
+</div>

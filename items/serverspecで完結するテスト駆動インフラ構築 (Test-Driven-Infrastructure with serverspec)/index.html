@@ -1,0 +1,201 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>サーバの構築状況を、手動確認の段取りでチェックする<a href="http://serverspec.org/" rel="nofollow noopener" target="_blank">serverspec</a>、使いやすくて評判ですね。</p>
+
+<blockquote>
+<p>注: このエントリはほぼネタなのであまり参考にしてはいけません。</p>
+</blockquote>
+
+<p>さて、テスト駆動開発という手法は皆さん既にご存知でしょう。今日は折角テストツールがあるのですからサーバ構築をテスト駆動でやってみましょう。</p>
+
+<h2>
+<span id="まずfailするspecサンプル" class="fragment"></span><a href="#%E3%81%BE%E3%81%9Afail%E3%81%99%E3%82%8Bspec%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB"><i class="fa fa-link"></i></a>まずFailするSpecサンプル</h2>
+
+<p>こちらはパッケージ<code>nginx</code>がインストールされているかテストするserverspecのサンプルです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">nginx_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'spec_helper'</span>
+
+<span class="n">describe</span> <span class="n">package</span><span class="p">(</span><span class="s1">'nginx'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">it</span> <span class="p">{</span> <span class="n">should</span> <span class="n">be_installed</span> <span class="p">}</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="failすることを確認" class="fragment"></span><a href="#fail%E3%81%99%E3%82%8B%E3%81%93%E3%81%A8%E3%82%92%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>Failすることを確認</h3>
+
+<p>Failからはじまるテスト駆動、<code>serverspec</code>はテストに使ったコマンドも表示してくれます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_rspec_fails</span></div>
+<div class="highlight"><pre>Failures:
+
+  1<span class="o">)</span> Package <span class="s2">"nginx"</span> 
+     Failure/Error: it <span class="o">{</span> should be_installed <span class="o">}</span>
+       dpkg <span class="nt">-s</span> nginx <span class="o">&amp;&amp;</span> <span class="o">!</span> dpkg <span class="nt">-s</span> nginx | <span class="nb">grep</span> <span class="nt">-E</span> <span class="s1">'^Status: .+ not-installed$'</span>
+       Package <span class="sb">`</span>nginx<span class="s1">' is not installed and no info is available.
+Use dpkg --info (= dpkg-deb --info) to examine archive files,
+and dpkg --contents (= dpkg-deb --contents) to list their contents.
+       expected Package "nginx" to be installed
+     # ./spec/xxx.xxx.xxx.xxx/nginx_spec.rb:4:in `block (2 levels) in &lt;top (required)&gt;'</span>
+
+Finished <span class="k">in </span>1.01 seconds
+1 examples, 1 failures
+</pre></div>
+</div>
+
+<p>目出度くFailしました、ではこれを満たすようにサーバ構築のコードを書きましょう！</p>
+
+<h2>
+<span id="rescueせよ" class="fragment"></span><a href="#rescue%E3%81%9B%E3%82%88"><i class="fa fa-link"></i></a>Rescueせよ</h2>
+
+<p>(重ねて言いますがあまり真面目に受け取らないでください。)</p>
+
+<p>構築には何を使いましょう、<code>chef</code>?<code>puppet</code>? いえ今日は趣向をこらして、Failを検知できるRspec(serverspec)自身に直させましょう。</p>
+
+<p>ということで<code>nginx_spec.rb</code>をこの様に変更です。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">nginx_converge_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'spec_helper'</span>
+
+<span class="n">describe</span> <span class="n">package</span><span class="p">(</span><span class="s1">'nginx'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">it</span> <span class="p">{</span>
+    <span class="k">begin</span>
+      <span class="n">should</span> <span class="n">be_installed</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="nb">puts</span> <span class="n">e</span><span class="p">.</span><span class="nf">message</span>
+      <span class="nb">puts</span> <span class="s2">"======= Installing Nginx..."</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'apt-get update &amp;&amp; apt-get install -y nginx'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+    <span class="k">end</span>
+  <span class="p">}</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>nginxの<code>should be_installed</code>が例外を吐いたら<code>rescue</code>してサーバ状態のつじつまを合わせにいきます。<br>
+コマンド実行にも<code>serverspec</code>のマッチャを使うことで、楽にエラーチェックができますね！</p>
+
+<h3>
+<span id="serverspecで完結テスト駆動" class="fragment"></span><a href="#serverspec%E3%81%A7%E5%AE%8C%E7%B5%90%E3%83%86%E3%82%B9%E3%83%88%E9%A7%86%E5%8B%95"><i class="fa fa-link"></i></a>serverspecで完結、テスト駆動</h3>
+
+<p>では初めにFailしたのと同じ状態のサーバに<code>serverspec</code>を実行してみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_rspec_converge</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rspec <span class="nt">-fd</span>
+
+Package <span class="s2">"nginx"</span>
+expected Package <span class="s2">"nginx"</span> to be installed
+<span class="o">=======</span> Installing Nginx...
+  should be <span class="nb">true
+
+</span>Finished <span class="k">in </span>13.42 seconds
+1 example, 0 failures
+</pre></div>
+</div>
+
+<p><code>expected Package "nginx" to be installed</code> と、rescue側に入ってつじつま合わせが走りました。<br>
+すんだらもう一度<code>serverspec</code>を実行してみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">run_rspec_up_to_date</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>rspec <span class="nt">-fd</span>
+
+Package <span class="s2">"nginx"</span>
+  should be installed
+
+Finished <span class="k">in </span>1.03 seconds
+1 example, 0 failures
+</pre></div>
+</div>
+
+<p><code>should be installed #=&gt; true</code>、できました。まさに冪等な収束。</p>
+
+<h2>
+<span id="終わりに" class="fragment"></span><a href="#%E7%B5%82%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>終わりに</h2>
+
+<p>テスト駆動はソフト開発でもしばしば難題と言われますが、インフラはこのくらい緩めな手法でもアリかな。</p>
+
+<hr>
+
+<h2>
+<span id="追記" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98"><i class="fa fa-link"></i></a>追記</h2>
+
+<p>chef-soloを導入してcommunity cookbookから <code>rabbitmq</code> のインストール状態を確認し、入ってなければ勝手にインストールするserverspecはこちらです。<br>
+テストが通ればただのserverspecなところが肝心ですね。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">chef_and_rabbitmq_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'spec_helper'</span>
+
+<span class="n">describe</span> <span class="n">command</span><span class="p">(</span><span class="s1">'which chef-solo'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">it</span> <span class="p">{</span>
+    <span class="k">begin</span>
+      <span class="n">should</span> <span class="n">return_exit_status</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="nb">puts</span> <span class="n">e</span><span class="p">.</span><span class="nf">message</span>
+      <span class="nb">puts</span> <span class="s2">"======= Installing Omnibus Chef..."</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'curl -L https://www.opscode.com/chef/install.sh | sudo bash'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+    <span class="k">end</span>
+  <span class="p">}</span>
+<span class="k">end</span>
+
+<span class="n">describe</span> <span class="n">package</span><span class="p">(</span><span class="s1">'git'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">it</span> <span class="p">{</span>
+    <span class="k">begin</span>
+      <span class="n">should</span> <span class="n">be_installed</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="nb">puts</span> <span class="n">e</span><span class="p">.</span><span class="nf">message</span>
+      <span class="nb">puts</span> <span class="s2">"======= installing git..."</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="n">serverspec</span><span class="o">::</span><span class="n">type</span><span class="o">::</span><span class="n">command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'apt-get update &amp;&amp; apt-get install -y git'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+    <span class="k">end</span>
+  <span class="p">}</span>
+<span class="k">end</span>
+
+<span class="n">describe</span> <span class="n">file</span><span class="p">(</span><span class="s1">'/var/chef/cookbooks/.git'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">it</span> <span class="p">{</span>
+    <span class="k">begin</span>
+      <span class="n">should</span> <span class="n">be_directory</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="nb">puts</span> <span class="n">e</span><span class="p">.</span><span class="nf">message</span>
+      <span class="nb">puts</span> <span class="s2">"======= initializing cookbooks directory..."</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'mkdir -p /var/chef/cookbooks'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'git init /var/chef/cookbooks'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'touch /var/chef/cookbooks/.gitkeep'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'cd /var/chef/cookbooks &amp;&amp; git add . &amp;&amp; git commit .gitkeep -m "empty init"'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+    <span class="k">end</span>
+  <span class="p">}</span>
+<span class="k">end</span>
+
+<span class="n">describe</span> <span class="n">package</span><span class="p">(</span><span class="s1">'rabbitmq-server'</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">it</span> <span class="p">{</span>
+    <span class="k">begin</span>
+      <span class="n">should</span> <span class="n">be_installed</span>
+    <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+      <span class="nb">puts</span> <span class="n">e</span><span class="p">.</span><span class="nf">message</span>
+      <span class="nb">puts</span> <span class="s2">"======= installing rabbitmq by chef..."</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'knife cookbook site install rabbitmq'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+      <span class="n">cmd</span> <span class="o">=</span> <span class="no">Serverspec</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Command</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'chef-solo -o "rabbitmq"'</span><span class="p">)</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">cmd</span><span class="p">.</span><span class="nf">return_exit_status?</span><span class="p">(</span><span class="mi">0</span><span class="p">)).</span><span class="nf">to</span> <span class="n">be_true</span>
+    <span class="k">end</span>
+  <span class="p">}</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>くれぐれもserverspec導入の参考にしないで下さい。</p>

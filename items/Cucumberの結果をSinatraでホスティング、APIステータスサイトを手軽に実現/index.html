@@ -1,0 +1,119 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://status.github.com/" rel="nofollow noopener" target="_blank">githubのステータスサイト</a>など、WebでAPIを提供するプロバイダならユーザから各機能が正常なのかをお知らせしたいですね。</p>
+
+<p>何かの機能がそのふるまいをできているかどうか？ これはCucumberの出番ですかね。<br>
+最新結果がいつでも誰にでも分かるようになっていればベストですが、そのためのサーバを立てて管理して・・・となると面倒極まりない。</p>
+
+<p>スケジューラもあることだし<a href="http://www.heroku.com/" rel="nofollow noopener" target="_blank">Heroku</a>にやってもらうか。</p>
+
+<p>今回のサンプルはこちらにおいてます &gt; <a href="https://github.com/higanworks/heroku_cuucmber_example" rel="nofollow noopener" target="_blank">https://github.com/higanworks/heroku_cuucmber_example</a></p>
+
+<h2>
+<span id="概要" class="fragment"></span><a href="#%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>概要</h2>
+
+<ul>
+<li>cucumberのhtml出力を定期的に実行する</li>
+<li>結果のhtmlをherokuでホスティングする</li>
+</ul>
+
+<h3>
+<span id="gemfileの作成" class="fragment"></span><a href="#gemfile%E3%81%AE%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>Gemfileの作成</h3>
+
+<p><code>Sinatra</code>、<code>Cucumber</code>など関連するGemsを入れるため<code>Gemfile</code>を作成します、Bundleしておきましょう。<code>Gemfile.lock</code>も忘れずにgitに入れておきます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s2">"sinatra"</span>
+<span class="n">gem</span> <span class="s2">"cucumber"</span>
+<span class="n">gem</span> <span class="s2">"rake"</span>
+<span class="n">gem</span> <span class="s2">"thin"</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="sinatraでindexhtmlを表示する" class="fragment"></span><a href="#sinatra%E3%81%A7indexhtml%E3%82%92%E8%A1%A8%E7%A4%BA%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>sinatraでindex.htmlを表示する</h2>
+
+<p><code>/</code>が呼ばれたら<code>public/index.html</code>のファイルの内容をReadすればいいので、<code>cunfig.ru</code>にまるごと書いてしまえばいいです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">config.ru</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'sinatra'</span>
+<span class="n">get</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)</span> <span class="p">{</span> <span class="nb">open</span><span class="p">(</span><span class="s1">'public/index.html'</span><span class="p">).</span><span class="nf">read</span> <span class="p">}</span>
+<span class="n">run</span> <span class="no">Sinatra</span><span class="o">::</span><span class="no">Application</span>
+</pre></div>
+</div>
+
+<p>必要十分。多言語対応ならjaとかenとかのクエリを貰って分岐しますわ。</p>
+
+<h2>
+<span id="heroku用にforemanのファイルを用意する" class="fragment"></span><a href="#heroku%E7%94%A8%E3%81%ABforeman%E3%81%AE%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E7%94%A8%E6%84%8F%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>heroku用にForemanのファイルを用意する</h2>
+
+<p>herokuはForemanでアプリを起動してくれるので、foreman用の定義をつくります。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">Procfile</span></div>
+<div class="highlight"><pre>web: bundle exec rackup -p $PORT
+</pre></div>
+</div>
+
+<h2>
+<span id="herokuへ" class="fragment"></span><a href="#heroku%E3%81%B8"><i class="fa fa-link"></i></a>herokuへ</h2>
+
+<p><code>features</code>を適当に書いたら、herokuへアップします。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre>heroku create
+git push heroku master
+</pre></div>
+</div>
+
+<h3>
+<span id="cucumberをheroku上で実行" class="fragment"></span><a href="#cucumber%E3%82%92heroku%E4%B8%8A%E3%81%A7%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>cucumberをheroku上で実行</h3>
+
+<p>出力を<code>public/index.html</code>にして更新します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre>heroku run cucumber <span class="nt">-f</span> html <span class="nt">-o</span> public/index.html
+</pre></div>
+</div>
+
+<p>これで<code>index.html</code>がcucumberの出力に差し替わります。</p>
+
+<h2>
+<span id="とりあえずホスティングした結果" class="fragment"></span><a href="#%E3%81%A8%E3%82%8A%E3%81%82%E3%81%88%E3%81%9A%E3%83%9B%E3%82%B9%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0%E3%81%97%E3%81%9F%E7%B5%90%E6%9E%9C"><i class="fa fa-link"></i></a>とりあえずホスティングした結果</h2>
+
+<p><a href="http://mighty-springs-8010.herokuapp.com/" rel="nofollow noopener" target="_blank">http://mighty-springs-8010.herokuapp.com/</a></p>
+
+<p>問題なく見れました。</p>
+
+<p><a href="https://dl.dropbox.com/u/3524956/quiita/Cucumber_heroku_image01.jpg" target="_blank" rel="nofollow noopener"><img src="https://dl.dropbox.com/u/3524956/quiita/Cucumber_heroku_image01.jpg" alt="cucumber_on_heroku" data-canonical-src="https://dl.dropbox.com/u/3524956/quiita/Cucumber_heroku_image01.jpg" loading="lazy"></a></p>
+
+<p>あとは定期的に実行すればOKと。</p>
+
+<h2>
+<span id="スケジューラの追加と登録" class="fragment"></span><a href="#%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%A9%E3%81%AE%E8%BF%BD%E5%8A%A0%E3%81%A8%E7%99%BB%E9%8C%B2"><i class="fa fa-link"></i></a>スケジューラの追加と登録</h2>
+
+<p>アプリにスケジューラアドオンを追加します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Shell</span></div>
+<div class="highlight"><pre>heroku addons:add scheduler:standard
+</pre></div>
+</div>
+
+<p>先程のcucumberをタスクに登録すれば定期的に<code>index.html</code>が更新されていきます。</p>
+
+<h2>
+<span id="終わりに" class="fragment"></span><a href="#%E7%B5%82%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>終わりに</h2>
+
+<p>出力のフォーマットをカスタマイズして、ユーザへの自動情報提供ページがつくれますね。<br>
+ビヘイビアテストとユーザ告知を同時に実現できる、なかなか良い仕組みだと思います。</p>

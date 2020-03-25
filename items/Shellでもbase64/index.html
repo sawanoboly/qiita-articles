@@ -1,0 +1,25 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><code>GNU coreutils</code>パッケージに含まれる<strong>base64コマンド</strong>はbase64のエンコード/デコードが出来る。</p>
+
+<p>pemファイルを動的なコンフィグに格納する際などに使える。</p>
+
+<h2>
+<span id="エンコード" class="fragment"></span><a href="#%E3%82%A8%E3%83%B3%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>エンコード</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ echo -n "giraffi" | base64            
+Z2lyYWZmaQ==
+</pre></div></div>
+
+<h2>
+<span id="デコード" class="fragment"></span><a href="#%E3%83%87%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>デコード</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ echo -n "Z2lyYWZmaQo=" | base64 -d
+giraffi
+</pre></div></div>
+
+<p>大概のディストリビューションに入ってるかと思う。</p>

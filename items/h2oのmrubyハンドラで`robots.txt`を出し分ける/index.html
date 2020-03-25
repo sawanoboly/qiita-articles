@@ -1,0 +1,40 @@
+<p><a href="https://getshifter.io" rel="nofollow noopener" target="_blank">諸処の事情</a>で、本番とは違うドメインで起動して操作しているWordPressなどがGoogleなどにインデックスされてイヤン、ということもあるでしょう。</p>
+
+<p>いちいちrobotsを切り替えながら操作するのも手間なので、<a href="https://h2o.examp1e.net" rel="nofollow noopener" target="_blank">h2o</a>に組み込まれているmrubyで出力をコントロールした。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">robots.rb</span></div>
+<div class="highlight"><pre><span class="c1"># デフォルトのDisallowルール</span>
+<span class="n">robots</span> <span class="o">=</span> <span class="o">&lt;&lt;</span><span class="no">EOL</span><span class="sh">
+User-Agent: *
+Disallow: /
+</span><span class="no">EOL</span>
+
+<span class="nb">lambda</span> <span class="k">do</span> <span class="o">|</span><span class="n">env</span><span class="o">|</span>
+  <span class="c1"># /robots.txt以外のリクエストはすぐ処理をh2oに返す</span>
+  <span class="k">unless</span> <span class="n">env</span><span class="p">[</span><span class="s2">"PATH_INFO"</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'/robots.txt'</span>
+    <span class="k">return</span> <span class="p">[</span><span class="mi">399</span><span class="p">,</span> <span class="p">{},</span> <span class="p">[]]</span>
+  <span class="k">end</span>
+
+  <span class="c1"># 任意の条件で、これまた処理をh2oに返す。これはフラグファイル有無での例</span>
+  <span class="c1"># 環境変数で判断とかでもよい</span>
+  <span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exist?</span><span class="p">(</span><span class="s1">'/path/to/flagfile'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[</span><span class="mi">399</span><span class="p">,</span> <span class="p">{},</span> <span class="p">[]]</span>
+  <span class="k">end</span>
+
+  <span class="c1"># Cookieに`wordpress_logged_in_*` =&gt; WordPressにログイン済みっぽいとして扱う</span>
+  <span class="k">if</span> <span class="n">env</span><span class="p">[</span><span class="s2">"HTTP_COOKIE"</span><span class="p">]</span>
+    <span class="n">cookies</span> <span class="o">=</span> <span class="n">env</span><span class="p">[</span><span class="s2">"HTTP_COOKIE"</span><span class="p">].</span><span class="nf">split</span>
+    <span class="k">if</span> <span class="n">cookies</span><span class="p">.</span><span class="nf">select</span> <span class="p">{</span><span class="o">|</span><span class="n">a</span><span class="o">|</span> <span class="n">a</span><span class="p">.</span><span class="nf">match</span><span class="p">(</span><span class="sr">/^wordpress_logged_in_/</span><span class="p">)}.</span><span class="nf">any?</span>
+      <span class="c1"># カスタマイズしたときのプレビューが出来ないと不便なので、ユーザ定義のrobots.txtを見せる</span>
+      <span class="k">return</span> <span class="p">[</span><span class="mi">399</span><span class="p">,</span> <span class="p">{},</span> <span class="p">[]]</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="c1"># これまでの条件にマッチしなければ、デフォルトのDisallowルールを適用</span>
+  <span class="k">return</span> <span class="p">[</span><span class="mi">200</span><span class="p">,</span> <span class="p">{</span><span class="s1">'Content-Type'</span> <span class="o">=&gt;</span> <span class="s1">'text/plain;charset=utf-8'</span><span class="p">},</span> <span class="p">[</span><span class="n">robots</span><span class="p">]]</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>rackベースなのでやりやすい。</p>

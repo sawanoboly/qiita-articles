@@ -1,0 +1,476 @@
+<p>Test-Kitchenを手っ取り早くはじめるには、シェルスクリプトを使うのがいい <img alt=":fork_and_knife:" class="emoji" height="20" src="../../img/64_g.png" title=":fork_and_knife:" width="20" loading="lazy"><br>
+シェルで構築シェルでテストする例を作ってみた。</p>
+
+<ul>
+<li>Test-Kitchen公式: <a href="http://kitchen.ci/" title="Welcome to Test Kitchen - KitchenCI" rel="nofollow noopener" target="_blank">Welcome to Test Kitchen - KitchenCI</a>
+
+<ul>
+<li>Github: <a href="https://github.com/test-kitchen/test-kitchen" title="test-kitchen/test-kitchen" rel="nofollow noopener" target="_blank">test-kitchen/test-kitchen</a>
+</li>
+</ul>
+</li>
+<li>この記事のコード： <a href="https://github.com/higanworks/shell-test-kitchen" rel="nofollow noopener" target="_blank">higanworks/shell-test-kitchen</a>
+</li>
+</ul>
+
+<h2>
+<span id="test-kitchen環境の準備" class="fragment"></span><a href="#test-kitchen%E7%92%B0%E5%A2%83%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>Test-Kitchen環境の準備</h2>
+
+<p>手元に必要なものはこの通り。</p>
+
+<ul>
+<li>Ruby
+
+<ul>
+<li>Gem: Bundler</li>
+</ul>
+</li>
+<li>Vagrant</li>
+</ul>
+
+<p><code>Gemfile</code>には2つのGemを書こう。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s1">'test-kitchen'</span>
+<span class="n">gem</span> <span class="s1">'kitchen-vagrant'</span>
+</pre></div>
+</div>
+
+<p>bundleでは(とりあえず)<code>--binstubs</code>で<code>./bin</code>に各種コマンドが入るようにしておくとこのチュートリアルでは楽。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle install --binstubs --path=vendor/bundle
+Fetching gem metadata from https://rubygems.org/..........
+Fetching version metadata from https://rubygems.org/..
+Resolving dependencies...
+Installing safe_yaml 1.0.4
+Installing net-ssh 2.9.2
+Using bundler 1.9.2
+Installing mixlib-shellout 2.0.1
+Installing net-scp 1.2.1
+Installing thor 0.19.1
+Installing test-kitchen 1.3.1
+Installing kitchen-vagrant 0.16.0
+Bundle complete! 2 Gemfile dependencies, 8 gems now installed.
+Bundled gems are installed into ./vendor/bundle.
+</pre></div></div>
+
+<p>※ direnvで<code>layout ruby</code>をしていればコマンドは<code>bundle</code>だけでもOK。このへんは各自のスタイルで。</p>
+
+<p><code>./bin/kitchen</code>としてコマンドが叩けるようになっているはず。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/kitchen -v
+Test Kitchen version 1.3.1
+</pre></div></div>
+
+<p>次は<code>kitchen init</code>でひな形を作成しよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre> $ ./bin/kitchen init
+      create  .kitchen.yml
+      create  test/integration/default
+</pre></div></div>
+
+<h2>
+<span id="kitchenymlとdiagnose" class="fragment"></span><a href="#kitchenyml%E3%81%A8diagnose"><i class="fa fa-link"></i></a>.kitchen.ymlとdiagnose</h2>
+
+<blockquote>
+<p>とりあえず試したいならこの項は無視して、<code>VMにShellを流してみよう</code>まで飛んでOK。</p>
+</blockquote>
+
+<p>初期の<code>.kitchen.yml</code>はこうなっている、Shell用に書き換えよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>---
+driver:
+  name: vagrant
+
+provisioner:
+  name: chef_solo
+
+platforms:
+  - name: ubuntu-12.04
+  - name: centos-6.4
+
+suites:
+  - name: default
+    run_list:
+    attributes:
+</pre></div></div>
+
+<p>書き換え対象は2箇所、次の通り。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>---
+driver:
+  name: vagrant
+
+provisioner:
+  name: shell    ## Shellに変更
+
+platforms:
+  - name: ubuntu-14.04  ## ubuntu-14.04のみに変更
+
+suites:
+  - name: default
+    run_list:
+    attributes:
+</pre></div></div>
+
+<p><code>kitchen list</code>ではテストに使うVMの一覧が表示される。次のように出力されないならもう一度<code>.kitchen.yml</code>を見直そう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/kitchen list
+Instance             Driver   Provisioner  Last Action
+default-ubuntu-1404  Vagrant  Shell        &lt;Not Created&gt;
+</pre></div></div>
+
+<h3>
+<span id="diagnose" class="fragment"></span><a href="#diagnose"><i class="fa fa-link"></i></a>Diagnose</h3>
+
+<p>Test-Kitchenは設定の記述場所によって色々な要素が上書きされたりマージされたりする(まるでChefのAttributesだ！ <img alt=":knife:" class="emoji" height="20" src="../../img/63_g.png" title=":knife:" width="20" loading="lazy"> )。<br>
+幸い各種設定がどのように反映されているか確認するための<code>kitchen diagnose</code>コマンドが用意されているので、設定の重なり具合をいつでも確認できる。</p>
+
+<p>さっきの<code>.kitchen.yml</code>でdiagnoseを表示してみよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/kitchen diagnose default-ubuntu-1404
+---
+timestamp: 2015-04-03 04:06:20 UTC
+kitchen_version: 1.3.1
+instances:
+  default-ubuntu-1404:
+    state_file: {}
+    driver:
+      box: opscode-ubuntu-14.04
+      box_check_update: 
+      box_url: https://opscode-vm-bento.s3.amazonaws.com/vagrant/virtualbox/opscode_ubuntu-14.04_chef-provisionerless.box
+      box_version: 
+      customize: {}
+      gui: 
+      kitchen_root: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen"
+      log_level: :info
+      name: vagrant
+      network: []
+      port: 22
+      pre_create_command: 
+      provider: virtualbox
+      provision: false
+      ssh: {}
+      sudo: true
+      synced_folders: []
+      test_base_path: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/test/integration"
+      vagrantfile_erb: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/vendor/bundle/ruby/2.2.0/gems/kitchen-vagrant-0.16.0/templates/Vagrantfile.erb"
+      vagrantfiles: []
+      vm_hostname: default-ubuntu-1404
+    provisioner:
+      data_path: 
+      kitchen_root: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen"
+      log_level: :info
+      name: shell
+      root_path: "/tmp/kitchen"
+      script: 
+      sudo: true
+      test_base_path: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/test/integration"
+    busser:
+      busser_bin: "/tmp/busser/bin/busser"
+      kitchen_root: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen"
+      root_path: "/tmp/busser"
+      ruby_bindir: "/opt/chef/embedded/bin"
+      sudo: true
+      suite_name: default
+      test_base_path: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/test/integration"
+      version: busser
+</pre></div></div>
+
+<p>とりあえず今は<code>provisioner:</code>に注目してみよう。<br>
+Test-Kitchenのコマンドや対象は正規表現で解釈されるので、<code>kitchen diagnose default-ubuntu-1404</code>は<code>kitchen diag ubu</code>なりと省略できる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/kitchen diag ubu | grep 'provisioner:' -A 8
+    provisioner:
+      data_path: 
+      kitchen_root: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen"
+      log_level: :info
+      name: shell
+      root_path: "/tmp/kitchen"
+      script: 
+      sudo: true
+      test_base_path: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/test/integration"
+</pre></div></div>
+
+<p><code>script:</code>が実行対象っぽさを醸し出しているね。<br>
+ここには<code>bootstrap.sh</code>(プラットフォームによっては<code>bootstrap.ps1</code>)というファイルがあれば自動でそれが使われるようになっている。<br>
+もちろん<code>.kitchen.yml</code>で指定してもいい。</p>
+
+<h2>
+<span id="vmにshellを流してみよう---kitchen-converge" class="fragment"></span><a href="#vm%E3%81%ABshell%E3%82%92%E6%B5%81%E3%81%97%E3%81%A6%E3%81%BF%E3%82%88%E3%81%86---kitchen-converge"><i class="fa fa-link"></i></a>VMにShellを流してみよう - kitchen converge</h2>
+
+<p><code>.kitchen.yml</code>を次のように編集してある状態から。前項を飛ばした人は編集してね。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">kitchen.yml(再掲)</span></div>
+<div class="highlight"><pre>---
+driver:
+  name: vagrant
+
+provisioner:
+  name: shell
+
+platforms:
+  - name: ubuntu-14.04
+
+suites:
+  - name: default
+    run_list:
+    attributes:
+</pre></div>
+</div>
+
+<p><code>bootstrap.sh</code>という名前でファイルを作成すると、VM内で実行する対象として勝手に選択される。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ touch bootstrap.sh
+
+$ ./bin/kitchen diag ubu | grep 'provisioner:' -A 8
+    provisioner:
+      data_path: 
+      kitchen_root: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen"
+      log_level: :info
+      name: shell
+      root_path: "/tmp/kitchen"
+&gt;&gt;&gt; 検出された。
+      script: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/bootstrap.sh"   
+&lt;&lt;&lt;
+      sudo: true
+      test_base_path: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/test/integration"
+</pre></div></div>
+
+<p><code>bootstrap.sh</code>に書いた内容は実行時にちょっとラップされる、次のように。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>sh -c '
+
+bootstrap.shに書いた内容がここに入る
+
+'
+</pre></div></div>
+
+<p><code>'</code>(シングルクォート)でくくられているけど、数さえ合っていればスクリプト内で<code>'</code>を使う分には問題ない。</p>
+
+<h3>
+<span id="bootstrapshに処理を書いて実行する" class="fragment"></span><a href="#bootstrapsh%E3%81%AB%E5%87%A6%E7%90%86%E3%82%92%E6%9B%B8%E3%81%84%E3%81%A6%E5%AE%9F%E8%A1%8C%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>bootstrap.shに処理を書いて実行する</h3>
+
+<p>とりあえずNginxでもいれとくか。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bootstrap.sh</span></div>
+<div class="highlight"><pre><span class="nb">sudo </span>apt-get update
+<span class="nb">sudo </span>apt-get <span class="nt">-y</span> <span class="nb">install </span>nginx
+</pre></div>
+</div>
+
+<p>準備ができたら<code>kitchen converge ubu</code>で。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre> $ ./bin/kitchen converge ubu
+-----&gt; Starting Kitchen (v1.3.1)
+-----&gt; Creating &lt;default-ubuntu-1404&gt;...
+       Bringing machine 'default' up with 'virtualbox' provider...
+       ==&gt; default: Importing base box 'opscode-ubuntu-14.04'...
+
+(略) apt-get updateが始まる
+-----&gt; Converging &lt;default-ubuntu-1404&gt;...
+       Preparing files for transfer
+       Preparing script
+       Transferring files to &lt;default-ubuntu-1404&gt;
+Ign http://us.archive.ubuntu.com trusty InRelease                           
+Ign http://security.ubuntu.com trusty-security InRelease
+Ign http://us.archive.ubuntu.com trusty-updates InRelease
+Get:1 http://security.ubuntu.com trusty-security Release.gpg [933 B]
+Ign http://us.archive.ubuntu.com trusty-backports InRelease                    
+Get:2 http://us.archive.ubuntu.com trusty Release.gpg [933 B]                  
+Get:3 http://security.ubuntu.com trusty-security Release [63.5 kB]             
+Get:4 http://us.archive.ubuntu.com trusty-updates Release.gpg [933 B]          
+Get:5 http://us.archive.ubuntu.com trusty-backports Release.gpg [933 B]        
+Get:6 http://us.archive.ubuntu.com trusty Release [58.5 kB]                    
+Get:7 http://security.ubuntu.com trusty-security/main Sources [76.1 kB]        
+(略)
+
+       Processing triggers for ureadahead (0.100.0-16) ...
+       Setting up nginx-core (1.4.6-1ubuntu3.2) ...
+       Setting up nginx (1.4.6-1ubuntu3.2) ...
+       Processing triggers for libc-bin (2.19-0ubuntu6) ...
+       Finished converging &lt;default-ubuntu-1404&gt; (1m19.28s).
+-----&gt; Kitchen is finished. (1m19.50s)
+
+</pre></div></div>
+
+<p>Nginx入ったね。</p>
+
+<h2>
+<span id="batsでvmをテストしてみよう---kitchen-verify" class="fragment"></span><a href="#bats%E3%81%A7vm%E3%82%92%E3%83%86%E3%82%B9%E3%83%88%E3%81%97%E3%81%A6%E3%81%BF%E3%82%88%E3%81%86---kitchen-verify"><i class="fa fa-link"></i></a>batsでVMをテストしてみよう - kitchen verify</h2>
+
+<p>テスト用の環境はTest-Kitchen関連プロダクトの<code>busser</code>を使って用意される。</p>
+
+<p><code>kitchen diag</code>で軽く<code>busser</code>周りを確認してみよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/kitchen diag ubu | grep busser: -A 8
+    busser:
+      busser_bin: "/tmp/busser/bin/busser"
+      kitchen_root: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen"
+      root_path: "/tmp/busser"
+      ruby_bindir: "/opt/chef/embedded/bin"
+      sudo: true
+      suite_name: default
+      test_base_path: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/test/integration"
+      version: busser
+</pre></div></div>
+
+<p><code>ruby_bindir</code>があることから分かる通り、Test-Kitchenではテストの実行にはVMの中にRubyが必要なんだ。</p>
+
+<h3>
+<span id="rubyとbusser" class="fragment"></span><a href="#ruby%E3%81%A8busser"><i class="fa fa-link"></i></a>RubyとBusser</h3>
+
+<p>Ruby入れたくない？ そうだよね。</p>
+
+<p>でもテスト用のVMにくらい入れたっていいじゃない。初期構築の<code>bootstrap.sh</code>にちょっと分岐を作らせてよ。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bootstrap.sh</span></div>
+<div class="highlight"><pre><span class="nb">sudo </span>apt-get update
+<span class="nb">sudo </span>apt-get <span class="nt">-y</span> <span class="nb">install </span>nginx
+
+
+<span class="c">## For busser</span>
+<span class="k">if</span> <span class="o">[</span> <span class="s2">"vagrant"</span> <span class="o">=</span> <span class="s2">"</span><span class="nv">$SUDO_USER</span><span class="s2">"</span> <span class="o">]</span><span class="p">;</span><span class="k">then
+  </span><span class="nb">sudo </span>apt-get <span class="nt">-y</span> <span class="nb">install </span>ruby2.0
+<span class="k">fi</span>
+</pre></div>
+</div>
+
+<p><code>bootstrap.sh</code>を更新したら、もう一度<code>kitchen conv ubu</code>して、Rubyのインストールを済ませておきましょう。</p>
+
+<p>Rubyのインストールに問題がなければ、<code>.kitchen.yml</code>にBusserの<code>ruby_bindir</code>を上書きするよう仕向けます。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">kitchen.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">vagrant</span>
+
+<span class="na">provisioner</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">shell</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">ubuntu-14.04</span>
+    <span class="na">busser</span><span class="pi">:</span>
+      <span class="na">ruby_bindir</span><span class="pi">:</span> <span class="s">/usr/bin</span>     <span class="c1">## さっきのRubyへのパス</span>
+
+<span class="na">suites</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">default</span>
+    <span class="na">run_list</span><span class="pi">:</span>
+    <span class="na">attributes</span><span class="pi">:</span>
+</pre></div>
+</div>
+
+<p><code>kitchen diag ubu</code>でもかくにん。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre> $ ./bin/kitchen diag ubu | grep busser: -A 8
+    busser:
+      busser_bin: "/tmp/busser/bin/busser"
+      kitchen_root: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen"
+      root_path: "/tmp/busser"
+      ruby_bindir: "/usr/bin"  ## .kitchen.ymlに書いた値で上書き
+      sudo: true
+      suite_name: default
+      test_base_path: "/Users/sawanoboriyu/github/higanworks/shell-test-kitchen/test/integration"
+      version: busser
+</pre></div></div>
+
+<p>これでテスト実施の環境は整いました。</p>
+
+<h3>
+<span id="batsのテストを書く" class="fragment"></span><a href="#bats%E3%81%AE%E3%83%86%E3%82%B9%E3%83%88%E3%82%92%E6%9B%B8%E3%81%8F"><i class="fa fa-link"></i></a>Batsのテストを書く</h3>
+
+<ul>
+<li>Bats: Bash Automated Testing System
+
+<ul>
+<li><a href="https://github.com/sstephenson/bats" title="sstephenson/bats" rel="nofollow noopener" target="_blank">sstephenson/bats</a></li>
+</ul>
+</li>
+</ul>
+
+<p>今日テストで使う<a href="https://github.com/sstephenson/bats" title="sstephenson/bats" rel="nofollow noopener" target="_blank">Bats</a>は別にRubyが必要ってわけではなく、Shellで書かれたShellの実行結果をテストするためのライブラリだ。</p>
+
+<p><code>bats</code>ディレクトリを作成しよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mkdir test/integration/default/bats
+</pre></div></div>
+
+<p>ではBatsによるコマンド実行＆出力チェックのテストを<code>test/integration/default/bats/nginx.bats</code>に書いていこう。<br>
+<code>@test</code>の直後に何をテストするかの注釈、そしてブレスでテストを囲めばいい。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">test/integration/default/bats/nginx.bats</span></div>
+<div class="highlight"><pre>@test <span class="s2">"it should exists nginx bin with supports TLS SNI"</span> <span class="o">{</span>
+  run nginx <span class="nt">-V</span>
+  <span class="o">[</span> <span class="s2">"</span><span class="nv">$status</span><span class="s2">"</span> <span class="nt">-eq</span> 0 <span class="o">]</span>   <span class="c">## ExitStatusが0か</span>
+  <span class="o">[</span> <span class="s2">"</span><span class="k">${</span><span class="nv">lines</span><span class="p">[2]</span><span class="k">}</span><span class="s2">"</span> <span class="o">=</span> <span class="s2">"TLS SNI support enabled"</span> <span class="o">]</span>  <span class="c">## 出力の2行目をチェック</span>
+<span class="o">}</span>
+
+@test <span class="s2">"it should exists nginx process"</span> <span class="o">{</span>
+  run pgrep nginx
+  <span class="o">[</span> <span class="s2">"</span><span class="nv">$status</span><span class="s2">"</span> <span class="nt">-eq</span> 0 <span class="o">]</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+
+<p>ファイルを保存したら<code>kitchen verify ubu</code>でBatsのテストが実行される。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/kitchen verify ubu
+-----&gt; Starting Kitchen (v1.3.1)
+-----&gt; Setting up &lt;default-ubuntu-1404&gt;...
+Fetching: thor-0.19.0.gem (100%)
+Fetching: busser-0.7.0.gem (100%)
+       Successfully installed thor-0.19.0
+       Successfully installed busser-0.7.0
+       2 gems installed
+-----&gt; Setting up Busser
+       Creating BUSSER_ROOT in /tmp/busser
+       Creating busser binstub
+       Plugin bats installed (version 0.3.0)
+-----&gt; Running postinstall for bats plugin
+       Installed Bats to /tmp/busser/vendor/bats/bin/bats
+       Finished setting up &lt;default-ubuntu-1404&gt; (1m1.08s).
+-----&gt; Verifying &lt;default-ubuntu-1404&gt;...
+       Suite path directory /tmp/busser/suites does not exist, skipping.
+       Uploading /tmp/busser/suites/bats/nginx.bats (mode=0644)
+
+
+
+&gt;&gt;&gt; ここからテスト
+
+-----&gt; Running bats test suite
+ ✓ it should exists nginx bin with supports TLS SNI
+ ✓ it should exists nginx process
+
+       2 tests, 0 failures
+       Finished verifying &lt;default-ubuntu-1404&gt; (0m1.09s).
+</pre></div></div>
+
+<p>された！</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>ここまで出来たら<code>kitchen test</code>を実行して、眺めるかコーヒーでも汲みに行こう <img alt=":coffee:" class="emoji" height="20" src="../../img/65_g.png" title=":coffee:" width="20" loading="lazy"> </p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/kitchen test
+-----&gt; Starting Kitchen (v1.3.1)
+-----&gt; Cleaning up any prior instances of &lt;default-ubuntu-1404&gt;
+-----&gt; Destroying &lt;default-ubuntu-1404&gt;...
+       ==&gt; default: Forcing shutdown of VM...
+       ==&gt; default: Destroying VM and associated drives...
+       Vagrant instance &lt;default-ubuntu-1404&gt; destroyed.
+       Finished destroying &lt;default-ubuntu-1404&gt; (0m4.06s).
+-----&gt; Testing &lt;default-ubuntu-1404&gt;
+-----&gt; Creating &lt;default-ubuntu-1404&gt;...
+
+...
+
+</pre></div></div>

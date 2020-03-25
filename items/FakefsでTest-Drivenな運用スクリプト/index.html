@@ -1,0 +1,81 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>見せかけのFilesystemを操作して、運用系のRubyスクリプトをテストする。</p>
+
+<p>FakeFS[<a href="https://github.com/defunkt/fakefs" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/defunkt/fakefs</a>]</p>
+
+<h2>
+<span id="ディレクトリファイルを操作するサンプルツール" class="fragment"></span><a href="#%E3%83%87%E3%82%A3%E3%83%AC%E3%82%AF%E3%83%88%E3%83%AA%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E6%93%8D%E4%BD%9C%E3%81%99%E3%82%8B%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%83%84%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>ディレクトリ・ファイルを操作するサンプルツール</h2>
+
+<p>ディレクトリを操作するメソッドを用意、屋上に屋根状態だが実際はあれこれと処理をしてから実行します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">app.rb</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby</span>
+<span class="c1"># cording: utf-8</span>
+
+<span class="k">def</span> <span class="nf">create_dir</span><span class="p">(</span><span class="n">dir_name</span><span class="p">)</span>
+  <span class="no">Dir</span><span class="p">.</span><span class="nf">mkdir</span><span class="p">(</span><span class="n">dir_name</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">remove_dir</span><span class="p">(</span><span class="n">dir_name</span><span class="p">)</span>
+  <span class="no">Dir</span><span class="p">.</span><span class="nf">rmdir</span><span class="p">(</span><span class="n">dir_name</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="fakefsを使ったテストを書く" class="fragment"></span><a href="#fakefs%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%9F%E3%83%86%E3%82%B9%E3%83%88%E3%82%92%E6%9B%B8%E3%81%8F"><i class="fa fa-link"></i></a>Fakefsを使ったテストを書く</h2>
+
+<p>fakefsは<code>Dir</code>やら<code>File</code>,<code>symlink</code>あたりをオーバーライドして、仮想的なファイルシステム上での操作にしてくれる。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">test_app.rb</span></div>
+<div class="highlight"><pre><span class="c1">#!/usr/bin/env ruby                                                                                                                                                       # cording: utf-8</span>
+<span class="nb">require</span> <span class="s1">'bundler/setup'</span>
+<span class="nb">require</span> <span class="s1">'test/unit'</span>
+<span class="nb">require</span> <span class="s1">'fakefs'</span>
+
+<span class="nb">require</span> <span class="s2">"./app"</span>
+
+<span class="k">class</span> <span class="nc">AppTest</span> <span class="o">&lt;</span> <span class="no">Test</span><span class="o">::</span><span class="no">Unit</span><span class="o">::</span><span class="no">TestCase</span>
+
+  <span class="k">def</span> <span class="nf">test_create_dir</span>
+    <span class="n">create_dir</span><span class="p">(</span><span class="s2">"hoge"</span><span class="p">)</span>
+    <span class="n">assert</span> <span class="no">Dir</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="s2">"hoge"</span><span class="p">)</span> 
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">test_remove_dir</span>
+    <span class="no">Dir</span><span class="p">.</span><span class="nf">mkdir</span><span class="p">(</span><span class="s2">"piyo"</span><span class="p">)</span>
+    <span class="n">remove_dir</span><span class="p">(</span><span class="s2">"piyo"</span><span class="p">)</span>
+    <span class="n">assert</span> <span class="o">!</span><span class="no">Dir</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="s2">"piyo"</span><span class="p">)</span> 
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>このテストで<code>test_create_dir</code>の後ならディレクトリ<code>hoge</code>が残っているはずだが、実ファイルシステム上には存在しない。</p>
+
+<h2>
+<span id="テスト実施" class="fragment"></span><a href="#%E3%83%86%E3%82%B9%E3%83%88%E5%AE%9F%E6%96%BD"><i class="fa fa-link"></i></a>テスト実施</h2>
+
+<p>実行のサンプル</p>
+
+<div class="code-frame" data-lang="test"><div class="highlight"><pre>$ ./test_app.rb 
+Run options: 
+
+# Running tests:
+
+..
+
+Finished tests in 0.007162s, 279.2516 tests/s, 279.2516 assertions/s.
+
+2 tests, 2 assertions, 0 failures, 0 errors, 0 skips
+
+</pre></div></div>
+
+<p>テストOK、<code>hoge</code>も<code>piyo</code>も実ファイルシステム上には作られない。</p>

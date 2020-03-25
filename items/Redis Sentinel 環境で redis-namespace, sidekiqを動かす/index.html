@@ -1,0 +1,285 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://redis.io/topics/sentinel" rel="nofollow noopener" target="_blank">Redis Sentinel</a>で構成されたRedisのクラスタ環境はそこそこに複雑です、クライアントはRedisがSentinel環境であることを意識して専用のドライバを使うほうがよいでしょう。</p>
+
+<p>Rubyでよく使うRedisのライブラリ、<a href="https://github.com/resque/redis-namespace" rel="nofollow noopener" target="_blank">redis-namespace</a>と <a href="http://sidekiq.org" rel="nofollow noopener" target="_blank">Sidekiq</a>をRedis Sentinel 環境の環境で使ってみました。</p>
+
+<hr>
+
+<p>修正情報：sidekiq対応がモンキーパッチでしたが、Sidekiq開発者のPerham氏から直々にツッコミを頂いたので記事を修正。</p>
+
+<blockquote>
+<p>This is how you should configure Redis Sentinel.  Please don't monkeypatch. <a href="https://t.co/gKf98gnivd" class="autolink" rel="nofollow noopener" target="_blank">https://t.co/gKf98gnivd</a></p>
+</blockquote>
+
+<hr>
+
+<p><a href="https://github.com/flyerhzm/redis-sentinel" rel="nofollow noopener" target="_blank">redis-sentinel</a>というGemがあるので、それを利用することにします。</p>
+
+<h2>
+<span id="redis-namespace-with-redis-sentinel" class="fragment"></span><a href="#redis-namespace-with-redis-sentinel"><i class="fa fa-link"></i></a>redis-namespace with redis-sentinel</h2>
+
+<p>まず<a href="https://github.com/flyerhzm/redis-sentinel" rel="nofollow noopener" target="_blank">redis-sentinel</a>のサンプルで使い方を確認します。<code>Redis::Client</code>をオープンして<code>sentinel</code>関係の設定がうまいことやってくれるようになっていました。テスト環境起動用のコンフィグもついていたのですぐに試せます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">example/test.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'redis'</span>
+<span class="nb">require</span> <span class="s1">'redis-sentinel'</span>
+
+<span class="n">redis</span> <span class="o">=</span> <span class="no">Redis</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">:master_name</span> <span class="o">=&gt;</span> <span class="s2">"example-test"</span><span class="p">,</span>
+                  <span class="ss">:sentinels</span> <span class="o">=&gt;</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="ss">:host</span> <span class="o">=&gt;</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="ss">:port</span> <span class="o">=&gt;</span> <span class="mi">26379</span><span class="p">},</span>
+                    <span class="p">{</span><span class="ss">:host</span> <span class="o">=&gt;</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="ss">:port</span> <span class="o">=&gt;</span> <span class="mi">26380</span><span class="p">}</span>
+                  <span class="p">])</span>
+<span class="n">redis</span><span class="p">.</span><span class="nf">set</span> <span class="s2">"foo"</span><span class="p">,</span> <span class="s2">"bar"</span>
+
+<span class="k">while</span> <span class="kp">true</span>
+  <span class="k">begin</span>
+    <span class="nb">puts</span> <span class="n">redis</span><span class="p">.</span><span class="nf">get</span> <span class="s2">"foo"</span>
+  <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+    <span class="nb">puts</span> <span class="s2">"failed?"</span><span class="p">,</span> <span class="n">e</span>
+  <span class="k">end</span>
+  <span class="nb">sleep</span> <span class="mi">1</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>このサンプルから<a href="https://github.com/resque/redis-namespace" rel="nofollow noopener" target="_blank">redis-namespace</a>を使うようにしたのがこちら。<br>
+普段の使い方と通りに<a href="http://redis.io/topics/sentinel" rel="nofollow noopener" target="_blank">Redis Sentinel</a>の環境に適応させることができました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">example/test_name.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'redis'</span>
+<span class="nb">require</span> <span class="s1">'redis-namespace'</span>
+<span class="nb">require</span> <span class="s1">'redis-sentinel'</span>
+
+<span class="n">redis_s</span> <span class="o">=</span> <span class="no">Redis</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">:master_name</span> <span class="o">=&gt;</span> <span class="s2">"example-test"</span><span class="p">,</span>
+                  <span class="ss">:sentinels</span> <span class="o">=&gt;</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="ss">:host</span> <span class="o">=&gt;</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="ss">:port</span> <span class="o">=&gt;</span> <span class="mi">26379</span><span class="p">},</span>
+                    <span class="p">{</span><span class="ss">:host</span> <span class="o">=&gt;</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="ss">:port</span> <span class="o">=&gt;</span> <span class="mi">26380</span><span class="p">}</span>
+                  <span class="p">])</span>
+
+<span class="n">redis</span> <span class="o">=</span> <span class="no">Redis</span><span class="o">::</span><span class="no">Namespace</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">:myspace</span><span class="p">,</span> <span class="ss">:redis</span> <span class="o">=&gt;</span> <span class="n">redis_s</span><span class="p">)</span>
+<span class="n">redis</span><span class="p">.</span><span class="nf">set</span> <span class="s2">"foo"</span><span class="p">,</span> <span class="s2">"bar"</span>
+
+<span class="k">while</span> <span class="kp">true</span>
+  <span class="k">begin</span>
+    <span class="nb">puts</span> <span class="n">redis</span><span class="p">.</span><span class="nf">get</span> <span class="s2">"foo"</span>
+  <span class="k">rescue</span> <span class="o">=&gt;</span> <span class="n">e</span>
+    <span class="nb">puts</span> <span class="s2">"failed?"</span><span class="p">,</span> <span class="n">e</span>
+  <span class="k">end</span>
+  <span class="nb">sleep</span> <span class="mi">1</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><a href="https://github.com/resque/redis-namespace" rel="nofollow noopener" target="_blank">redis-namespace</a>に関しては特に考慮なしでよさそうですね。</p>
+
+<h2>
+<span id="sidekiq-with-redis-sentinel" class="fragment"></span><a href="#sidekiq-with-redis-sentinel"><i class="fa fa-link"></i></a>Sidekiq with redis-sentinel</h2>
+
+<p>次は<a href="http://sidekiq.org" rel="nofollow noopener" target="_blank">Sidekiq</a>です、まずは付属のサンプル。<br>
+<code>sinatra</code>のWEBインターフェースからキューして、ワーカに処理させています。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">sidekiq/examples/sinkiq.rb</span></div>
+<div class="highlight"><pre><span class="c1"># Make sure you have Sinatra installed, then start sidekiq with</span>
+<span class="c1"># ./bin/sidekiq -r ./examples/sinkiq.rb</span>
+<span class="c1"># Simply run Sinatra with</span>
+<span class="c1"># ruby examples/sinkiq.rb</span>
+<span class="c1"># and then browse to http://localhost:4567</span>
+<span class="c1">#</span>
+<span class="nb">require</span> <span class="s1">'sinatra'</span>
+<span class="nb">require</span> <span class="s1">'sidekiq'</span>
+<span class="nb">require</span> <span class="s1">'redis'</span>
+
+<span class="vg">$redis</span> <span class="o">=</span> <span class="no">Redis</span><span class="p">.</span><span class="nf">new</span>
+
+<span class="k">class</span> <span class="nc">SinatraWorker</span>
+  <span class="kp">include</span> <span class="no">Sidekiq</span><span class="o">::</span><span class="no">Worker</span>
+
+  <span class="k">def</span> <span class="nf">perform</span><span class="p">(</span><span class="n">msg</span><span class="o">=</span><span class="s2">"lulz you forgot a msg!"</span><span class="p">)</span>
+    <span class="vg">$redis</span><span class="p">.</span><span class="nf">lpush</span><span class="p">(</span><span class="s2">"sinkiq-example-messages"</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">get</span> <span class="s1">'/'</span> <span class="k">do</span>
+  <span class="n">stats</span> <span class="o">=</span> <span class="no">Sidekiq</span><span class="o">::</span><span class="no">Stats</span><span class="p">.</span><span class="nf">new</span>
+  <span class="vi">@failed</span> <span class="o">=</span> <span class="n">stats</span><span class="p">.</span><span class="nf">failed</span>
+  <span class="vi">@processed</span> <span class="o">=</span> <span class="n">stats</span><span class="p">.</span><span class="nf">processed</span>
+  <span class="vi">@messages</span> <span class="o">=</span> <span class="vg">$redis</span><span class="p">.</span><span class="nf">lrange</span><span class="p">(</span><span class="s1">'sinkiq-example-messages'</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+  <span class="n">erb</span> <span class="ss">:index</span>
+<span class="k">end</span>
+
+<span class="n">post</span> <span class="s1">'/msg'</span> <span class="k">do</span>
+  <span class="no">SinatraWorker</span><span class="p">.</span><span class="nf">perform_async</span> <span class="n">params</span><span class="p">[</span><span class="ss">:msg</span><span class="p">]</span>
+  <span class="n">redirect</span> <span class="n">to</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="cp">__END__
+
+@@ layout
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;Sinatra + Sidekiq&lt;/title&gt;
+    &lt;body&gt;
+      &lt;%= yield %&gt;
+    &lt;/body&gt;
+&lt;/html&gt;
+
+@@ index
+  &lt;h1&gt;Sinatra + Sidekiq Example&lt;/h1&gt;
+  &lt;h2&gt;Failed: &lt;%= @failed %&gt;&lt;/h2&gt;
+  &lt;h2&gt;Processed: &lt;%= @processed %&gt;&lt;/h2&gt;
+
+  &lt;form method="post" action="/msg"&gt;
+    &lt;input type="text" name="msg"&gt;
+    &lt;input type="submit" value="Add Message"&gt;
+  &lt;/form&gt;
+
+  &lt;a href="/"&gt;Refresh page&lt;/a&gt;
+
+  &lt;h3&gt;Messages&lt;/h3&gt;
+  &lt;% @messages.each do |msg| %&gt;
+    &lt;p&gt;&lt;%= msg %&gt;&lt;/p&gt;
+  &lt;% end %&gt;
+</span></pre></div>
+</div>
+
+<h4>
+<span id="起動コマンド" class="fragment"></span><a href="#%E8%B5%B7%E5%8B%95%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89"><i class="fa fa-link"></i></a>起動コマンド</h4>
+
+<p>一応このサンプルの起動コマンドはヘッダに書いてあるとおりこんな感じです。</p>
+
+<ul>
+<li>sinatra_web: <code>(bundle exec) ruby ./sidekiq/examples/sinkiq.rb</code>
+</li>
+<li>sidekiq_worker: <code>(bundle exec) sidekiq  -r ./sidekiq/examples/sinkiq.rb -v</code>
+</li>
+</ul>
+
+<p>sinatraは<code>localhost:4567</code>で起動するので、メッセージをキューしてワーカの出力を見るといいです。</p>
+
+<h3>
+<span id="sentinelを使う" class="fragment"></span><a href="#sentinel%E3%82%92%E4%BD%BF%E3%81%86"><i class="fa fa-link"></i></a>Sentinelを使う</h3>
+
+<p>SidekiqをSentinel経由にする方法は <a href="https://github.com/mperham/sidekiq/wiki/Advanced-Options#complete-control" rel="nofollow noopener" target="_blank">Advanced Options | sidekiq wiki</a> にありました。<br>
+Redisのインスタンスを自由に設定するやり方を参考に前述のサンプルを変更してみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">sinkiq_sentinel_with_stat.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'sinatra'</span>
+<span class="nb">require</span> <span class="s1">'sidekiq'</span>
+<span class="nb">require</span> <span class="s1">'redis'</span>
+<span class="nb">require</span> <span class="s1">'redis-sentinel'</span>
+
+<span class="n">redis_conn</span> <span class="o">=</span> <span class="nb">proc</span> <span class="p">{</span>
+  <span class="no">Redis</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">:master_name</span> <span class="o">=&gt;</span> <span class="s2">"example-test"</span><span class="p">,</span>
+                  <span class="ss">:sentinels</span> <span class="o">=&gt;</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="ss">:host</span> <span class="o">=&gt;</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="ss">:port</span> <span class="o">=&gt;</span> <span class="mi">26379</span><span class="p">},</span>
+                    <span class="p">{</span><span class="ss">:host</span> <span class="o">=&gt;</span> <span class="s2">"localhost"</span><span class="p">,</span> <span class="ss">:port</span> <span class="o">=&gt;</span> <span class="mi">26380</span><span class="p">}</span>
+                  <span class="p">])</span>
+<span class="p">}</span>
+
+<span class="no">Sidekiq</span><span class="p">.</span><span class="nf">configure_server</span> <span class="k">do</span> <span class="o">|</span><span class="n">config</span><span class="o">|</span>
+  <span class="n">config</span><span class="p">.</span><span class="nf">redis</span> <span class="o">=</span> <span class="no">ConnectionPool</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">size: </span><span class="mi">10</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">redis_conn</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="no">Sidekiq</span><span class="p">.</span><span class="nf">configure_client</span> <span class="k">do</span> <span class="o">|</span><span class="n">config</span><span class="o">|</span>
+  <span class="n">config</span><span class="p">.</span><span class="nf">redis</span> <span class="o">=</span> <span class="no">ConnectionPool</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">size: </span><span class="mi">5</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">redis_conn</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">class</span> <span class="nc">SinatraWorker</span>
+  <span class="kp">include</span> <span class="no">Sidekiq</span><span class="o">::</span><span class="no">Worker</span>
+
+  <span class="k">def</span> <span class="nf">perform</span><span class="p">(</span><span class="n">msg</span><span class="o">=</span><span class="s2">"lulz you forgot a msg!"</span><span class="p">)</span>
+    <span class="vg">$redis</span><span class="p">.</span><span class="nf">lpush</span><span class="p">(</span><span class="s2">"sinkiq-example-messages"</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">get</span> <span class="s1">'/'</span> <span class="k">do</span>
+  <span class="n">stats</span> <span class="o">=</span> <span class="no">Sidekiq</span><span class="o">::</span><span class="no">Stats</span><span class="p">.</span><span class="nf">new</span>
+  <span class="vi">@failed</span> <span class="o">=</span> <span class="n">stats</span><span class="p">.</span><span class="nf">failed</span>
+  <span class="vi">@processed</span> <span class="o">=</span> <span class="n">stats</span><span class="p">.</span><span class="nf">processed</span>
+  <span class="vi">@messages</span> <span class="o">=</span> <span class="vg">$redis</span><span class="p">.</span><span class="nf">lrange</span><span class="p">(</span><span class="s1">'sinkiq-example-messages'</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+  <span class="n">erb</span> <span class="ss">:index</span>
+<span class="k">end</span>
+
+<span class="n">post</span> <span class="s1">'/msg'</span> <span class="k">do</span>
+  <span class="no">SinatraWorker</span><span class="p">.</span><span class="nf">perform_async</span> <span class="n">params</span><span class="p">[</span><span class="ss">:msg</span><span class="p">]</span>
+  <span class="n">redirect</span> <span class="n">to</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="cp">__END__
+
+@@ layout
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;Sinatra + Sidekiq&lt;/title&gt;
+&lt;body&gt;
+&lt;%= yield %&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+
+@@ index
+&lt;h1&gt;Sinatra + Sidekiq Example&lt;/h1&gt;
+&lt;h2&gt;Failed: &lt;%= @failed %&gt;&lt;/h2&gt;
+&lt;h2&gt;Processed: &lt;%= @processed %&gt;&lt;/h2&gt;
+
+&lt;form method="post" action="/msg"&gt;
+&lt;input type="text" name="msg"&gt;
+&lt;input type="submit" value="Add Message"&gt;
+&lt;/form&gt;
+
+&lt;a href="/"&gt;Refresh page&lt;/a&gt;
+
+&lt;h3&gt;Messages&lt;/h3&gt;
+&lt;% @messages.each do |msg| %&gt;
+&lt;p&gt;&lt;%= msg %&gt;&lt;/p&gt;
+&lt;% end %&gt;
+</span></pre></div>
+</div>
+
+<p>※初版ではここはモンキーパッチでした、ちゃんとスマートに設定できたようです。</p>
+
+<h3>
+<span id="サンプルログ" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%83%AD%E3%82%B0"><i class="fa fa-link"></i></a>サンプルログ</h3>
+
+<p>上記サンプルを使って、sidekiq_workerを <code>(bundle exec) sidekiq  -r ./sinkiq_sentinel.rb -v</code>で起動すればStat APIがデータストアにRedis Sentinel環境を使いだします。</p>
+
+<p>ワーカはそれぞれID(<a href="/hash" class="user-mention js-hovercard" title="hash" data-hovercard-target-type="user" data-hovercard-target-name="hash">@hash</a>)を持っているようなので複数起動しても問題無さ気でした。</p>
+
+<p>マスタ切替時のログはこの様に出力されます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">sidekiq</span></div>
+<div class="highlight"><pre>TID-oxgwckouo INFO: Running <span class="k">in </span>ruby 2.0.0p247 <span class="o">(</span>2013-06-27 revision 41674<span class="o">)</span> <span class="o">[</span>x86_64-darwin12.3.0]
+
+TID-oxgwcg8yk ERROR: Error fetching message: Error connecting to Redis on 127.0.0.1:16380 <span class="o">(</span>ECONNREFUSED<span class="o">)</span>
+
+<span class="c"># -- 接続切れた</span>
+
+TID-oxgwcg8yk ERROR: /Users/sawanoboriyu/.rvm/gems/ruby-2.0.0-p247@redis-sentinel/gems/redis-3.0.4/lib/redis/client.rb:276:in <span class="sb">`</span>rescue <span class="k">in
+</span>TID-oxgwcg8yk ERROR: /Users/sawanoboriyu/.rvm/gems/ruby-2.0.0-p247@redis-sentinel/gems/redis-3.0.4/lib/redis/client.rb:271:in <span class="sb">`</span>establish
+TID-oxgwcg8yk ERROR: /Users/sawanoboriyu/.rvm/gems/ruby-2.0.0-p247@redis-sentinel/gems/redis-3.0.4/lib/redis/client.rb:69:in <span class="sb">`</span>connect<span class="s1">'
+TID-oxgwcg8yk ERROR: /Users/sawanoboriyu/github/others/redis-sentinel/lib/redis-sentinel/client.rb:25:in `block in connect_with_sentinel
+TID-oxgwcg8yk ERROR: /Users/sawanoboriyu/github/others/redis-sentinel/lib/redis-sentinel/client.rb:42:in `call'</span>
+TID-oxgwcg8yk ERROR: /Users/sawanoboriyu/github/others/redis-sentinel/lib/redis-sentinel/client.rb:42:in <span class="sb">`</span>auto_retry_with_timeout<span class="s1">'
+
+# -- redis-sentinel gemによるマスタ再発見まわり
+
+TID-oxgwcg8yk ERROR: /Users/sawanoboriyu/github/others/redis-sentinel/lib/redis-sentinel/client.rb:23:in `connect_with_sentinel'</span>
+TID-oxgwevm7g ERROR: The master: example-test is currently not available.
+TID-oxgwevm7g ERROR: /Users/sawanoboriyu/github/others/redis-sentinel/lib/redis-sentinel/client.rb:75:in <span class="sb">`</span>discover_master<span class="s1">'
+
+# -- 復旧
+
+TID-oxgwcg8yk INFO: Redis is online, 16.16007900238037 sec downtime
+</span></pre></div>
+</div>
+
+<p>良い感じに切り替わりましたね。</p>

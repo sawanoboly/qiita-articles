@@ -1,0 +1,48 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>とある状況下では、複数のGithubのアカウントが必要になる。</p>
+
+<p>例えば以下の様なケース、</p>
+
+<ul>
+<li>普段使うの：個人Githubアカウント</li>
+<li>特定Projectの開発：管理上の都合(笑)で共通のGithubアカウント</li>
+</ul>
+
+<p>Githubがいくら個人指向の<code>Organization</code> &amp; <code>Team</code> な作りでも、企業間でのやりとりではそこに合わせられないということも多いでしょう。</p>
+
+<p>そんな時に役立つTips.</p>
+
+<h2>
+<span id="個人アカウントはssh-public-keyその他はoauthのトークンhttp-uri-でいこう" class="fragment"></span><a href="#%E5%80%8B%E4%BA%BA%E3%82%A2%E3%82%AB%E3%82%A6%E3%83%B3%E3%83%88%E3%81%AFssh-public-key%E3%81%9D%E3%81%AE%E4%BB%96%E3%81%AFoauth%E3%81%AE%E3%83%88%E3%83%BC%E3%82%AF%E3%83%B3http-uri-%E3%81%A7%E3%81%84%E3%81%93%E3%81%86"><i class="fa fa-link"></i></a>個人アカウントは<code>SSH public key</code>、その他は<code>OAuthのトークン＋HTTP URI</code> でいこう</h2>
+
+<p>聡明な面倒臭がりなら<code>ssh-agent</code>であったり<code>credential-cache</code>を導入し、快適なgithubライフをおくっていることでしょう。</p>
+
+<p>ここではみなまで述べませんが、SSH-Keyによるアカウント識別の仕組みやhttpアクセス時のアレコレを考えると、Githubのアカウント使い分けは結構難がある仕組みになっています。</p>
+
+<p>OAuth Tokenを使ったリポジトリClone手法を覚えておくとアカウントを使い分けつつほぼシームレスに全関係者用リポジトリにアクセスすることができます。</p>
+
+<p><a href="https://help.github.com/articles/creating-an-oauth-token-for-command-line-use" rel="nofollow noopener" target="_blank">Creating an OAuth token for command-line use</a></p>
+
+<p>とりあえず上記を参考に共通アカウント用のTokenを発行しましょう、Roleは<code>repository</code>のみで十分です。</p>
+
+<h2>
+<span id="tokenを使ったvia-httpsなクローン" class="fragment"></span><a href="#token%E3%82%92%E4%BD%BF%E3%81%A3%E3%81%9Fvia-https%E3%81%AA%E3%82%AF%E3%83%AD%E3%83%BC%E3%83%B3"><i class="fa fa-link"></i></a>Tokenを使った<code>via https</code>なクローン</h2>
+
+<p>Tokenを手に入れたら、HTTP認証の文字列としてRemoteURIに組み込みましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>git clone https://{OAuth Token}@github.com/{org or user}/repository.git
+</pre></div></div>
+
+<p>または既存の<code>git repository</code>にリモートを追加したいとき。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>git remote add upstream https://{OAuth Token}@github.com/{org or user}/repository.git
+</pre></div></div>
+
+<p>これらは嬉しいことに<code>ssh-agent</code>や<code>credential-cache</code>に優先します。</p>
+
+<p>Githubアカウントの使い分けに不便を感じたら是非試してみてください。</p>

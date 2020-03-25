@@ -1,0 +1,90 @@
+
+
+<p>Amazon EC2でCentOSを使いたい場合、CentOSコミュニティがAWS MarketPlaceに公開しているイメージが一応ある。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F30cb71f0-b992-8ca7-1eb2-75afea9ffb68.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a4774a9cecd05afd0ee5816cb8d6e2b1" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F30cb71f0-b992-8ca7-1eb2-75afea9ffb68.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a4774a9cecd05afd0ee5816cb8d6e2b1" alt="CentOS_6__x86_64__-_with_Updates_on_AWS_Marketplace.png" title="CentOS_6__x86_64__-_with_Updates_on_AWS_Marketplace.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/30cb71f0-b992-8ca7-1eb2-75afea9ffb68.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F30cb71f0-b992-8ca7-1eb2-75afea9ffb68.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=066add93a06c33ca4fa4bc85c3a2702b 1x" loading="lazy"></a></p>
+
+<p>かなり素の状態で置いてあり、例えば次のような点でAmazon Linuxなどと異なっている。</p>
+
+<ul>
+<li>ログインユーザがroot
+
+<ul>
+<li>ついでにランダムパスワード</li>
+</ul>
+</li>
+<li>Iptables, Selinuxが有効</li>
+<li>
+<code>ec2metadata</code>や<code>aws</code>コマンドがない (curlで取るのはOK)</li>
+<li>cloud-initが入ってない</li>
+</ul>
+
+<h2>
+<span id="packerで調整して保存" class="fragment"></span><a href="#packer%E3%81%A7%E8%AA%BF%E6%95%B4%E3%81%97%E3%81%A6%E4%BF%9D%E5%AD%98"><i class="fa fa-link"></i></a>Packerで調整して保存</h2>
+
+<p>詳しくはこちら。</p>
+
+<p><a href="https://github.com/OpsRockin/centos6_ami_from_official" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/centos6_ami_from_official</a></p>
+
+<p>これにより、次のように調整したAMIを作れる。</p>
+
+<ul>
+<li>- Iptables, Selinux無効</li>
+<li>ログインユーザは<code>cloud-user</code>に、sudo対応
+
+<ul>
+<li><code>Please login as the user "cloud-user" rather than the user "root".</code></li>
+</ul>
+</li>
+<li>
+<code>aws</code>コマンド標準装備、Roleも対応</li>
+</ul>
+
+<p>PackerのShell-Provisionerはこんな感じ。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bootstrap.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+
+<span class="nb">set</span> <span class="nt">-ex</span>
+
+<span class="c"># Disable Selinux and Iptables</span>
+<span class="nb">sed </span>s/SELINUX<span class="o">=</span>enforcing/SELINUX<span class="o">=</span>disabled/ /etc/selinux/config <span class="nt">-i</span>
+chkconfig iptables off
+chkconfig ip6tables off
+
+yum update <span class="nt">-y</span>
+
+
+<span class="c">## Install AWS Tools and Git</span>
+rpm <span class="nt">-Uvh</span> http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
+yum <span class="nb">install</span> <span class="nt">-y</span> cloud-init git jq cloud-utils python-pip
+pip <span class="nb">install </span>awscli
+
+
+<span class="c">## Remove Password from root</span>
+passwd <span class="nt">-d</span> root
+<span class="nb">sed</span> <span class="nt">-e</span> <span class="s1">'9,$d'</span> /etc/rc.local <span class="nt">-i</span>
+
+
+<span class="c">## Set sudo rule for cloud-user</span>
+<span class="nb">cat</span> <span class="o">&lt;&lt;</span><span class="no">EOL</span><span class="sh"> &gt; cloud-init
+cloud-user ALL = NOPASSWD: ALL
+
+# User rules for cloud-user
+cloud-user ALL=(ALL) NOPASSWD:ALL
+Defaults:cloud-user !requiretty
+</span><span class="no">EOL
+
+</span><span class="nb">install</span> <span class="nt">-o</span> root <span class="nt">-g</span> root <span class="nt">-m</span> 0440 cloud-init /etc/sudoers.d/cloud-init
+<span class="nb">rm</span> <span class="nt">-f</span> cloud-init
+</pre></div>
+</div>
+
+<p>これで作っておいたAMIに対しては、通常のAmazon公式イメージとほぼ同様の扱いが可能になる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ssh cloud-user@ec2-xx-xx-xxx-xxx.compute-1.amazonaws.com sudo echo 'hogehoge'
+hogehoge
+</pre></div></div>
+
+<p>元がAWS MarketPlaceのイメージなので、これを更にPublicにする事はできないけど。</p>

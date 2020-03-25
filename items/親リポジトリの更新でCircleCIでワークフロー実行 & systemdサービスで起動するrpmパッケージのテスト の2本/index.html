@@ -1,0 +1,148 @@
+<p>CircleCIの関係者っぽい方からなんか書いてとDMがきたので。そういえば今年はチャットサポートで問題さくっと解決してもらったりしたなあと思い、特に素性も確認することなく記事を書くことにしました。</p>
+
+<p>さて、CircleCIでは毎日なにかを実行してるくらい使ってはいますが、ほぼドキュメントに普通にある程度のことしかやっていません。<br>
+とりあえず、すこし変わった使い方かな？程度の小ネタのようなのを2つほど。</p>
+
+<h2>
+<span id="ネタ1-親リポジトリの更新でcircleciでワークフロー実行" class="fragment"></span><a href="#%E3%83%8D%E3%82%BF1-%E8%A6%AA%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%81%AE%E6%9B%B4%E6%96%B0%E3%81%A7circleci%E3%81%A7%E3%83%AF%E3%83%BC%E3%82%AF%E3%83%95%E3%83%AD%E3%83%BC%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>ネタ1: 親リポジトリの更新でCircleCIでワークフロー実行</h2>
+
+<p>私はプロビジョニングツール<a href="https://www.chef.io" rel="nofollow noopener" target="_blank">Chef</a>のプラグイン<a href="https://knife-zero.github.io" rel="nofollow noopener" target="_blank">knife-zero</a>というRubygemのメンテナをしています。</p>
+
+<p>このような、元プロジェクトが別にある場合、その変更によってプラグインの互換性が崩れることがありますね。実際何度かあり、ユーザから『アップデートしたら止まった』という報告で修正したこともあります。</p>
+
+<p>この修正作業、まず前バージョンとの差分を確認してからどのようにプラグインを変更するかなどを考える必要があり、非互換が複数にわたっている場合などなかなか骨の折れる作業になることも。</p>
+
+<p>とりあえず結合テストを書いて、1日1回でスケジュールを回すことにしましたが、Chef側の規模が規模だけに、1日単位でもどの変更か調べるのが大変な時もありました。</p>
+
+<h3>
+<span id="互換性維持のために" class="fragment"></span><a href="#%E4%BA%92%E6%8F%9B%E6%80%A7%E7%B6%AD%E6%8C%81%E3%81%AE%E3%81%9F%E3%82%81%E3%81%AB"><i class="fa fa-link"></i></a>互換性維持のために</h3>
+
+<p>ならもう親プロジェクトのmasterのHEAD更新のたび、結合テストしたらいいんじゃないかな。Githubはブランチのコミットログに対してフィードを生成しているので、それをつかいます。</p>
+
+<p>ということで、IFTTTでこんな感じのAppletを作りました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.ap-northeast-1.amazonaws.com%2F0%2F7454%2Fc02a7081-20a0-561c-bbf4-9cecd745725f.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=29b00f6ee92666cbbc23ade145878047" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.ap-northeast-1.amazonaws.com%2F0%2F7454%2Fc02a7081-20a0-561c-bbf4-9cecd745725f.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=29b00f6ee92666cbbc23ade145878047" alt="My Applets - IFTTT 2019-12-13 18-34-25.png" data-canonical-src="https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/7454/c02a7081-20a0-561c-bbf4-9cecd745725f.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.ap-northeast-1.amazonaws.com%2F0%2F7454%2Fc02a7081-20a0-561c-bbf4-9cecd745725f.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0ed795d275084f65a751ce9709a57d3d 1x" loading="lazy"></a></p>
+
+<ul>
+<li>Feed URL: <code>https://github.com/chef/chef/commits/master.atom</code>
+</li>
+<li>URL: <code>https://circleci.com/api/v1.1/project/github/higanworks/knife-zero/build?circle-token=(プロジェクトトークン)</code>
+</li>
+<li>Method: <code>POST</code>
+</li>
+<li>body: <code>{"branch": "integration_testedge"}</code> (application/json)</li>
+</ul>
+
+<p>これで、Chef側のすべてのmaster変更に対して結合テストを実施できるようになります。そのため、非互換の変更が加えられたのがどのコミットなのかがバッチリ特定できます。</p>
+
+<p>この手法をとるようになってからは、非互換が発生した変更に対応するようにプラグイン側を修正し、結合テストをグリーンに復旧させて、可能なら新旧両方サポートした分岐なりでプラグインの新バージョンを先にリリースしてあります。<br>
+実際にバージョンが付けられてリリースされるまでに対応すればよいので、事後にするより余裕を持って見られるのもよいですね。</p>
+
+<p>実際にこの結合テストをやっているのは下記。</p>
+
+<p><a href="https://circleci.com/gh/higanworks/knife-zero" rel="nofollow noopener" target="_blank">https://circleci.com/gh/higanworks/knife-zero</a></p>
+
+<p>masterが活発だと、結構なペースでテストが走っていますね。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.ap-northeast-1.amazonaws.com%2F0%2F7454%2F46c5510b-15b0-3b26-9963-34ca4ff094d6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ed09092032b5345b411480818c9f948f" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.ap-northeast-1.amazonaws.com%2F0%2F7454%2F46c5510b-15b0-3b26-9963-34ca4ff094d6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ed09092032b5345b411480818c9f948f" alt="CircleCI 2019-12-13 18-38-04.png" data-canonical-src="https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/7454/46c5510b-15b0-3b26-9963-34ca4ff094d6.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.ap-northeast-1.amazonaws.com%2F0%2F7454%2F46c5510b-15b0-3b26-9963-34ca4ff094d6.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=b06d6d46fb91a87c0128eaca103af295 1x" loading="lazy"></a></p>
+
+<p>ビルド番号はもう13,000以上。。</p>
+
+<p>ともあれ、プラグインを作るなら、親プロジェクトが新バージョンをリリースする際、その前段階から互換性維持対応は終わらせておく、という状況を維持したいもんですね。</p>
+
+<hr>
+
+<blockquote>
+<p>追記: せっかくなので機能の追加要望としては、よそのリポジトリをsubscribeするような形でビルドのトリガーにできる機能があったらうれしいな。</p>
+</blockquote>
+
+<h2>
+<span id="ネタ2-systemdサービスで起動するrpmパッケージのテスト" class="fragment"></span><a href="#%E3%83%8D%E3%82%BF2-systemd%E3%82%B5%E3%83%BC%E3%83%93%E3%82%B9%E3%81%A7%E8%B5%B7%E5%8B%95%E3%81%99%E3%82%8Brpm%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%81%AE%E3%83%86%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>ネタ2: systemdサービスで起動するrpmパッケージのテスト</h2>
+
+<p>私はAmazon Linux1/2用に、Nginxのmainline版のRPMをビルドしています。</p>
+
+<ul>
+<li><a href="https://github.com/OpsRockin/nginx_mainline_for_amazon_linux" rel="nofollow noopener" target="_blank">Nginx mainline for Amazon Linux</a></li>
+</ul>
+
+<p>主な用途はWordPressの<a href="https://ja.amimoto-ami.com/" rel="nofollow noopener" target="_blank">Amimoto AMI</a>ですが、普通にそのへん気にしなくても使えるようにしています。</p>
+
+<p>で、このRPMは<code>ngx_mruby</code>や<code>ngx_pagespeed</code>などダイナミックモジュールを入れているので、ちょっとした結合テストをしてからリリースすることにしています。</p>
+
+<p>Amazon Linux 2はサービスの管理がsystemdになりましたが、パッケージを作る際にちょっと手抜きして、Sysv initで作っていたAmazon Linux 1から流用しました。(結合テストめんどくさそうだったし。。)</p>
+
+<p>しかし、Amazon Linux 2に対応してる企業一覧、みたいなのがありまして。</p>
+
+<p><a href="https://aws.amazon.com/jp/amazon-linux-2/" rel="nofollow noopener" target="_blank">テクノロジーパートナー | Amazon Linux 2</a></p>
+
+<p>ここには『サービス全部<code>systemd.unit</code>で管理できるようにしてるぜ！』などの規定があったりするのです。</p>
+
+<p>ああ、Amazon Linux 2用のほうは変更して、テストしなきゃなあと。</p>
+
+<blockquote>
+<p>追記： 無事に載ってましたわ。</p>
+</blockquote>
+
+<h3>
+<span id="machine-executorでsystemd-on-docker-container" class="fragment"></span><a href="#machine-executor%E3%81%A7systemd-on-docker-container"><i class="fa fa-link"></i></a>machine executorでsystemd on docker container</h3>
+
+<p>dockerコンテナでsystemd配下としてサービスを起動するには <code>--privileged</code> で <code>/sbin/init</code> からエントリーすればよいと色んなとこに書いてあるのでそうするとしましょう。<br>
+CircleCIでこれをやるにはおそらく現状<code>machine executor</code>しかないのかな。</p>
+
+<ol>
+<li>systemdつきでコンテナ起動</li>
+<li>RPMインストール</li>
+<li>curl</li>
+</ol>
+
+<p>というテストを作るためのstepがこんな感じに。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.circleci/config.yml(抜粋)</span></div>
+<div class="highlight"><pre>    <span class="na">steps</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span>
+          <span class="na">name</span><span class="pi">:</span> <span class="s">Set up host system</span>
+          <span class="na">command</span><span class="pi">:</span> <span class="pi">|</span>
+            <span class="s">sudo service apparmor teardown</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">docker run --name &lt;&lt; parameters.pkg &gt;&gt; -d -e CIRCLE_JOB=$CIRCLE_JOB -it --privileged -p 8080:80 -v `pwd`:/mnt/host --workdir /mnt/host opsrock/amzn_linux_with:2-with-sources /sbin/init</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">sleep </span><span class="m">10</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">docker exec &lt;&lt; parameters.pkg &gt;&gt; ./ci/build_deps.sh</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">docker exec &lt;&lt; parameters.pkg &gt;&gt; rpm -ivh ./RPMS/x86_64/nginx-*.&lt;&lt; parameters.pkg &gt;&gt;.amimoto.x86_64.rpm</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">docker exec &lt;&lt; parameters.pkg &gt;&gt; cp -f ./ci/nginx.conf /etc/nginx/nginx.conf</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">docker exec &lt;&lt; parameters.pkg &gt;&gt; nginx -V</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">docker exec &lt;&lt; parameters.pkg &gt;&gt; nginx -t</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">docker exec &lt;&lt; parameters.pkg &gt;&gt; systemctl start nginx</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="s">curl -vf 127.0.0.1:8080/hello</span>
+</pre></div>
+</div>
+
+<p>RPMファイル自体はひとつ前のワークフローでビルドしてるので、実際は <code>persist_to_workspace</code> =&gt; <code>attach_workspace</code> で運んでいます。<br>
+machine上のdockerでやるときの注意は、<code>CIRCLE_*</code>の環境変数があるつもりでやりがち、くらいでしょうか。<br>
+sleepのとこは妥協なので、どこか確認しやすい場所があれば<code>docker exec</code>で untilのループを回すほうが良いと思います。</p>
+
+<p>余談ですが、CircleCIのdocker imageに<code>amazonlinux:2*</code>を選択する場合、<code>tar</code>と<code>gzip</code>が入ってないので下記メッセージでコケてしまいます。rh系8のminimumもそうだったかも。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&gt; tar utility is not present in this image but it is required. Please install it to have workflow workspace capability.
+
+&gt; gzip utility is not present in this image but it is required. Please install it to have workflow workspace capability.
+</pre></div></div>
+
+<p>なのでそれをカバーしただけのイメージを作っておく必要がありますね。</p>
+
+<p><a href="https://github.com/OpsRockin/amzn_linux_with" rel="nofollow noopener" target="_blank">OpsRockin/amzn_linux_with</a></p>
+
+<p>こちらも確かなるべく最新を維持するため、IFTTTから毎日イメージ作成をキックしています。</p>
+
+<p><a href="https://hub.docker.com/r/opsrock/amzn_linux_with/builds" rel="nofollow noopener" target="_blank">https://hub.docker.com/r/opsrock/amzn_linux_with/builds</a></p>
+
+<h2>
+<span id="おわりに-サポート良い対応" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB-%E3%82%B5%E3%83%9D%E3%83%BC%E3%83%88%E8%89%AF%E3%81%84%E5%AF%BE%E5%BF%9C"><i class="fa fa-link"></i></a>おわりに: サポート良い対応</h2>
+
+<p>今年からかな？CircleCIのサポート(Appの右下Chat枠)が日本語で対応してくるようになりました。<br>
+英語のみだったときから普通に対応は良かったので、先日質問して反応が返ってきたときに、『えっ日本語サポートかいな』と若干不安になったのを覚えています。</p>
+
+<p>そんな心配は杞憂におわり、サポートの方は普通に各機能やAPIについても理解しているようで、プレビュー版APIの挙動について聞いたり、APIv2について教えてくれたりと頼りになる対応でした。</p>
+
+<p>FAQなんかはすぐ解決できるでしょうし、トークンの権限とかも普通に素早く調べてくれたりしていたので多少の固有問題にもエスカレーション体制ができているんだろうなと思います。</p>
+
+<p>なにか迷ったらチャットで聞いちゃいましょう。</p>

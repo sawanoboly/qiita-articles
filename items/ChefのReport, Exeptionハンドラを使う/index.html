@@ -1,0 +1,251 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Chefのクライアント(ChefSolo/ChefClient)を実行して、締めの処理をなにかしら行いたい。</p>
+
+<p>詳細はこちら。 <a href="http://docs.opscode.com/essentials_handlers.html" rel="nofollow noopener" target="_blank">Chef Docs: About Exception and Report Handlers</a></p>
+
+<h2>
+<span id="2つのハンドラ" class="fragment"></span><a href="#2%E3%81%A4%E3%81%AE%E3%83%8F%E3%83%B3%E3%83%89%E3%83%A9"><i class="fa fa-link"></i></a>2つのハンドラ</h2>
+
+<ul>
+<li>exception handler: 例外発生がトリガ</li>
+<li>report handler: 正常終了がトリガ</li>
+</ul>
+
+<p>Chef_runの実行結果によって、このどちらか一方のみトリガされます。<br>
+同じ物を指定するのも構いません。</p>
+
+<h2>
+<span id="ハンドラ仕様" class="fragment"></span><a href="#%E3%83%8F%E3%83%B3%E3%83%89%E3%83%A9%E4%BB%95%E6%A7%98"><i class="fa fa-link"></i></a>ハンドラ仕様</h2>
+
+<p>ハンドラについてはこんな感じです。</p>
+
+<ul>
+<li>
+<code>Chef::Handler</code>を継承したクラス</li>
+<li>
+<code>report</code>メソッドを持つ</li>
+<li>
+<code>run_status</code>を持っているので中身を適当に処理</li>
+</ul>
+
+<p>トリガ原因が<code>exception</code>でも<code>report</code>でも、<code>report</code>メソッドが実行されます。</p>
+
+<h3>
+<span id="サンプルハンドラ" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%83%8F%E3%83%B3%E3%83%89%E3%83%A9"><i class="fa fa-link"></i></a>サンプルハンドラ</h3>
+
+<p>ではシンプルな<a href="https://github.com/jtimberman/chef-handler-updated-resources" rel="nofollow noopener" target="_blank">chef-handler-updated-resources</a>というのを使ってみます。</p>
+
+<p>クライアント実行後に、今回更新されたリソース一覧をINFOレベルでログに出力します。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">updated_resources.rb</span></div>
+<div class="highlight"><pre><span class="c1">#</span>
+<span class="c1"># Copyright:: 2011, Joshua Timberman &lt;chefcode@housepub.org&gt;</span>
+<span class="c1">#</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the "License");</span>
+
+<span class="nb">require</span> <span class="s1">'chef/handler'</span>
+
+<span class="k">module</span> <span class="nn">SimpleReport</span>
+  <span class="k">class</span> <span class="nc">UpdatedResources</span> <span class="o">&lt;</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span>
+
+    <span class="k">def</span> <span class="nf">report</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">info</span> <span class="s2">"Resources updated this run:"</span>
+      <span class="n">run_status</span><span class="p">.</span><span class="nf">updated_resources</span><span class="p">.</span><span class="nf">each</span> <span class="p">{</span><span class="o">|</span><span class="n">r</span><span class="o">|</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">info</span> <span class="s2">" </span><span class="si">#{</span><span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2">"</span><span class="p">}</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>def report</code>ありますね。</p>
+
+<h3>
+<span id="gem--chefのコンフィグに書く" class="fragment"></span><a href="#gem--chef%E3%81%AE%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%82%B0%E3%81%AB%E6%9B%B8%E3%81%8F"><i class="fa fa-link"></i></a>gem &amp; Chefのコンフィグに書く</h3>
+
+<p>さきほどの<code>chef-handler-updated-resources</code>はGemなのでRubyGemsから導入します。</p>
+
+<p><code>gem install chef-handler-updated-resources --no-ri --no-rdoc</code></p>
+
+<p>このハンドラを使うためには<code>solo.rb/client.rb</code>で指定すればOKです。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">solo.rb/client.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'chef/handler/updated_resources'</span>
+
+<span class="n">report_handlers</span> <span class="o">&lt;&lt;</span> <span class="no">SimpleReport</span><span class="o">::</span><span class="no">UpdatedResources</span><span class="p">.</span><span class="nf">new</span>
+<span class="n">exception_handlers</span> <span class="o">&lt;&lt;</span> <span class="no">SimpleReport</span><span class="o">::</span><span class="no">UpdatedResources</span><span class="p">.</span><span class="nf">new</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="実行サンプル-report" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB-report"><i class="fa fa-link"></i></a>実行サンプル: report</h4>
+
+<p>ファイルを置く、nginxをenableにするレシピを書きました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">hand/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">file</span> <span class="s1">'/tmp/hogehoge'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span>
+<span class="k">end</span>                                                                                                                                   
+
+<span class="n">file</span> <span class="s1">'/tmp/mogemoge'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span>
+<span class="k">end</span>
+
+<span class="n">service</span> <span class="s1">'nginx'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:enable</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><strong>nginxが止まっている時</strong></p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell_Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'hand'</span> <span class="nt">-l</span> info
+Starting Chef Client, version 11.4.4
+<span class="o">[</span>2013-07-23T06:33:40+00:00] INFO: <span class="k">***</span> Chef 11.4.4 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-07-23T06:33:43+00:00] INFO: Chef Run <span class="nb">complete </span><span class="k">in </span>0.491601172 seconds
+<span class="o">[</span>2013-07-23T06:33:43+00:00] INFO: Running report handlers
+<span class="o">[</span>2013-07-23T06:33:43+00:00] INFO: Resources updated this run:
+<span class="o">[</span>2013-07-23T06:33:43+00:00] INFO:   file[/tmp/hogehoge]
+<span class="o">[</span>2013-07-23T06:33:43+00:00] INFO:   file[/tmp/mogemoge]
+<span class="o">[</span>2013-07-23T06:33:43+00:00] INFO:   service[nginx]
+<span class="o">[</span>2013-07-23T06:33:43+00:00] INFO: Report handlers <span class="nb">complete
+</span>Chef Client finished, 3 resources updated
+</pre></div>
+</div>
+
+<p><code>Running report handlers</code>から数行、レポートが出力されています。<br>
+最近は標準のログもわかりやすくなりましたね。</p>
+
+<p><strong>nginxが動いている時</strong></p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell_Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'hand'</span> <span class="nt">-l</span> info
+Starting Chef Client, version 11.4.4
+<span class="o">[</span>2013-07-23T06:33:40+00:00] INFO: <span class="k">***</span> Chef 11.4.4 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-07-23T06:38:16+00:00] INFO: Chef Run <span class="nb">complete </span><span class="k">in </span>0.391962671 seconds
+<span class="o">[</span>2013-07-23T06:38:16+00:00] INFO: Running report handlers
+<span class="o">[</span>2013-07-23T06:38:16+00:00] INFO: Resources updated this run:
+<span class="o">[</span>2013-07-23T06:38:16+00:00] INFO:   file[/tmp/hogehoge]
+<span class="o">[</span>2013-07-23T06:38:16+00:00] INFO:   file[/tmp/mogemoge]
+<span class="o">[</span>2013-07-23T06:38:16+00:00] INFO: Report handlers <span class="nb">complete
+</span>Chef Client finished, 2 resources updated
+</pre></div>
+</div>
+
+<p>ファイルたちは中身が<code>Time.now</code>なので更新されていますが、nginxについてはノータッチだった事がわかりますね。</p>
+
+<h4>
+<span id="実行サンプル-exception" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB-exception"><i class="fa fa-link"></i></a>実行サンプル: exception</h4>
+
+<p>例外を起こすために、レシピをちょっといじりました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">hand/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">file</span> <span class="s1">'/tmpo/hogehoge'</span> <span class="k">do</span>   <span class="c1"># 親ディレクトリが存在しない</span>
+  <span class="n">content</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span>
+<span class="k">end</span>                                                                                                                                   
+
+<span class="n">file</span> <span class="s1">'/tmp/mogemoge'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell_Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'hand'</span> <span class="nt">-l</span> info
+Starting Chef Client, version 11.4.4
+<span class="o">[</span>2013-07-23T06:33:40+00:00] INFO: <span class="k">***</span> Chef 11.4.4 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-07-23T06:46:32+00:00] ERROR: Running exception handlers
+<span class="o">[</span>2013-07-23T06:46:32+00:00] INFO: Resources updated this run:
+<span class="o">[</span>2013-07-23T06:46:32+00:00] ERROR: Exception handlers <span class="nb">complete
+</span>Chef Client failed. 0 resources updated
+<span class="o">[</span>2013-07-23T06:46:32+00:00] FATAL: Stacktrace dumped to /var/chef/cache/chef-stacktrace.out
+<span class="o">[</span>2013-07-23T06:46:32+00:00] FATAL: Chef::Exceptions::EnclosingDirectoryDoesNotExist: file[/tmpo/hogehoge] <span class="o">(</span>han::default line 10<span class="o">)</span> had an error: Chef::Exceptions::EnclosingDirectoryDoesNotExist: Parent directory /tmpo does not exist.
+</pre></div>
+</div>
+
+<p>少々見づらいですが <code>Running exception handlers</code> から<code>Exception handlers complete</code>までが例外ハンドラのお勤めです。<br>
+一つ目でコケたため、残りのリソースに手を出していないことがわかります、途中の場合はそれまでに更新があったリソースが列挙されました。</p>
+
+<p>では一つ目の例外を無視するようレシピを変更します。<code>ignore_failure</code>は共通オプションなので、どのリソースタイプでも有効です。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">hand/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">file</span> <span class="s1">'/tmpo/hogehoge'</span> <span class="k">do</span>   <span class="c1"># 親ディレクトリが存在しない</span>
+  <span class="n">content</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span>
+  <span class="n">ignore_failure</span> <span class="kp">true</span>      <span class="c1"># 共通オプションの ignore_failure でエラーを無視してみる</span>
+<span class="k">end</span>                                                                                                                                   
+
+<span class="n">file</span> <span class="s1">'/tmp/mogemoge'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>この場合failしたリソースは無視され、次以降のリソースは更新されます。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell_Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-solo <span class="nt">-c</span> solo.rb <span class="nt">-o</span> <span class="s1">'hand'</span> <span class="nt">-l</span> info
+Starting Chef Client, version 11.4.4
+<span class="o">[</span>2013-07-23T06:33:40+00:00] INFO: <span class="k">***</span> Chef 11.4.4 <span class="k">***</span>
+<span class="nt">--</span> snip <span class="nt">--</span>
+<span class="o">[</span>2013-07-23T06:48:48+00:00] INFO: Chef Run <span class="nb">complete </span><span class="k">in </span>0.222575733 seconds
+<span class="o">[</span>2013-07-23T06:48:48+00:00] INFO: Running report handlers
+<span class="o">[</span>2013-07-23T06:48:48+00:00] INFO: Resources updated this run:
+<span class="o">[</span>2013-07-23T06:48:48+00:00] INFO:   file[/tmp/mogemoge]
+<span class="o">[</span>2013-07-23T06:48:48+00:00] INFO: Report handlers <span class="nb">complete
+</span>Chef Client finished, 1 resources updated
+</pre></div>
+</div>
+
+<p><code>file[/tmp/mogemoge]</code>のみ更新されたようですね、ハンドラもreportの方が使われています。<br>
+この場合途中で例外があっても最終的な<code>run_status</code>のexcptionは<code>null</code> になります、使い所の見極めが重要ですね。</p>
+
+<p>一応<code>ignore_failure</code>としている場合も標準出力のログにはレベル=ERRORで出てきます。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">STDOUT(LEVEL=&gt;ERROR)</span></div>
+<div class="highlight"><pre><span class="nt">--</span> snip <span class="nt">--</span>
+  <span class="k">*</span> file[/tmpo/hogehoge] action create[2013-07-23T06:51:04+00:00] INFO: Processing file[/tmpo/hogehoge] action create <span class="o">(</span>hand::default li
+ne 10<span class="o">)</span>
+
+    <span class="k">*</span> Parent directory /tmpo does not exist.[2013-07-23T06:51:04+00:00] ERROR: file[/tmpo/hogehoge] <span class="o">(</span>hand::default line 10<span class="o">)</span> had an erro
+r: Parent directory /tmpo does not exist.<span class="p">;</span> ignore_failure is <span class="nb">set</span>, continuing
+<span class="nt">--</span> snip <span class="nt">--</span>
+</pre></div>
+</div>
+
+<p>ignoreしているのでそもそもではありますが、レベル=ERRORのログを見ておけば一応捕捉はできまるようです。</p>
+
+<h3>
+<span id="lwrp" class="fragment"></span><a href="#lwrp"><i class="fa fa-link"></i></a>LWRP</h3>
+
+<p>ハンドラ自体がLWRPになっているCookbookをChefRepoに追加するタイプです。<br>
+レシピにハンドラを記述できます。</p>
+
+<p>詳しくはこちら。<a href="https://github.com/opscode-cookbooks/chef_handler" rel="nofollow noopener" target="_blank">https://github.com/opscode-cookbooks/chef_handler</a></p>
+
+<p><code>compile phase</code>にはなにもしないけどchef_run時にのみ実行するという怪しげなやり方も案内されています。</p>
+
+<h2>
+<span id="用途" class="fragment"></span><a href="#%E7%94%A8%E9%80%94"><i class="fa fa-link"></i></a>用途</h2>
+
+<p><code>report handler</code>は日常的にログをためておきたい時に、mongodbやfluentdに投げたり、メトリクスとして実行時間の推移を集計するような使い方ですね。<br>
+標準添付の<code>json_file</code>もノード状態、リソース状態をまるごと書きだしてくれるのでじっくりデバッグしたいときなどによさそうです(<code>json_file</code>のレポートは1回分で60kを超えるほどの量があるので放置に注意。)。</p>
+
+<p><code>exception handler</code>は公式のサンプルとプラグインにあるように例外をemailやIRCでお知らせしたり、自力で復旧を試みさせたりインスタンスに切腹させるなど考えられますね。</p>

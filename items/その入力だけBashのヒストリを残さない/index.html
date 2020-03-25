@@ -1,0 +1,41 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>入力時に1つ以上の半角スペースを入れるとBashヒストリに残らない。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="c"># lsの前に半角スペース</span>
+<span class="nv">$ </span> <span class="nb">ls</span> <span class="nt">-a</span>
+<span class="nb">.</span> ..
+<span class="nv">$ </span><span class="nb">history
+</span>1 <span class="nb">history</span>
+</pre></div></div>
+
+<p>下記のようなケースで役に立つ。</p>
+
+<ul>
+<li>VMのひな形作成などでヒストリを残したくない</li>
+<li>ヒストリにあったshutdownコマンドを勢いで叩いてしまいたくない</li>
+</ul>
+
+<h2>
+<span id="追記依存する設定" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98%E4%BE%9D%E5%AD%98%E3%81%99%E3%82%8B%E8%A8%AD%E5%AE%9A"><i class="fa fa-link"></i></a>追記：依存する設定</h2>
+
+<p>ちゃんと設定があるという突っ込みを頂いたので追記、環境変数<code>HISTCONTROL</code>に ignorespace または ignoreboth が設定されていたらこの記事の挙動になる。<br>
+という事がmanにちゃんと書いてあった。</p>
+
+<div class="code-frame" data-lang="man-bashより"><div class="highlight"><pre>HISTCONTROL
+       A colon-separated list of values controlling how commands are saved on the history  list.   If
+       the  list  of  values  includes  ignorespace, lines which begin with a space character are not
+       saved in the history list.  A value of ignoredups causes lines matching the  previous  history
+       entry  to not be saved.  A value of ignoreboth is shorthand for ignorespace and ignoredups.  A
+       value of erasedups causes all previous lines matching the current line to be removed from  the
+       history list before that line is saved.  Any value not in the above list is ignored.  If HIST-
+       CONTROL is unset, or does not include a valid value, all lines read by the  shell  parser  are
+       saved  on  the  history  list,  subject to the value of HISTIGNORE.  The second and subsequent
+       lines of a multi-line compound command are not tested, and are added to the history regardless
+       of the value of HISTCONTROL.
+
+</pre></div></div>

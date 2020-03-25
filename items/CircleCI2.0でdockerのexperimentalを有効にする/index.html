@@ -1,0 +1,61 @@
+<p>ただ、<code>--squash</code>をしたかった。</p>
+
+<p>CircleCI2.0では実行環境(Executer)を2種類から選択できる。指定イメージをつかう<code>docker</code>と1.0のような環境の<code>machine</code>。<br>
+dockerデーモンの挙動に手を入れられるのは<code>machine</code>のほうだけなので、環境に<code>machine</code>を指定。この時点でdockerは<code>17.03.0-ce</code>だったので、<code>--squash</code>が使える。おそらくもっと新しいバージョンにアップグレードして使うこともできるでしょう。</p>
+
+<p>サンプルで使用したDockerfileはこちら。レイヤに差分がないと<code>--squash</code>がコケるので軽く変更します。</p>
+
+<div class="code-frame" data-lang="Dockerfile"><div class="highlight"><pre><span class="k">FROM</span><span class="s"> alpine:latest</span>
+
+<span class="k">RUN </span>apk update
+<span class="k">ADD</span><span class="s"> Dockerfile /Dockerfile</span>
+<span class="k">CMD</span><span class="s"> ["/bin/true"]</span>
+</pre></div></div>
+
+<h2>
+<span id="circleciconfigymlのサンプル" class="fragment"></span><a href="#circleciconfigyml%E3%81%AE%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB"><i class="fa fa-link"></i></a><code>.circleci/config.yml</code>のサンプル</h2>
+
+<p>最初のstepで<code>--experimental=true</code>を追記してリスタート。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.circleci/config.yml</span></div>
+<div class="highlight"><pre><span class="na">version</span><span class="pi">:</span> <span class="m">2</span>
+<span class="na">jobs</span><span class="pi">:</span>
+  <span class="na">build</span><span class="pi">:</span>
+    <span class="na">machine</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="na">working_directory</span><span class="pi">:</span> <span class="s">/home/circleci/circleci-sandbox-bb</span>
+    <span class="na">steps</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">checkout</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span>
+          <span class="na">name</span><span class="pi">:</span> <span class="s">Enable experimental</span>
+          <span class="na">command</span><span class="pi">:</span> <span class="pi">|</span>
+            <span class="s">set -x</span>
+            <span class="s">echo 'DOCKER_OPTS="--experimental=true"' | sudo tee -a /etc/default/docker</span>
+            <span class="s"># sudo DEBIAN_FRONTEND=noninteractive apt-get update &amp;&amp; sudo apt-get install -y docker-engine ## ついでにdockerデーモンをaptリポジトリの最新にしたい時</span>
+            <span class="s">sudo service docker restart</span>
+      <span class="pi">-</span> <span class="na">run</span><span class="pi">:</span> <span class="pi">|</span>
+          <span class="s">TAG=0.1.$CIRCLE_BUILD_NUM</span>
+          <span class="s">docker build -t local/circleci-sandbox-bb:$TAG --squash .</span>
+          <span class="s">docker image history local/circleci-sandbox-bb:$TAG</span>
+</pre></div>
+</div>
+
+<p><code>image history</code>の実行結果で<code>--squash</code>による寄せができていることを確認。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">circleci-outputs</span></div>
+<div class="highlight"><pre><span class="nb">.</span>
+<span class="nb">.</span>
+<span class="nb">.</span>
+Successfully built 6d611d5da4fc
+IMAGE               CREATED             CREATED BY                                      SIZE                COMMENT
+2de9d6caee54        1 second ago                                                        1.03 MB             merge sha256:6d611d5da4fcfe515263c628140ae8a25a4b870881b8da9f88f9130caf44ae3c to sha256:02674b9cb179d57c68b526733adf38b458bd31ba0abff0c2bf5ceca5bad72cd9
+&lt;missing&gt;           1 second ago        /bin/sh <span class="nt">-c</span> <span class="c">#(nop)  CMD ["/bin/bash"]            0 B                 </span>
+&lt;missing&gt;           1 second ago        /bin/sh <span class="nt">-c</span> <span class="c">#(nop) ADD file:00457989c9c63fa...   0 B                 </span>
+&lt;missing&gt;           1 second ago        /bin/sh <span class="nt">-c</span> apk update                           0 B                 
+&lt;missing&gt;           37 hours ago        /bin/sh <span class="nt">-c</span> <span class="c">#(nop)  CMD ["/bin/sh"]              0 B                 </span>
+&lt;missing&gt;           37 hours ago        /bin/sh <span class="nt">-c</span> <span class="c">#(nop) ADD file:63f63606d6e289e...   3.99 MB            </span>
+</pre></div>
+</div>
+
+<p>machine-executerは起動がちょっと遅いのと、ちょいちょい環境の変化がありそうなのであまり常用したくはないけど、イメージのビルド用途なら十分。</p>

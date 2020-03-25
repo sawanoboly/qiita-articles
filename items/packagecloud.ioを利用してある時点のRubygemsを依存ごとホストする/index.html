@@ -1,0 +1,172 @@
+<p>packagecloud.ioとBundlerをつかって、任意バージョンのRubygemを依存ごと手軽にホスティングしてみましょう。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5e954166-92c0-0c7c-6f1f-a181e6b208eb.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5b4123a85d2e8bbbd9714ec12ebd6539" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5e954166-92c0-0c7c-6f1f-a181e6b208eb.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5b4123a85d2e8bbbd9714ec12ebd6539" alt="packagecloud_io.png" title="packagecloud_io.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/5e954166-92c0-0c7c-6f1f-a181e6b208eb.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5e954166-92c0-0c7c-6f1f-a181e6b208eb.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=174c7aa54c0e46bd06f902a7942c120a 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="リポジトリを作成する" class="fragment"></span><a href="#%E3%83%AA%E3%83%9D%E3%82%B8%E3%83%88%E3%83%AA%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>リポジトリを作成する</h2>
+
+<p>まずサインアップしたら、次に適当な名前でリポジトリを作成します。</p>
+
+<blockquote>
+<p>フリープランだとパッケージ数の上限蛾は25です。</p>
+</blockquote>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F35566055-bcd5-7bfb-560e-925cd893b23e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=186b4ac49c4f2f21265e0b5dbaa57137" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F35566055-bcd5-7bfb-560e-925cd893b23e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=186b4ac49c4f2f21265e0b5dbaa57137" alt="packagecloud_io.png" title="packagecloud_io.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/35566055-bcd5-7bfb-560e-925cd893b23e.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F35566055-bcd5-7bfb-560e-925cd893b23e.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=aa864f59ef567b71cea02d8c2216d1bc 1x" loading="lazy"></a></p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F06d6e1fc-eb02-0ce0-2e25-20a6fa583d34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=816519555101c6ae463f6335b1f1c930" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F06d6e1fc-eb02-0ce0-2e25-20a6fa583d34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=816519555101c6ae463f6335b1f1c930" alt="packagecloud_io.png" title="packagecloud_io.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/06d6e1fc-eb02-0ce0-2e25-20a6fa583d34.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F06d6e1fc-eb02-0ce0-2e25-20a6fa583d34.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=7fbba16bdf0b7802e5854055160b7432 1x" loading="lazy"></a></p>
+
+<p>できました、rpm,deb,Rubygemに対応しています。</p>
+
+<h2>
+<span id="cliを導入する" class="fragment"></span><a href="#cli%E3%82%92%E5%B0%8E%E5%85%A5%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>CLIを導入する</h2>
+
+<p>package_cloudのCLIはRubygemです。インストールしましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ gem install package_cloud
+
+...
+
+Successfully installed package_cloud-0.2.11
+7 gems installed
+</pre></div></div>
+
+<p><code>package_cloud repository list</code>を実行すると、初回のみ認証情報の入力を求められ、トークンを作成してファイルに保存します。楽ですね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ package_cloud repository list
+No config file exists at /Users/user1/.packagecloud. Login to create one.
+Email:
+user1@example.com
+Password:
+
+Got your token. Writing a config file to /Users/user1/.packagecloud... success!
+
+</pre></div></div>
+
+<p>トークン作成後は、先程作成したリポジトリがリストで確認できます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ package_cloud repository list
+Your repositories:
+
+  sawanoboly/long_live_serverspec_v1 (public)
+  last push: never | packages: no packages
+</pre></div></div>
+
+<p>これでCLIの準備はOKです。</p>
+
+<h2>
+<span id="bundlerで任意バージョンのrubygemを依存を含めて収集する" class="fragment"></span><a href="#bundler%E3%81%A7%E4%BB%BB%E6%84%8F%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%AErubygem%E3%82%92%E4%BE%9D%E5%AD%98%E3%82%92%E5%90%AB%E3%82%81%E3%81%A6%E5%8F%8E%E9%9B%86%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Bundlerで任意バージョンのRubyGemを依存を含めて収集する</h2>
+
+<p>ではアップロードするパッケージ(Gems)を収集しましょう。</p>
+
+<p><code>bundle init</code>してGemfileを作成します。<br>
+サンプルとしてServerspecを1.x系で固めることにします。</p>
+
+<div class="code-frame" data-lang="Gemfile"><div class="highlight"><pre># A sample Gemfile
+source "https://rubygems.org"
+
+gem "serverspec", '&lt; 2.0'
+</pre></div></div>
+
+<p><code>bundle package</code>コマンドで<code>./vendor/bundle</code>ディレクトリにGemsが保存されていきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle package
+Fetching gem metadata from https://rubygems.org/.....
+Installing diff-lcs 1.2.5
+Installing net-ssh 2.9.1
+Installing highline 1.6.21
+Installing rspec-mocks 2.99.2
+Using bundler 1.7.3
+Installing specinfra 1.27.5
+Installing rspec-core 2.99.2
+Installing rspec-expectations 2.99.2
+Installing rspec 2.99.0
+Installing rspec-its 1.0.1
+Installing serverspec 1.16.0
+Your bundle is complete!
+It was installed into ./vendor/bundle
+Updating files in vendor/cache
+  * diff-lcs-1.2.5.gem
+  * highline-1.6.21.gem
+  * net-ssh-2.9.1.gem
+  * rspec-core-2.99.2.gem
+  * rspec-expectations-2.99.2.gem
+  * rspec-mocks-2.99.2.gem
+  * rspec-2.99.0.gem
+  * rspec-its-1.0.1.gem
+  * specinfra-1.27.5.gem
+  * serverspec-1.16.0.gem
+
+
+
+$ ls vendor/cache/
+diff-lcs-1.2.5.gem      net-ssh-2.9.1.gem       rspec-core-2.99.2.gem       rspec-its-1.0.1.gem     serverspec-1.16.0.gem
+highline-1.6.21.gem     rspec-2.99.0.gem        rspec-expectations-2.99.2.gem   rspec-mocks-2.99.2.gem      specinfra-1.27.5.gem
+</pre></div></div>
+
+<p>これで収集OK。</p>
+
+<h2>
+<span id="gemsをpackagecloudにアップロードする" class="fragment"></span><a href="#gems%E3%82%92packagecloud%E3%81%AB%E3%82%A2%E3%83%83%E3%83%97%E3%83%AD%E3%83%BC%E3%83%89%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Gemsをpackagecloudにアップロードする</h2>
+
+<p>CLIの<code>push</code>サブコマンドで<code>./vendor/bundle</code>以下に保存されたGemsをアップロードすることができます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>package_cloud push user/repo[/distro/version] /path/to/packages
+</pre></div></div>
+
+<p>こんな感じですね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ package_cloud push sawanoboly/long_live_serverspec_v1 vendor/cache/*.gem
+Are you sure you want to push 10 packages? (y/n): y
+Looking for repository at sawanoboly/long_live_serverspec_v1... success!
+Pushing vendor/cache/highline-1.6.21.gem... success!
+Pushing vendor/cache/net-ssh-2.9.1.gem... success!
+Pushing vendor/cache/rspec-2.99.0.gem... success!
+Pushing vendor/cache/rspec-core-2.99.2.gem... success!
+Pushing vendor/cache/rspec-expectations-2.99.2.gem... success!
+Pushing vendor/cache/rspec-its-1.0.1.gem... success!
+Pushing vendor/cache/rspec-mocks-2.99.2.gem... success!
+Pushing vendor/cache/serverspec-1.16.0.gem... success!
+Pushing vendor/cache/specinfra-1.27.5.gem... success!
+Pushing vendor/cache/diff-lcs-1.2.5.gem... success!
+</pre></div></div>
+
+<p>WebのUIでも確認出来ました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8418a858-a09f-0601-af64-c4429cd392c3.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=0e3f026d2d3c9b69f42132d04c901e07" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8418a858-a09f-0601-af64-c4429cd392c3.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=0e3f026d2d3c9b69f42132d04c901e07" alt="packagecloud_io.png" title="packagecloud_io.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/8418a858-a09f-0601-af64-c4429cd392c3.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F8418a858-a09f-0601-af64-c4429cd392c3.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=3afe27adf0cc90f8068550d5f0f9bce5 1x" loading="lazy"></a></p>
+
+<p><code>installation</code>の項目を見れば各種導入方法が載っています。<br>
+何れのパッケージ形式も、公式のリポジトリ追加手順にのっとっているので使いやすいですね。</p>
+
+<h2>
+<span id="インストールテスト" class="fragment"></span><a href="#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%83%86%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>インストールテスト</h2>
+
+<p>バージョン無指定の<code>Gemfile</code>を作成してみます。</p>
+
+<div class="code-frame" data-lang="Gemfile"><div class="highlight"><pre># A sample Gemfile
+source 'https://packagecloud.io/sawanoboly/long_live_serverspec_v1/'
+
+gem 'serverspec'
+</pre></div></div>
+
+<p><code>bundle</code>してみると<code>source</code>で指定した<code>packagecloud.io</code>にRubyGemsを取りに行っています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle install --path vendor/bundle --binstubs
+Fetching source index from https://packagecloud.io/sawanoboly/long_live_serverspec_v1/
+Installing diff-lcs 1.2.5
+Installing highline 1.6.21
+Installing net-ssh 2.9.1
+Installing specinfra 1.27.5
+Using bundler 1.7.3
+Installing rspec-core 2.99.2
+Installing rspec-mocks 2.99.2
+Installing rspec-expectations 2.99.2
+Installing rspec 2.99.0
+Installing rspec-its 1.0.1
+Installing serverspec 1.16.0
+Your bundle is complete!
+It was installed into ./vendor/bundle
+</pre></div></div>
+
+<p>固定したバージョンのGemsが入りました。</p>
+
+<p>今回サンプルに使用したリポジトリはこちらです。 <a href="https://packagecloud.io/sawanoboly/long_live_serverspec_v1" class="autolink" rel="nofollow noopener" target="_blank">https://packagecloud.io/sawanoboly/long_live_serverspec_v1</a></p>

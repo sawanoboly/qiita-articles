@@ -1,0 +1,125 @@
+<p>古くなってきたあるサービスの環境を縮小することにしたので、Chef-Server11配下にあった環境を適当にKnife-Zeroに移した。</p>
+
+<p><a href="http://higanworks.com/knife-zero/" rel="nofollow noopener" target="_blank">knife-zero</a>。</p>
+
+<h2>
+<span id="準備段階" class="fragment"></span><a href="#%E6%BA%96%E5%82%99%E6%AE%B5%E9%9A%8E"><i class="fa fa-link"></i></a>準備段階</h2>
+
+<ul>
+<li>定期実行のChef-Clientを止めた。
+
+<ul>
+<li>Cronのやつをリソースのdeleteで。</li>
+<li>Monit配下のデーモンにしてあるやつは<code>knife ssh</code>などで。</li>
+</ul>
+</li>
+<li>Chef-Clientを最新に更新した。
+
+<ul>
+<li>
+<code>knife ssh</code>などで。</li>
+<li>※あとの<code>zero bootstrap</code>の時点でもやろうと思えばできます。</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="リソースオブジェクトのダウンロード" class="fragment"></span><a href="#%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%81%AE%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>リソースオブジェクトのダウンロード</h2>
+
+<p><code>knife download</code>でChef-Serverから色々ダウンロード。</p>
+
+<ul>
+<li>environments, roles, data_bagsとnodesが対象</li>
+</ul>
+
+<p>要はcookbooks以外は全部downloadしただけで使い回しできる。vaultを使ってないところだったので、clients, usersも省きました。</p>
+
+<h3>
+<span id="kniferbに追記その1" class="fragment"></span><a href="#kniferb%E3%81%AB%E8%BF%BD%E8%A8%98%E3%81%9D%E3%81%AE1"><i class="fa fa-link"></i></a>knife.rbに追記その1</h3>
+
+<p>Knife-Zero用に<code>chef_repo_path</code>を追記した。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">chef/knife.rb</span></div>
+<div class="highlight"><pre><span class="n">chef_repo_path</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s2">"../../"</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+</pre></div>
+</div>
+
+<p>この状態でもう、knifeに<code>-z</code>をつけたり外したりでServerとローカルChef-Repoの切り替えが効きます。</p>
+
+<h2>
+<span id="cookbookの集約" class="fragment"></span><a href="#cookbook%E3%81%AE%E9%9B%86%E7%B4%84"><i class="fa fa-link"></i></a>Cookbookの集約</h2>
+
+<p>ファイルベースでChef-Zeroを使うと、Cookbook Versionを複数同時には扱えません。<br>
+この環境ではBerkshelfだったので、<code>berks vendor</code>で'./berks-cookbooks'に一旦集めました。</p>
+
+<p>Chef-ServerにしかCookbookがない場合などは、一回それをバックエンド指定したBerksAPIを上げるといいかも。</p>
+
+<h3>
+<span id="kniferbに追記その2" class="fragment"></span><a href="#kniferb%E3%81%AB%E8%BF%BD%E8%A8%98%E3%81%9D%E3%81%AE2"><i class="fa fa-link"></i></a>knife.rbに追記その2</h3>
+
+<p>集約したのでcookbook_pathを変更。もうChef-Serverにアップロードしないしね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>cookbook_path [ './berks-cookbooks' ]
+</pre></div></div>
+
+<p>幸いCookbookバージョン指定に関しては、更新前のチェックくらいにしか使ってなかったのと、混在させないように分岐で吸収しておいたので、機能が無くても大丈夫でした。<br>
+もし複数バージョンのCookbookを切り替えるならば、専用のBerksfileを用意してcookbook_pathを都度変更しかないかな。</p>
+
+<h2>
+<span id="zero-bootstrap-with---no-converge-でclientrbだけ更新" class="fragment"></span><a href="#zero-bootstrap-with---no-converge-%E3%81%A7clientrb%E3%81%A0%E3%81%91%E6%9B%B4%E6%96%B0"><i class="fa fa-link"></i></a>zero bootstrap (with <code>--no-converge</code>) でclient.rbだけ更新</h2>
+
+<p>まだノード側のclient.rbは次の状態</p>
+
+<ul>
+<li>まだChef-Serverを向いている。</li>
+<li>git管理向けのattributeホワイトリストを持ってない。</li>
+</ul>
+
+<p>それらを解消するため、<code>knife zero bootstrap</code>を<code>--no-converge</code>オプションで実行し、client.rbだけを更新しました。</p>
+
+<h3>
+<span id="kniferbに追記その3" class="fragment"></span><a href="#kniferb%E3%81%AB%E8%BF%BD%E8%A8%98%E3%81%9D%E3%81%AE3"><i class="fa fa-link"></i></a>knife.rbに追記その3</h3>
+
+<p>chef-clientを最新にしたのはホワイトリストのため。bootstrap再実行時には次のような設定を入れました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>knife[:automatic_attribute_whitelist] = %w[
+fqdn
+network
+platform_build
+virtualization
+dmi
+domain
+ip6address
+platform_version
+platform
+recipes
+os
+macaddress
+chef_packages
+hostname
+roles
+os_version
+languages
+ipaddress
+platform_family
+]
+</pre></div></div>
+
+<p>時間経過とともに変更があるファイルシステムなどのリソースを排除しました。そういうメトリクスはDatadogとかマカレルとかに上げりゃいいしね。</p>
+
+<h2>
+<span id="zero-convergeでローカルのnodeオブジェクトを更新" class="fragment"></span><a href="#zero-converge%E3%81%A7%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%AEnode%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%82%92%E6%9B%B4%E6%96%B0"><i class="fa fa-link"></i></a>zero convergeでローカルのnodeオブジェクトを更新</h2>
+
+<p>ホワイトリストが適用された状態のnodeオブジェクトにするため、一回convergeしておいた。roleやrun_listも保持されているのでサーバ側には変更もない。<br>
+さすがに<code>-W</code>のWhy-runで影響を事前に確認したけども、Search依存のレシピもちゃんと反映できて問題なかった。</p>
+
+<h3>
+<span id="kniferbに追記その4" class="fragment"></span><a href="#kniferb%E3%81%AB%E8%BF%BD%E8%A8%98%E3%81%9D%E3%81%AE4"><i class="fa fa-link"></i></a>knife.rbに追記その4</h3>
+
+<p>仕上げにローカルモードをデフォルトへ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>local_mode true
+</pre></div></div>
+
+<p>最後にgitにコミットしておしまい。</p>

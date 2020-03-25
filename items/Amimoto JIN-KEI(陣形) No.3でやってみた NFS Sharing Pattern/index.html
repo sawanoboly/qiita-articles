@@ -1,0 +1,171 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>この記事は<a href="http://www.zusaar.com/event/1120006" rel="nofollow noopener" target="_blank">CDP Advent Calendar 2013</a>の12/8分です。</p>
+
+<p>AWS CloudFormationを使ったWordPressの環境構築サービス<a href="http://ja.cloudhappy.net/" rel="nofollow noopener" target="_blank">JIN-KEI</a>というのがあります。<br>
+それの3つ目の陣形として、CDPから何かやってみてよと頼まれたので、台数・見た目重視でNFS Sharing PatternとAutoScalingを組み合わせてみました。</p>
+
+<p>次のような構成(一部)になっています。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F35d42c36-2364-d8e5-607c-a76fab83b777.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=0b367bc735f840e2236e04ec287f1a8c" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F35d42c36-2364-d8e5-607c-a76fab83b777.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=0b367bc735f840e2236e04ec287f1a8c" alt="03_jinkei.png" title="03_jinkei.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/35d42c36-2364-d8e5-607c-a76fab83b777.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F35d42c36-2364-d8e5-607c-a76fab83b777.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=17ace51635866bb97820c53ecc42dfff 1x" loading="lazy"></a></p>
+
+<p>軽く説明しておくと、</p>
+
+<ul>
+<li>WordPressのファイルをNFSサーバで共有</li>
+<li>AutoScalling Groupはマウント</li>
+<li>MySQLはRDSで</li>
+</ul>
+
+<p>と、月並みなCloudFormationの構成です。<br>
+で、楽をするためEIPは使わない、VPCもつくらないことにしました。</p>
+
+<h2>
+<span id="aws-cloudformation--chef-soloでnfsの設定" class="fragment"></span><a href="#aws-cloudformation--chef-solo%E3%81%A7nfs%E3%81%AE%E8%A8%AD%E5%AE%9A"><i class="fa fa-link"></i></a>AWS CloudFormation + Chef-SoloでNFSの設定</h2>
+
+<p>陣形で使っているマーケットプレースAMIのAmimotoは、cfn-initの情報次第で自分で勝手に役割を決める仕様になっています。<br>
+全部同じイメージです。<br>
+そしてその役割を決める時にChef-Soloを実行するようなので、新しく役割を定義してRecipeを書きましたっと。</p>
+
+<h3>
+<span id="nfs-server" class="fragment"></span><a href="#nfs-server"><i class="fa fa-link"></i></a>NFS Server</h3>
+
+<p>Server/ClientはどっちもNFSに関係していることを検知したらとりあえず<code>nfs_dispatcher</code>レシピを叩きます。<br>
+マスタ役のインスタンスIDはcfn-initでjsonに吐いているので適当に拾ってきます。</p>
+
+<div class="code-frame" data-lang="Ruby">
+<div class="code-lang"><span class="bold">recipes/nfs_dispatcher.rb</span></div>
+<div class="highlight"><pre><span class="n">cfn</span> <span class="o">=</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="s1">'/opt/aws/cloud_formation.json'</span><span class="p">))</span>
+
+<span class="sx">%w(portmap nfs-utils nfs-utils-lib)</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">pkg</span><span class="o">|</span>
+  <span class="n">package</span> <span class="n">pkg</span> <span class="k">do</span>
+    <span class="n">action</span> <span class="p">[</span><span class="ss">:install</span><span class="p">,</span> <span class="ss">:upgrade</span><span class="p">]</span>
+  <span class="k">end</span>
+<span class="k">end</span>  <span class="c1">## パッケージインストールは共通。</span>
+
+<span class="k">if</span> <span class="n">node</span><span class="p">[</span><span class="ss">:ec2</span><span class="p">][</span><span class="ss">:instance_id</span><span class="p">]</span> <span class="o">==</span> <span class="n">cfn</span><span class="p">[</span><span class="s1">'nfs'</span><span class="p">][</span><span class="s1">'server'</span><span class="p">][</span><span class="s1">'instance-id'</span><span class="p">]</span>  <span class="c1">## 自分がマスタ役のインスタンスIDかチェック</span>
+  <span class="n">include_recipe</span> <span class="s1">'amimoto::nfs_server'</span>  <span class="c1">## Server用レシピへ</span>
+<span class="k">else</span>
+  <span class="n">include_recipe</span> <span class="s1">'amimoto::nfs_client'</span>   <span class="c1">## Client用レシピへ</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>サーバ役は<code>/etc/exports</code>を作りゃOKです。exportする場所はどうせログインすればわかるのでそのまま乗っけてます。<br>
+オプション的には色々と面倒なので、来たやつ全員nginxユーザとして丸め込みます。</p>
+
+<div class="code-frame" data-lang="Ruby">
+<div class="code-lang"><span class="bold">recipes/nfs_server.rb</span></div>
+<div class="highlight"><pre><span class="n">nginx_uid</span> <span class="o">=</span> <span class="sb">`id -u nginx`</span><span class="p">.</span><span class="nf">chomp</span>
+<span class="n">nginx_gid</span> <span class="o">=</span> <span class="sb">`id -g nginx`</span><span class="p">.</span><span class="nf">chomp</span>
+
+<span class="n">file</span> <span class="s1">'/etc/exports'</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="ss">:create</span>
+  <span class="n">content</span> <span class="p">[</span>
+    <span class="s2">"/var/www/vhosts/</span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="ss">:ec2</span><span class="p">][</span><span class="ss">:instance_id</span><span class="p">]</span><span class="si">}</span><span class="s2"> *(rw,async,no_acl,root_squash,all_squash,anonuid=</span><span class="si">#{</span><span class="n">nginx_uid</span><span class="si">}</span><span class="s2">,anongid=</span><span class="si">#{</span><span class="n">nginx_gid</span><span class="si">}</span><span class="s2">)"</span><span class="p">,</span>
+    <span class="s2">"/var/cache/nginx/proxy_cache *(rw,async,no_acl,root_squash,all_squash,anonuid=</span><span class="si">#{</span><span class="n">nginx_uid</span><span class="si">}</span><span class="s2">,anongid=</span><span class="si">#{</span><span class="n">nginx_gid</span><span class="si">}</span><span class="s2">)"</span>
+    <span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">end</span>  <span class="c1">## Amimoto関連をエクスポート</span>
+
+<span class="sx">%w(rpcbind nfslock nfs)</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">svc</span><span class="o">|</span>
+  <span class="n">service</span> <span class="n">svc</span> <span class="k">do</span>
+    <span class="n">action</span> <span class="p">[</span><span class="ss">:enable</span><span class="p">,</span> <span class="ss">:start</span><span class="p">]</span>
+    <span class="n">subscribes</span> <span class="ss">:restart</span><span class="p">,</span> <span class="s1">'file[/etc/exports]'</span>  <span class="c1">## file[/etc/exports]に変更があったらとりあえず関連サービスをリスタートする。</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>NFSのポートはAutoScalingが使うセキュリティグループに対して許可を入れてます。</p>
+
+<h3>
+<span id="nfs-client" class="fragment"></span><a href="#nfs-client"><i class="fa fa-link"></i></a>NFS Client</h3>
+
+<p>Server役にElastic IPを付与しないので、ClientはServer役のPrivateIPを取得してからマウントします。</p>
+
+<p>なんでElastic IPにしないのかとちょっと思うかもしれませんので理由を。<br>
+まずNFSなんでPublic側を通すと遅いし、そもそもElastic IP x EC2の組み合わせが面倒で嫌いなんです。</p>
+
+<p>それはさておき。</p>
+
+<p>CloudFormationでIAMのリソースとしてEC2のdescribeを許可したロールを作成し、AutoScallingのインスタンスにはそれを割りあてています。<br>
+これでEC2のインスタンスはアクセスキー等なしでもEC2のdescribeだけできるので、それを使ってNFSマウントします。</p>
+
+<p>cfnの使い回しはdispatcherの時点で<code>node.run_state</code>をつかったほうが綺麗になるんですが、単品でも動くようにあえてここでも取っています。</p>
+
+<div class="code-frame" data-lang="Ruby">
+<div class="code-lang"><span class="bold">recipes/nfs_client.rb</span></div>
+<div class="highlight"><pre><span class="n">cfn</span> <span class="o">=</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="s1">'/opt/aws/cloud_formation.json'</span><span class="p">))</span>
+<span class="n">describe_cmd</span> <span class="o">=</span> <span class="s2">"/usr/bin/aws ec2 describe-instances --instance-id </span><span class="si">#{</span><span class="n">cfn</span><span class="p">[</span><span class="s1">'nfs'</span><span class="p">][</span><span class="s1">'server'</span><span class="p">][</span><span class="s1">'instance-id'</span><span class="p">]</span><span class="si">}</span><span class="s2"> --region </span><span class="si">#{</span><span class="n">node</span><span class="p">.</span><span class="nf">ec2</span><span class="p">[</span><span class="ss">:placement_availability_zone</span><span class="p">].</span><span class="nf">chop</span><span class="si">}</span><span class="s2"> "</span> <span class="c1">## IAM Roleの権限を使ってServer役のインスタンス情報をゲット</span>
+<span class="n">masterserver</span> <span class="o">=</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="sb">`</span><span class="si">#{</span><span class="n">describe_cmd</span><span class="si">}</span><span class="sb">`</span><span class="p">)</span>
+<span class="n">master_ip</span> <span class="o">=</span> <span class="n">masterserver</span><span class="p">[</span><span class="s1">'Reservations'</span><span class="p">].</span><span class="nf">first</span><span class="p">[</span><span class="s1">'Instances'</span><span class="p">].</span><span class="nf">first</span><span class="p">[</span><span class="s2">"PrivateIpAddress"</span><span class="p">]</span>
+
+<span class="n">mount</span> <span class="s2">"/var/www/vhosts/</span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="ss">:ec2</span><span class="p">][</span><span class="ss">:instance_id</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="p">[</span><span class="ss">:mount</span><span class="p">]</span>
+  <span class="n">device</span> <span class="s2">"</span><span class="si">#{</span><span class="n">master_ip</span><span class="si">}</span><span class="s2">:/var/www/vhosts/</span><span class="si">#{</span><span class="n">cfn</span><span class="p">[</span><span class="s1">'nfs'</span><span class="p">][</span><span class="s1">'server'</span><span class="p">][</span><span class="s1">'instance-id'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+  <span class="n">fstype</span> <span class="s2">"nfs"</span>
+  <span class="n">options</span> <span class="s2">"rw"</span>
+<span class="k">end</span>  <span class="c1">## マウントする、fstabには入れない</span>
+
+<span class="n">mount</span> <span class="s2">"/var/cache/nginx/proxy_cache"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="p">[</span><span class="ss">:mount</span><span class="p">]</span>
+  <span class="n">device</span> <span class="s2">"</span><span class="si">#{</span><span class="n">master_ip</span><span class="si">}</span><span class="s2">:/var/cache/nginx/proxy_cache"</span>
+  <span class="n">fstype</span> <span class="s2">"nfs"</span>
+  <span class="n">options</span> <span class="s2">"rw"</span>
+<span class="k">end</span>  <span class="c1">## マウントする、fstabには入れない</span>
+
+
+<span class="n">template</span> <span class="s1">'/opt/aws/nfs_client.rb'</span> <span class="k">do</span>
+  <span class="n">source</span> <span class="s1">'cfn/nfs_client.rb.erb'</span>
+<span class="k">end</span> <span class="c1">## Chef-Applyでマウントする為のファイルを設置</span>
+
+<span class="n">rc_line</span> <span class="o">=</span> <span class="s1">'/usr/bin/chef-apply /opt/aws/nfs_client.rb &gt; /dev/null 2&gt;&amp;1'</span>
+<span class="n">file</span> <span class="s1">'/etc/rc.local'</span> <span class="k">do</span>
+  <span class="n">_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">FileEdit</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'/etc/rc.local'</span><span class="p">)</span>
+  <span class="n">_file</span><span class="p">.</span><span class="nf">insert_line_if_no_match</span><span class="p">(</span><span class="s1">'/opt/aws/nfs_client.rb'</span><span class="p">,</span> <span class="p">[</span><span class="n">rc_line</span><span class="p">,</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">].</span><span class="nf">join</span><span class="p">)</span>
+  <span class="n">content</span> <span class="n">_file</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:contents</span><span class="p">).</span><span class="nf">join</span>
+  <span class="n">manage_symlink_source</span> <span class="kp">true</span>
+<span class="k">end</span><span class="p">.</span><span class="nf">run_action</span><span class="p">(</span><span class="ss">:create</span><span class="p">)</span>  <span class="c1">## rc.localで起動時にChef-Apply</span>
+</pre></div>
+</div>
+
+<p>マウントのアクションを<code>[:mount, :enable]</code>にすればfstabにも登録されますが、Server役がSTOPするとPrivateIPが変更されるのでfstabに登録しませんでした。</p>
+
+<p>で、毎回起動時にChef-Applyを実行してくれるように、このレシピが読み込まれた時点でrc.localに追記しておくと。<br>
+いきなりrun_actionをしているのはChef::Util::FileEditの都合です、将来ほかのレシピで同じファイルを編集するかもしれないのでこうしてます。</p>
+
+<h2>
+<span id="chef-applyでnfsをマウント" class="fragment"></span><a href="#chef-apply%E3%81%A7nfs%E3%82%92%E3%83%9E%E3%82%A6%E3%83%B3%E3%83%88"><i class="fa fa-link"></i></a>Chef-ApplyでNFSをマウント</h2>
+
+<p>Client役は起動時に毎回<code>/usr/bin/chef-apply /opt/aws/nfs_client.rb</code>を実行します、その中身がこちら。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">nfs_client.rb</span></div>
+<div class="highlight"><pre><span class="n">cfn</span> <span class="o">=</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">read</span><span class="p">(</span><span class="s1">'/opt/aws/cloud_formation.json'</span><span class="p">))</span>
+<span class="n">describe_cmd</span> <span class="o">=</span> <span class="s2">"/usr/bin/aws ec2 describe-instances --instance-id </span><span class="si">#{</span><span class="n">cfn</span><span class="p">[</span><span class="s1">'nfs'</span><span class="p">][</span><span class="s1">'server'</span><span class="p">][</span><span class="s1">'instance-id'</span><span class="p">]</span><span class="si">}</span><span class="s2"> --region </span><span class="si">#{</span><span class="n">node</span><span class="p">.</span><span class="nf">ec2</span><span class="p">[</span><span class="ss">:placement_availability_zone</span><span class="p">].</span><span class="nf">chop</span><span class="si">}</span><span class="s2"> "</span>
+<span class="n">masterserver</span> <span class="o">=</span> <span class="no">JSON</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="sb">`</span><span class="si">#{</span><span class="n">describe_cmd</span><span class="si">}</span><span class="sb">`</span><span class="p">)</span>
+<span class="n">master_ip</span> <span class="o">=</span> <span class="n">masterserver</span><span class="p">[</span><span class="s1">'Reservations'</span><span class="p">].</span><span class="nf">first</span><span class="p">[</span><span class="s1">'Instances'</span><span class="p">].</span><span class="nf">first</span><span class="p">[</span><span class="s2">"PrivateIpAddress"</span><span class="p">]</span>
+
+<span class="n">mount</span> <span class="s2">"/var/www/vhosts/</span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="ss">:ec2</span><span class="p">][</span><span class="ss">:instance_id</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="p">[</span><span class="ss">:mount</span><span class="p">]</span>
+  <span class="n">device</span> <span class="s2">"</span><span class="si">#{</span><span class="n">master_ip</span><span class="si">}</span><span class="s2">:/var/www/vhosts/</span><span class="si">#{</span><span class="n">cfn</span><span class="p">[</span><span class="s1">'nfs'</span><span class="p">][</span><span class="s1">'server'</span><span class="p">][</span><span class="s1">'instance-id'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+  <span class="n">fstype</span> <span class="s2">"nfs"</span>
+  <span class="n">options</span> <span class="s2">"rw"</span>
+<span class="k">end</span>
+
+<span class="n">mount</span> <span class="s2">"/var/cache/nginx/proxy_cache"</span> <span class="k">do</span>
+  <span class="n">action</span> <span class="p">[</span><span class="ss">:mount</span><span class="p">]</span>
+  <span class="n">device</span> <span class="s2">"</span><span class="si">#{</span><span class="n">master_ip</span><span class="si">}</span><span class="s2">:/var/cache/nginx/proxy_cache"</span>
+  <span class="n">fstype</span> <span class="s2">"nfs"</span>
+  <span class="n">options</span> <span class="s2">"rw"</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>実行時点でのServer役PrivateIPをマウントさせておしまいです。</p>
+
+<p>とりあえずこうしておけば、NFS ClietのAutoScallingインスタンス達は不調になったりマウントが外れたりしたら再起動してもいいし、むしろ適当にTerminateしてしまえば勝手に補充されて復帰するので存分に使い棄てることができます。</p>

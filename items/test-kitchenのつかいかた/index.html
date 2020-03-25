@@ -1,0 +1,238 @@
+<blockquote>
+<p>更新：v1.2.2.devに対応。</p>
+</blockquote>
+
+<p><a href="https://github.com/opscode/test-kitchen" rel="nofollow noopener" target="_blank">Chef Inc. (旧Opscode)のtest-kitchen</a>について、テストのライフサイクルとサブコマンドの使い方を説明する。</p>
+
+<p>1.2系について。</p>
+
+<h2>
+<span id="test-kitchenヘルプ" class="fragment"></span><a href="#test-kitchen%E3%83%98%E3%83%AB%E3%83%97"><i class="fa fa-link"></i></a>Test-Kitchenヘルプ</h2>
+
+<p>まずはkitchenコマンドを叩くとヘルプが表示される。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">kitchen</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>kitchen 
+Commands:
+  kitchen console                                 <span class="c"># Kitchen Console!</span>
+  kitchen converge <span class="o">[</span>INSTANCE|REGEXP|all]          <span class="c"># Change instance state to converge. Use a provisioner to configure one or more instances</span>
+  kitchen create <span class="o">[</span>INSTANCE|REGEXP|all]            <span class="c"># Change instance state to create. Start one or more instances</span>
+  kitchen destroy <span class="o">[</span>INSTANCE|REGEXP|all]           <span class="c"># Change instance state to destroy. Delete all information for one or more instances</span>
+  kitchen diagnose <span class="o">[</span>INSTANCE|REGEXP|all]          <span class="c"># Show computed diagnostic configuration</span>
+  kitchen driver                                  <span class="c"># Driver subcommands</span>
+  kitchen driver create <span class="o">[</span>NAME]                    <span class="c"># Create a new Kitchen Driver gem project</span>
+  kitchen driver discover                         <span class="c"># Discover Test Kitchen drivers published on RubyGems</span>
+  kitchen driver <span class="nb">help</span> <span class="o">[</span>COMMAND]                   <span class="c"># Describe subcommands or one specific subcommand</span>
+  kitchen <span class="nb">exec </span>INSTANCE|REGEXP <span class="nt">-c</span> REMOTE_COMMAND  <span class="c"># Execute command on one or more instance</span>
+  kitchen <span class="nb">help</span> <span class="o">[</span>COMMAND]                          <span class="c"># Describe available commands or one specific command</span>
+  kitchen init                                    <span class="c"># Adds some configuration to your cookbook so Kitchen can rock</span>
+  kitchen list <span class="o">[</span>INSTANCE|REGEXP|all]              <span class="c"># Lists one or more instances</span>
+  kitchen login INSTANCE|REGEXP                   <span class="c"># Log in to one instance</span>
+  kitchen setup <span class="o">[</span>INSTANCE|REGEXP|all]             <span class="c"># Change instance state to setup. Prepare to run automated tests. Install busser and related gems on one or more instances</span>
+  kitchen <span class="nb">test</span> <span class="o">[</span>INSTANCE|REGEXP|all]              <span class="c"># Test (destroy, create, converge, setup, verify and destroy) one or more instances</span>
+  kitchen verify <span class="o">[</span>INSTANCE|REGEXP|all]            <span class="c"># Change instance state to verify. Run automated tests on one or more instances</span>
+  kitchen version                                 <span class="c"># Print Kitchen's version information</span>
+</pre></div>
+</div>
+
+<p><code>kitchen help {subcomand}</code>で詳細ヘルプが表示される。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">kitchen_help_init</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>kitchen <span class="nb">help </span>init
+Usage:
+  kitchen init
+
+Options:
+  <span class="nt">-D</span>, <span class="o">[</span><span class="nt">--driver</span><span class="o">=</span>one two three]                   <span class="c"># One or more Kitchen Driver gems to be installed or added to a Gemfile </span>
+                                                 <span class="c"># Default: kitchen-vagrant</span>
+  <span class="nt">-P</span>, <span class="o">[</span><span class="nt">--provisioner</span><span class="o">=</span>PROVISIONER]                <span class="c"># The default Kitchen Provisioner to use </span>
+                                                 <span class="c"># Default: chef_solo</span>
+      <span class="o">[</span><span class="nt">--create-gemfile</span><span class="o">]</span>, <span class="o">[</span><span class="nt">--no-create-gemfile</span><span class="o">]</span>  <span class="c"># Whether or not to create a Gemfile if one does not exist. Default: false </span>
+
+Description:
+  Init will add Test Kitchen support to an existing project <span class="k">for </span>convergence integration testing. A default .kitchen.yml file <span class="o">(</span>which is intended to be customized<span class="o">)</span> is created <span class="k">in </span>the 
+  project<span class="s1">'s root directory and one or more gems will be added to the project'</span>s Gemfile.
+</pre></div>
+</div>
+
+<p>流れがわかっていれば後はこのヘルプを引けば良いので、都度参照する。</p>
+
+<h2>
+<span id="用語instance" class="fragment"></span><a href="#%E7%94%A8%E8%AA%9Einstance"><i class="fa fa-link"></i></a>用語：Instance</h2>
+
+<p>テストに使うVMは<code>Instance</code>と呼ばれ、命名法則と数は下記の式で決まる。</p>
+
+<p><code>Instance</code> = <code>${suite}-${platform}</code>の組み合わせ全部。</p>
+
+<p><code>platform</code>に<code>[ubuntu,centos]</code>とあって、<code>suite</code>に<code>[web, db]</code>とあった場合は</p>
+
+<ul>
+<li>web-ubuntu</li>
+<li>web-centos</li>
+<li>db-ubuntu</li>
+<li>db-centos</li>
+</ul>
+
+<p>と4つのインスタンス定義ができる。</p>
+
+<h2>
+<span id="test-kitchenのライフサイクル" class="fragment"></span><a href="#test-kitchen%E3%81%AE%E3%83%A9%E3%82%A4%E3%83%95%E3%82%B5%E3%82%A4%E3%82%AF%E3%83%AB"><i class="fa fa-link"></i></a>Test-kitchenのライフサイクル</h2>
+
+<h3>
+<span id="初期化" class="fragment"></span><a href="#%E5%88%9D%E6%9C%9F%E5%8C%96"><i class="fa fa-link"></i></a>初期化</h3>
+
+<table>
+<thead>
+<tr>
+<th>コマンド</th>
+<th>効能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kitchen init</td>
+<td>.kitchen.yml を作成する、まずはこれから。デフォルトのドライバはVagrant。</td>
+</tr>
+<tr>
+<td>kitchen driver discover</td>
+<td>Rubygemsからtest-kitchen用に公開されているドライバ一覧を表示する。使いたいものをGemでインストールする。<br> 依存にtest-kitchenがあり、<code>kitchen-</code> ではじまるものを抽出しているようだ。</td>
+</tr>
+</tbody>
+</table>
+
+<h3>
+<span id="テスト" class="fragment"></span><a href="#%E3%83%86%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>テスト</h3>
+
+<p>ここが大事。</p>
+
+<table>
+<thead>
+<tr>
+<th>コマンド</th>
+<th>効能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kitchen create</td>
+<td>インスタンスを作成する</td>
+</tr>
+<tr>
+<td>kitchen setup</td>
+<td>chefとbusserをインストールしてChef-repoをアップロード、初回のconvergenceを行う。</td>
+</tr>
+<tr>
+<td>kitchen converge</td>
+<td>chef-reposが再度アップロードされ、Chef-Solo(またはローカルモード)を実行する。<br> 繰り返し実行可能。</td>
+</tr>
+<tr>
+<td>kitchen verify</td>
+<td>testディレクトリがアップロードされ、busser経由でテストスイートをインストールし、テストを実行する。<br> 繰り返し実行可能。</td>
+</tr>
+<tr>
+<td>kitchen destroy</td>
+<td>インスタンスを破棄する。</td>
+</tr>
+<tr>
+<td>kitchen test</td>
+<td>上記テストのライフサイクルを一括で行う。 <br>実行時にインスタンスがすでに存在する場合は初手でも<strong>Destroy</strong>が実行される。</td>
+</tr>
+</tbody>
+</table>
+
+<p>test一発でもよいが、個別に何をやっているか知っていると捗る。</p>
+
+<h2>
+<span id="単発のタスク" class="fragment"></span><a href="#%E5%8D%98%E7%99%BA%E3%81%AE%E3%82%BF%E3%82%B9%E3%82%AF"><i class="fa fa-link"></i></a>単発のタスク</h2>
+
+<table>
+<thead>
+<tr>
+<th>コマンド</th>
+<th>効能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kitchen exec</td>
+<td>起動中のインスタンスに対して任意のコマンドを実行する。createの直後にごにょごにょとか、verifyの前にちょっと実行しておきたい事があったらこれで。</td>
+</tr>
+</tbody>
+</table>
+
+<h2>
+<span id="構成確認デバッグ" class="fragment"></span><a href="#%E6%A7%8B%E6%88%90%E7%A2%BA%E8%AA%8D%E3%83%87%E3%83%90%E3%83%83%E3%82%B0"><i class="fa fa-link"></i></a>構成確認、デバッグ</h2>
+
+<table>
+<thead>
+<tr>
+<th>コマンド</th>
+<th>効能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kitchen list</td>
+<td>
+<code>.kitchen.yml</code>にある<code>Instance</code>リストとライフサイクル上の状態を表示する。<br> <code>Instance</code>の状態は逐一<code>.kitchen/</code>以下にyamlで吐かれているのでそれをみてもよい。</td>
+</tr>
+<tr>
+<td>kitchen login</td>
+<td>
+<code>Instance</code>にSSHでログインする。execで物足りない時に。</td>
+</tr>
+<tr>
+<td>kitchen console</td>
+<td>.kitchen.yml と設定を読み込んだRubyのプロンプトが立ち上がる。<br> <code>@instances</code>や<code>@suites</code>で各種設定が妥当か確認できる。</td>
+</tr>
+<tr>
+<td>kitchen diagnose</td>
+<td>
+<code>.kitchen.yml</code>ほかによって最終的に有効になっている各種設定をダンプする。consoleの簡易版。</td>
+</tr>
+</tbody>
+</table>
+
+<p>あれば便利という程度。</p>
+
+<h2>
+<span id="ドライバ開発" class="fragment"></span><a href="#%E3%83%89%E3%83%A9%E3%82%A4%E3%83%90%E9%96%8B%E7%99%BA"><i class="fa fa-link"></i></a>ドライバ開発</h2>
+
+<table>
+<thead>
+<tr>
+<th>コマンド</th>
+<th>効能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kitchen driver</td>
+<td>ドライバ作成用のGemプロジェクト雛形を作成する。 <br> 最低限必要なメソッドが用意されるので、穴埋めをするだけでドライバが作成できる。</td>
+</tr>
+</tbody>
+</table>
+
+<p>細かい作り方は既存のプラグインを参考にするしかなさそう。</p>
+
+<h2>
+<span id="おすすめの使い方" class="fragment"></span><a href="#%E3%81%8A%E3%81%99%E3%81%99%E3%82%81%E3%81%AE%E4%BD%BF%E3%81%84%E6%96%B9"><i class="fa fa-link"></i></a>おすすめの使い方</h2>
+
+<h3>
+<span id="ローカルで" class="fragment"></span><a href="#%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%A7"><i class="fa fa-link"></i></a>ローカルで</h3>
+
+<p>create, setupと一つづつ実行しても良いが、<code>kitchen test</code>には <code>--destroy=never</code>というオプションをつけて実行するとインスタンスが破棄されずに保持される。</p>
+
+<p>まず<code>kitchen test --destroy=never</code>で一気に<code>verify</code>まで行った後、適当にレシピを修正しながら<code>converge, verify</code>を繰り返すといった使い方が良いだろう。</p>
+
+<p>シメにはもう一度<code>kitchen test</code>(<code>--destroy</code>オプションなし)で、インスタンスのBootから一気通貫テストをする。</p>
+
+<h3>
+<span id="ciと" class="fragment"></span><a href="#ci%E3%81%A8"><i class="fa fa-link"></i></a>CIと</h3>
+
+<p>CIから継続的にテストを行うならば、<code>--destroy=always</code>オプションが良い。<br>
+通常は<code>converge, verify</code>に失敗したらインスタンスは保持されて、デバッグのチャンスが与えられるところだが、CIから自動でテストする場合はインスタンスに残られても困る。</p>
+
+<p>結果に関係なく、インスタンスを破棄しておくため<code>always</code>を使う。</p>

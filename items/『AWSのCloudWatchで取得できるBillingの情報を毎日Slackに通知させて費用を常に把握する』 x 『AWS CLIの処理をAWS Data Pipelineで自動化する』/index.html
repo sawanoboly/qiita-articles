@@ -1,0 +1,174 @@
+<p>今日Webで見た記事が面白かった。これらです。</p>
+
+<ul>
+<li><a href="http://blog.kenjiskywalker.org/blog/2015/04/20/aws-cloudwatch-billing-chatops/" title="AWSのCloudWatchで取得できるBillingの情報を毎日Slackに通知させて費用を常に把握する - さよならインターネット" rel="nofollow noopener" target="_blank">AWSのCloudWatchで取得できるBillingの情報を毎日Slackに通知させて費用を常に把握する - さよならインターネット</a></li>
+<li><a href="http://dev.classmethod.jp/cloud/aws/automate-operation-of-aws-cli-by-aws-data-pipeline/" title="AWS CLIの処理をAWS Data Pipelineで自動化する ｜ Developers.IO" rel="nofollow noopener" target="_blank">AWS CLIの処理をAWS Data Pipelineで自動化する ｜ Developers.IO</a></li>
+</ul>
+
+<p>では合体させるぞ。</p>
+
+<h2>
+<span id="aws-data-pipeline" class="fragment"></span><a href="#aws-data-pipeline"><i class="fa fa-link"></i></a>AWS Data Pipeline?</h2>
+
+<p>今回は変な使い方なので、この使い方に必要なポイントを。</p>
+
+<ul>
+<li>起動するインスタンスはAmazon Linux 2013.03でした。
+
+<ul>
+<li>t1.micro(変更可)が起動して、処理が済んだらTerminate.</li>
+<li>スクリプトの事前確認はEC2で2013.03を起動しよう。</li>
+</ul>
+</li>
+<li>InのS3バケット内のオブジェクトは、インスタンス内の<code>INPUT1_STAGING_DIR</code>などの環境変数にセットされたパスにおかれる。
+
+<ul>
+<li>S3に置いたスクリプトファイルをほぼ無策で読める。</li>
+</ul>
+</li>
+<li>Outに指定したS3バケットはインスタンス内の<code>OUTPUT1_STAGING_DIR</code>などの環境変数にセットされたパスに出力すればアップロードしてくれる。
+
+<ul>
+<li>スクリプトファイルの出力をS3に保存できる。</li>
+</ul>
+</li>
+<li>AWS-CLIのほか、ただのシェルも実行できる。
+
+<ul>
+<li>Outに何か出力しないとバリデーションエラー？ (細かくは検証していない)</li>
+<li>stdoutに何か吐くのはNGなのかも</li>
+</ul>
+</li>
+</ul>
+
+<p>本来の想定用途にくらべると相当しょぼいのですが、そのへんはご了承ねがいます。</p>
+
+<h2>
+<span id="rubyスクリプトをs3に置く" class="fragment"></span><a href="#ruby%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88%E3%82%92s3%E3%81%AB%E7%BD%AE%E3%81%8F"><i class="fa fa-link"></i></a>RubyスクリプトをS3に置く</h2>
+
+<p>じゃあInのバケットに、 <a href="http://blog.kenjiskywalker.org/blog/2015/04/20/aws-cloudwatch-billing-chatops/" title="AWSのCloudWatchで取得できるBillingの情報を毎日Slackに通知させて費用を常に把握する - さよならインターネット" rel="nofollow noopener" target="_blank">AWSのCloudWatchで取得できるBillingの情報を毎日Slackに通知させて費用を常に把握する - さよならインターネット</a> のRubyファイルおいたらよくね？と。</p>
+
+<p>ちょい書き換えて。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">aws_billing_slackit.rb</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+<span class="nb">require</span> <span class="s1">'date'</span>
+
+<span class="c1"># 今日の日付</span>
+<span class="n">d</span> <span class="o">=</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span>
+
+<span class="c1"># 昨日の 00:00:00 ~ 23:59:59 の間のデータを利用して</span>
+<span class="n">start_time</span> <span class="o">=</span> <span class="no">DateTime</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">d</span><span class="p">.</span><span class="nf">year</span><span class="p">,</span> <span class="n">d</span><span class="p">.</span><span class="nf">month</span><span class="p">,</span> <span class="n">d</span><span class="p">.</span><span class="nf">day</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+<span class="n">end_time</span> <span class="o">=</span> <span class="no">DateTime</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">d</span><span class="p">.</span><span class="nf">year</span><span class="p">,</span> <span class="n">d</span><span class="p">.</span><span class="nf">month</span><span class="p">,</span> <span class="n">d</span><span class="p">.</span><span class="nf">day</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">59</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+
+<span class="c1"># 一日分の値から Average をとって</span>
+<span class="n">period</span> <span class="o">=</span> <span class="s1">'86400'</span>
+
+<span class="c1"># profileがあったら指定(ローカルデバッグ用)</span>
+<span class="n">profile</span> <span class="o">=</span> <span class="no">ENV</span><span class="p">[</span><span class="s2">"AWS_PROFILE"</span><span class="p">]</span> <span class="p">?</span> <span class="s2">"--profile </span><span class="si">#{</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'AWS_PROFILE'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span> <span class="p">:</span> <span class="s2">""</span>
+
+
+<span class="c1"># CloudWatchの値を取得してきて</span>
+<span class="c1"># Billingのデータを持ってくる</span>
+<span class="n">allnum</span> <span class="o">=</span> <span class="sb">`aws cloudwatch --region us-east-1 get-metric-statistics \
+           --namespace 'AWS/Billing' \
+           --dimensions '{"Name":"Currency","Value":"USD"}' \
+           --metric-name EstimatedCharges \
+           --start-time </span><span class="si">#{</span><span class="n">start_time</span><span class="si">}</span><span class="sb"> \
+           --end-time </span><span class="si">#{</span><span class="n">end_time</span><span class="si">}</span><span class="sb"> \
+           --period </span><span class="si">#{</span><span class="n">period</span><span class="si">}</span><span class="sb"> --statistics 'Average' </span><span class="si">#{</span><span class="n">profile</span><span class="si">}</span><span class="sb"> \
+           | jq '.Datapoints[].Average'`</span><span class="p">.</span><span class="nf">chomp</span>
+
+<span class="c1">## 転送量だけ</span>
+<span class="n">transnum</span> <span class="o">=</span> <span class="sb">`aws cloudwatch --region us-east-1 get-metric-statistics \
+           --namespace 'AWS/Billing' \
+           --dimensions '[{"Name":"Currency","Value":"USD"},{"Name":"ServiceName","Value":"AWSDataTransfer"}]' \
+           --metric-name EstimatedCharges \
+           --start-time </span><span class="si">#{</span><span class="n">start_time</span><span class="si">}</span><span class="sb"> \
+           --end-time </span><span class="si">#{</span><span class="n">end_time</span><span class="si">}</span><span class="sb"> \
+           --period </span><span class="si">#{</span><span class="n">period</span><span class="si">}</span><span class="sb"> --statistics 'Average' </span><span class="si">#{</span><span class="n">profile</span><span class="si">}</span><span class="sb"> \
+           | jq '.Datapoints[].Average'`</span><span class="p">.</span><span class="nf">chomp</span>
+
+<span class="c1">## EC2だけ</span>
+<span class="n">ec2num</span> <span class="o">=</span> <span class="sb">`aws cloudwatch --region us-east-1 get-metric-statistics \
+           --namespace 'AWS/Billing' \
+           --dimensions '[{"Name":"Currency","Value":"USD"},{"Name":"ServiceName","Value":"AmazonEC2"}]' \
+           --metric-name EstimatedCharges \
+           --start-time </span><span class="si">#{</span><span class="n">start_time</span><span class="si">}</span><span class="sb"> \
+           --end-time </span><span class="si">#{</span><span class="n">end_time</span><span class="si">}</span><span class="sb"> \
+           --period </span><span class="si">#{</span><span class="n">period</span><span class="si">}</span><span class="sb"> --statistics 'Average' </span><span class="si">#{</span><span class="n">profile</span><span class="si">}</span><span class="sb"> \
+           | jq '.Datapoints[].Average'`</span><span class="p">.</span><span class="nf">chomp</span>
+
+<span class="c1">## 丸ごとポスト</span>
+<span class="sb">`curl -X POST --data-urlencode 'payload={
+  "attachments": [
+    {
+      "fallback": "今月のAWSの利用費は累計で </span><span class="si">#{</span><span class="n">allnum</span><span class="si">}</span><span class="sb"> ドルです。",
+      "pretext": "今月のAWSの利用費は.... ",
+      "color": "good",
+      "fields": [
+        {
+          "title": "全サービス合計",
+          "value": "</span><span class="si">#{</span><span class="n">allnum</span><span class="si">}</span><span class="sb">",
+          "short":true
+        },
+        {
+          "title": "転送量",
+          "value": "</span><span class="si">#{</span><span class="n">transnum</span><span class="si">}</span><span class="sb">",
+          "short":true
+        },
+        {
+          "title": "EC2",
+          "value": "</span><span class="si">#{</span><span class="n">ec2num</span><span class="si">}</span><span class="sb">",
+          "short":true
+        }
+      ]
+    }
+  ]
+}' </span><span class="si">#{</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'SLACK_WEBHOOK'</span><span class="p">]</span><span class="si">}</span><span class="sb">`</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="s3へ" class="fragment"></span><a href="#s3%E3%81%B8"><i class="fa fa-link"></i></a>S3へ</h3>
+
+<p>で、さっきのRubyスクリプトと、今回はaws-cli用のクレデンシャルをS3においてみた。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9ff0620d-95ea-205a-9123-3e01c2875f8a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e2a8bfdcdd87a027ea120cb5e3112899" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9ff0620d-95ea-205a-9123-3e01c2875f8a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e2a8bfdcdd87a027ea120cb5e3112899" alt="s3.png" title="s3.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/9ff0620d-95ea-205a-9123-3e01c2875f8a.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9ff0620d-95ea-205a-9123-3e01c2875f8a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=5bee38776786cf2ff27d7368181f1024 1x" loading="lazy"></a></p>
+
+<p>あとでインスタンスロールを使えるようにしておこう。</p>
+
+<h2>
+<span id="pipelineに渡すshellスクリプト" class="fragment"></span><a href="#pipeline%E3%81%AB%E6%B8%A1%E3%81%99shell%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88"><i class="fa fa-link"></i></a>Pipelineに渡すShellスクリプト</h2>
+
+<p>つぎはこちらから。パイプラインの説明を読みましょう。<a href="http://dev.classmethod.jp/cloud/aws/automate-operation-of-aws-cli-by-aws-data-pipeline/" title="AWS CLIの処理をAWS Data Pipelineで自動化する ｜ Developers.IO" rel="nofollow noopener" target="_blank">AWS CLIの処理をAWS Data Pipelineで自動化する ｜ Developers.IO</a><br>
+で、AWS CLIの代わりに、その一個上にある<code>Getting Started using ShellCommandActivity</code>を使います。</p>
+
+<p>スクリプトサンプルがこちら。実際には空行なしのコメント無しで貼り付けました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>sudo yum -y install jq ruby22 aws-cli &gt;&gt; ${OUTPUT1_STAGING_DIR}/output.txt
+
+## キーのコンフィグ。Roleで代用も可
+mkdir ~/.aws &gt;&gt; ${OUTPUT1_STAGING_DIR}/output.txt
+cp ${INPUT1_STAGING_DIR}/config ~/.aws/ &gt;&gt; ${OUTPUT1_STAGING_DIR}/output.txt
+
+## Ruby実行
+SLACK_WEBHOOK='https://hooks.slack.com/services/WEBHOOKのURI' ruby2.2 ${INPUT1_STAGING_DIR}/aws_billing_slackit.rb &gt;&gt; ${OUTPUT1_STAGING_DIR}/output.txt
+</pre></div></div>
+
+<p>パイプライン作成の様子がこちら。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdf1a601f-4a97-37ed-889b-66794fc975c8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=adff72d2947d25efb727614ae8563bde" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdf1a601f-4a97-37ed-889b-66794fc975c8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=adff72d2947d25efb727614ae8563bde" alt="pipe3.png" title="pipe3.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/df1a601f-4a97-37ed-889b-66794fc975c8.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fdf1a601f-4a97-37ed-889b-66794fc975c8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=980a33324b1e70924e061fbb2c4dc060 1x" loading="lazy"></a></p>
+
+<p>これでOK、使い続けるならスケジュールも決めましょう。あとは見守ります。</p>
+
+<h3>
+<span id="slackに来た様子を" class="fragment"></span><a href="#slack%E3%81%AB%E6%9D%A5%E3%81%9F%E6%A7%98%E5%AD%90%E3%82%92"><i class="fa fa-link"></i></a>Slackに来た様子を</h3>
+
+<p>だいたい5分位後、Slackに。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fafb1230e-61d7-cd48-e556-413ae8cc589d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=d90174dfcb5ab39138979cde09650e18" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fafb1230e-61d7-cd48-e556-413ae8cc589d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=d90174dfcb5ab39138979cde09650e18" alt="Slack.png" title="Slack.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/afb1230e-61d7-cd48-e556-413ae8cc589d.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fafb1230e-61d7-cd48-e556-413ae8cc589d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=5e7792d4e664a9ed4e139ec3393dc052 1x" loading="lazy"></a></p>
+
+<p>きたきた。<br>
+Average</p>

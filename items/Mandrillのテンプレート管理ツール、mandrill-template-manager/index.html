@@ -1,0 +1,291 @@
+<p>定型メールの送信に、MailChimpさんとこの<a href="http://mandrill.com/" rel="nofollow noopener" target="_blank">Mandrill</a>を使おうとしています。アプリでそれぞれメールのテンプレートを持たないで済むかなと。<br>
+で、Mandrill上のテンプレートをバージョン管理に乗せるため、ツールを一個書きました。</p>
+
+<p><a href="https://github.com/higanworks/mandrill-template-manager" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/mandrill-template-manager</a></p>
+
+<p>Rubygems配布もしてます。</p>
+
+<h2>
+<span id="インストール" class="fragment"></span><a href="#%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>インストール</h2>
+
+<p>基本は単品で動きますが、ついでに入れておくと良いGeｍsと一緒に使うと良いです。</p>
+
+<div class="code-frame" data-lang="Gemfile"><div class="highlight"><pre>gem 'mandrill-template-manager'
+
+## 入れておくと使われる、表示成形用のGem達
+gem 'formatador', github: 'geemus/formatador' # マルチバイト補正アリバージョン
+gem 'unicode'
+
+## テンプレートにHandlebarsを使う場合、ローカルプレビューもしたいときに追加。
+# gem 'handlebars'
+</pre></div></div>
+
+<p><code>bundle install --binstubs --path vendor/bundle</code>などとして、<code>../bin/mandrilltemplate</code>で実行できるようにしておくと楽です。</p>
+
+<p>APIキーは環境変数へ。 <code>export MANDRILL_APIKEY='your api key'</code> な感じで。</p>
+
+<h2>
+<span id="ワークフロー" class="fragment"></span><a href="#%E3%83%AF%E3%83%BC%E3%82%AF%E3%83%95%E3%83%AD%E3%83%BC"><i class="fa fa-link"></i></a>ワークフロー</h2>
+
+<ol>
+<li>新規(generate)か、既存(export)を用いてテンプレートをローカルファイルとして管理開始</li>
+<li>テンプレートを変更したらコミット</li>
+<li>本文プレビュー</li>
+<li>Mandrillにアップロード、現状Publish済みのものと差分があればわかるように表示</li>
+<li>ステータスをPublishへ</li>
+</ol>
+
+<p>このへんは<a href="http://codenize.tools/" rel="nofollow noopener" target="_blank">codenize.tools</a>の影響を多分に受けています。</p>
+
+<p>Mandrillのテンプレートは単に変更するだけならDraft扱いなので、<code>--dry-run</code>の変わりとしてプレビュー(render)をつけました。<br>
+WebのUIからならドラフトを元にしたテスト送信もできるのですが、APIには無いのかな？見つからなかった。</p>
+
+<h2>
+<span id="やってみよう" class="fragment"></span><a href="#%E3%82%84%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>やってみよう</h2>
+
+<p>では今あるテンプレートをバージョン管理に移行して、更新してみる。</p>
+
+<h3>
+<span id="mandrill上にあるテンプレートをエクスポート" class="fragment"></span><a href="#mandrill%E4%B8%8A%E3%81%AB%E3%81%82%E3%82%8B%E3%83%86%E3%83%B3%E3%83%97%E3%83%AC%E3%83%BC%E3%83%88%E3%82%92%E3%82%A8%E3%82%AF%E3%82%B9%E3%83%9D%E3%83%BC%E3%83%88"><i class="fa fa-link"></i></a>Mandrill上にあるテンプレートをエクスポート</h3>
+
+<p>まずは<code>mandrilltemplate list</code>でMandrill上にあるテンプレートと、ローカル(リポジトリ)にあるテンプレートの一覧を確認する。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre> $ mandrilltemplate list
+Remote Templates
+----------------------
+  +----------+-------------------+---------------------+-------------------+------------+--------------------+--------+
+  | has_diff | name              | slug                | from_email        | from_name  | subject            | labels |
+  +----------+-------------------+---------------------+-------------------+------------+--------------------+--------+
+  |          | example           | example             | test@example.com  | Boss       | ようこそ           | []     |
+  +----------+-------------------+---------------------+-------------------+------------+--------------------+--------+
+Local Templates
+----------------------
+  +------+------+------------+-----------+---------+--------+
+  | name | slug | from_email | from_name | subject | labels |
+  +------+------+------------+-----------+---------+--------+
+  +------+------+------------+-----------+---------+--------+
+</pre></div></div>
+
+<blockquote>
+<p><code>mandrilltemplate list</code>は<code>-v</code>オプションでリモートを詳細表示にできます。</p>
+</blockquote>
+
+<p>リモートに<code>example</code>というテンプレートがあるね。ローカルにはまだ何もないです。<br>
+これを<code>mandrilltemplate export</code>する。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mandrilltemplate export example
+      create  templates/example
+      create  templates/example/metadata.yml
+      create  templates/example/code
+      create  templates/example/text
+</pre></div></div>
+
+<p>それぞれはテンプレートの管理画面で入力する内容になっています。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">metadata.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">slug</span><span class="pi">:</span> <span class="s">example</span>
+<span class="na">labels</span><span class="pi">:</span> <span class="pi">[]</span>
+<span class="na">subject</span><span class="pi">:</span> <span class="s2">"</span><span class="s">ようこそ"</span>
+<span class="na">from_email</span><span class="pi">:</span> <span class="s">test@example.com</span>
+<span class="na">from_name</span><span class="pi">:</span> <span class="s">Boss</span>
+</pre></div>
+</div>
+
+<p>codeの中身はHandlebarsのテンプレートを使いました。</p>
+
+<div class="code-frame" data-lang="code"><div class="highlight"><pre>&lt;div&gt;
+おはよう {{UserName}} くん。&lt;br/&gt;
+今日の指令は...&lt;br/&gt;
+{{#each ImpossibleMissions}}
+  &lt;ul&gt;
+    &lt;li&gt;{{this}}&lt;/li&gt;
+  &lt;/ul&gt;
+{{/each}}
+
+というわけだ、よろしくやってくれたまえ。&lt;br/&gt;
+
+なお、このメールは自動的に消滅する。検討を祈る。
+&lt;/div&gt;
+</pre></div></div>
+
+<p><code>text</code>は今回はカラッポなので省略。</p>
+
+<p>そうするとこれがローカルのテンプレートとして検出されるようになります。name=ディレクトリ名なので、変更に注意。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mandrilltemplate list
+
+...
+
+Local Templates
+----------------------
+  +---------+---------+------------------+-----------+----------+--------+
+  | name    | slug    | from_email       | from_name | subject  | labels |
+  +---------+---------+------------------+-----------+----------+--------+
+  | example | example | test@example.com | Boss      | ようこそ   | []     |
+  +---------+---------+------------------+-----------+----------+--------+
+</pre></div></div>
+
+<h2>
+<span id="メールを変更してupload" class="fragment"></span><a href="#%E3%83%A1%E3%83%BC%E3%83%AB%E3%82%92%E5%A4%89%E6%9B%B4%E3%81%97%E3%81%A6upload"><i class="fa fa-link"></i></a>メールを変更してupload</h2>
+
+<p>では本文を更新してみます。</p>
+
+<div class="code-frame" data-lang="git"><div class="highlight"><pre>$ git diff
+diff --git a/templates/example/code b/templates/example/code
+index fa21456..a365622 100644
+--- a/templates/example/code
++++ b/templates/example/code
+@@ -10,4 +10,6 @@
+ というわけだ、よろしくやってくれたまえ。&lt;br/&gt;
+
+ なお、このメールは自動的に消滅する。検討を祈る。
+-&lt;/div&gt;
+\ No newline at end of file
++
++あと、帰りに大根買ってきて。
++&lt;/div&gt;
+</pre></div></div>
+
+<p><code>mandrilltemplate upload</code>でアップします。<br>
+APIの戻りを丸々出力していますがまあ気にしないで。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mandrilltemplate upload example
+---
+slug: example
+name: example
+code: |-
+  &lt;div&gt;
+  おはよう {{UserName}} くん。&lt;br/&gt;
+  今日の指令は...&lt;br/&gt;
+  {{#each ImpossibleMissions}}
+    &lt;ul&gt;
+      &lt;li&gt;{{this}}&lt;/li&gt;
+    &lt;/ul&gt;
+  {{/each}}
+
+  というわけだ、よろしくやってくれたまえ。&lt;br/&gt;
+
+  なお、このメールは自動的に消滅する。検討を祈る。
+
+  あと、帰りに大根買ってきて。
+  &lt;/div&gt;
+publish_code: |-
+  &lt;div&gt;
+  おはよう {{UserName}} くん。&lt;br/&gt;
+  今日の指令は...&lt;br/&gt;
+  {{#each ImpossibleMissions}}
+    &lt;ul&gt;
+      &lt;li&gt;{{this}}&lt;/li&gt;
+    &lt;/ul&gt;
+  {{/each}}
+
+  というわけだ、よろしくやってくれたまえ。&lt;br/&gt;
+
+  なお、このメールは自動的に消滅する。検討を祈る。
+  &lt;/div&gt;
+published_at: '2015-09-10 05:50:37'
+created_at: '2015-09-09 03:34:47.89299'
+updated_at: '2015-09-10 06:06:27.13888'
+draft_updated_at: '2015-09-10 05:50:37'
+publish_name: example
+labels: []
+text: 
+publish_text: 
+subject: "ようこそ"
+publish_subject: "ようこそ"
+from_email: test@example.com
+publish_from_email: test@example.com
+from_name: Boss
+publish_from_name: Boss
+</pre></div></div>
+
+<p>アップロードしたら、<code>has_diff</code>パラメータがtrueを持ちました。<br>
+DraftとPublishdに違いがあったらここに表示されます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mandrilltemplate list -v
+Remote Templates
+----------------------
+  +----------+-------------------+---------------------+-------------------+------------+--------------------+--------+
+  | has_diff | name              | slug                | from_email        | from_name  | subject            | labels |
+  +----------+-------------------+---------------------+-------------------+------------+--------------------+--------+
+  | true     | example           | example             | test@example.com  | Boss       | ようこそ           | []     |
+  +----------+-------------------+---------------------+-------------------+------------+--------------------+--------+
+
+...
+</pre></div></div>
+
+<h2>
+<span id="プレビューしてみる" class="fragment"></span><a href="#%E3%83%97%E3%83%AC%E3%83%93%E3%83%A5%E3%83%BC%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>プレビューしてみる</h2>
+
+<p>DraftはWebUIからテスト送信できます。ただ、ローカルに同じ内容を持っているのでCLIで本文くらいはプレビューできるようにしておきました。</p>
+
+<p>まずは<code>先ほどのテンプレートに適用するパラメータファイルを用意しましょう、merge_vars.json</code>とします。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">merge_vars.json</span></div>
+<div class="highlight"><pre><span class="p">[</span><span class="w">
+  </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"UserName"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ExampleUser"</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ImpossibleMissions"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"content"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+      </span><span class="s2">"Mission A"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"Mission B"</span><span class="p">,</span><span class="w">
+      </span><span class="s2">"Mission C"</span><span class="w">
+    </span><span class="p">]</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">]</span><span class="w">
+</span></pre></div>
+</div>
+
+<p>今回のテンプレートをプレビューするには<code>mandrilltemplate render --handlebars</code>で。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mandrilltemplate render --handlebars example templates/example/merge_vars.json 
+&lt;div&gt;
+おはよう ExampleUser くん。&lt;br/&gt;
+今日の指令は...&lt;br/&gt;
+  &lt;ul&gt;
+    &lt;li&gt;Mission A&lt;/li&gt;
+  &lt;/ul&gt;
+  &lt;ul&gt;
+    &lt;li&gt;Mission B&lt;/li&gt;
+  &lt;/ul&gt;
+  &lt;ul&gt;
+    &lt;li&gt;Mission C&lt;/li&gt;
+  &lt;/ul&gt;
+
+というわけだ、よろしくやってくれたまえ。&lt;br/&gt;
+
+なお、このメールは自動的に消滅する。検討を祈る。
+
+あと、帰りに大根買ってきて。
+&lt;/div&gt;
+</pre></div></div>
+
+<p>プレビュー良好ですね。</p>
+
+<p>デフォルトはAPIのrenderメソッド(mailchimpフォーマット)を使ってレンダリングします。<br>
+しかしHandlebarsを使っている場合はAPIのrenderできないので、とりあえずローカルのRubyで処理することにしました。<br>
+<code>--handlebars</code>オプションを渡して動作を切り替えます。</p>
+
+<h2>
+<span id="publishして本番適用" class="fragment"></span><a href="#publish%E3%81%97%E3%81%A6%E6%9C%AC%E7%95%AA%E9%81%A9%E7%94%A8"><i class="fa fa-link"></i></a>Publishして本番適用</h2>
+
+<p>色々と気が済んだら<code>mandrilltemplate publish</code>して本番適用です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ mandrilltemplate publish example
+</pre></div></div>
+
+<p>これでdraft状態のテンプレートがpublishedになりました。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>コードなので何かしらCIと連携することができます。<br>
+たとえばCircleCIならアーティファクトとしてファイルに書きだすなり、パイプでメールを実際に送信したらよさそう。Publishへの変更を自動でやるかはお好みで。</p>
+
+<p>なお、Mandrill上に実際にあるテンプレートがいつのものかは日付から判断するしか無いので、もうちょい厳密に見るならばlabelにgitのsha1でもつけておくのも良いかもしれない。</p>

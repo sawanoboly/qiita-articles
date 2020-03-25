@@ -1,0 +1,155 @@
+<p><a href="https://aws.amazon.com/jp/elasticsearch-service/" rel="nofollow noopener" target="_blank">Amazon Elasticsearch Service</a>はElasticsearchです。<br>
+普通にElasticsearchとしてエンドポイントを使用でき、アクセスポリシーは次の中から選びます。</p>
+
+<ul>
+<li>Any</li>
+<li>送信元IPアドレス</li>
+<li>IAM(STS)</li>
+</ul>
+
+<p>さて、ちょっと都合でS3に置かれたファイルを軽くパースしてElasticsearchに突っ込もうかと、IAMベースでLambdaからのリクエストを思ったところ、現状では署名リクエストを自前でつくって放り込むっぽい。</p>
+
+<p>結果。やってはみたが、今は一旦CloudWatch Logsのストリームに流してからプリセットのファンクションを使うほうが結局楽に済みそう。ES用にboto3のresourceが実装されれば苦労しなくてよさそうだ。</p>
+
+<p>とりあえず動いたのでコードをメモしておこう。</p>
+
+<h2>
+<span id="elasticsearchドメイン側のポリシー" class="fragment"></span><a href="#elasticsearch%E3%83%89%E3%83%A1%E3%82%A4%E3%83%B3%E5%81%B4%E3%81%AE%E3%83%9D%E3%83%AA%E3%82%B7%E3%83%BC"><i class="fa fa-link"></i></a>Elasticsearchドメイン側のポリシー</h2>
+
+<ul>
+<li>IAMテンプレートでLambdaに適用したロールを許可する
+
+<ul>
+<li>
+<code>es:*</code>なり、<code>es:ESHttpGet</code>など</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="lambdaファンクション" class="fragment"></span><a href="#lambda%E3%83%95%E3%82%A1%E3%83%B3%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3"><i class="fa fa-link"></i></a>Lambdaファンクション</h2>
+
+<p>EventSourceのことはちょっと置いといて、とりあえずESの<code>/</code>にGETを送るだけ。<br>
+次の資料が参考になった。</p>
+
+<ul>
+<li>
+<a href="http://docs.aws.amazon.com/ja_jp/general/latest/gr/sigv4-signed-request-examples.html" title="完全なバージョン 4 署名プロセスの例（Python） - アマゾン ウェブ サービス" rel="nofollow noopener" target="_blank">完全なバージョン 4 署名プロセスの例（Python） - アマゾン ウェブ サービス</a>
+
+<ul>
+<li>Authorizationヘッダを作成するための関数を持ってきた。</li>
+</ul>
+</li>
+<li>CloudWatch Logsで作成できる、<code>LogsToElasticsearch</code>のJavascript
+
+<ul>
+<li>Authorization以外ヘッダや環境変数の参考にした。</li>
+<li>だいたいコレを移植した感じ。</li>
+</ul>
+</li>
+</ul>
+
+<p>ほとんどがヘッダを作るためのコード。。。</p>
+
+<div class="code-frame" data-lang="python">
+<div class="code-lang"><span class="bold">function.py</span></div>
+<div class="highlight"><pre><span class="kn">import</span> <span class="nn">urllib2</span><span class="p">,</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">os</span><span class="p">,</span> <span class="n">sys</span>
+<span class="kn">import</span> <span class="nn">hashlib</span><span class="p">,</span> <span class="n">hmac</span>
+
+<span class="n">endpoint</span> <span class="o">=</span> <span class="s">'search-sandbox01-xxxxxxxxxxxxxxxxxxxx.ap-northeast-1.es.amazonaws.com'</span>
+<span class="n">url</span> <span class="o">=</span> <span class="s">"https://"</span> <span class="o">+</span> <span class="n">endpoint</span>
+<span class="n">region</span> <span class="o">=</span> <span class="s">'ap-northeast-1'</span>
+<span class="n">service</span> <span class="o">=</span> <span class="s">'es'</span>
+<span class="n">method</span> <span class="o">=</span> <span class="s">'GET'</span>
+
+<span class="n">access_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'AWS_ACCESS_KEY_ID'</span><span class="p">)</span>
+<span class="n">secret_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'AWS_SECRET_ACCESS_KEY'</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">access_key</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">secret_key</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+    <span class="k">print</span> <span class="s">'No access key is available.'</span>
+    <span class="n">sys</span><span class="o">.</span><span class="nb">exit</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">sign</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">'utf-8'</span><span class="p">),</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">)</span><span class="o">.</span><span class="n">digest</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">getSignatureKey</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">dateStamp</span><span class="p">,</span> <span class="n">regionName</span><span class="p">,</span> <span class="n">serviceName</span><span class="p">):</span>
+    <span class="n">kDate</span> <span class="o">=</span> <span class="n">sign</span><span class="p">((</span><span class="s">'AWS4'</span> <span class="o">+</span> <span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">'utf-8'</span><span class="p">),</span> <span class="n">dateStamp</span><span class="p">)</span>
+    <span class="n">kRegion</span> <span class="o">=</span> <span class="n">sign</span><span class="p">(</span><span class="n">kDate</span><span class="p">,</span> <span class="n">regionName</span><span class="p">)</span>
+    <span class="n">kService</span> <span class="o">=</span> <span class="n">sign</span><span class="p">(</span><span class="n">kRegion</span><span class="p">,</span> <span class="n">serviceName</span><span class="p">)</span>
+    <span class="n">kSigning</span> <span class="o">=</span> <span class="n">sign</span><span class="p">(</span><span class="n">kService</span><span class="p">,</span> <span class="s">'aws4_request'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">kSigning</span>
+
+
+<span class="k">def</span> <span class="nf">lambda_handler</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span>
+    <span class="n">amzdate</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">'</span><span class="si">%</span><span class="s">Y</span><span class="si">%</span><span class="s">m</span><span class="si">%</span><span class="s">dT</span><span class="si">%</span><span class="s">H</span><span class="si">%</span><span class="s">M</span><span class="si">%</span><span class="s">SZ'</span><span class="p">)</span>
+    <span class="n">datestamp</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">'</span><span class="si">%</span><span class="s">Y</span><span class="si">%</span><span class="s">m</span><span class="si">%</span><span class="s">d'</span><span class="p">)</span> <span class="c1"># Date w/o time, used in credential scope
+</span>
+    <span class="n">canonical_uri</span> <span class="o">=</span> <span class="s">'/'</span>
+    <span class="n">canonical_querystring</span> <span class="o">=</span> <span class="s">""</span>
+    <span class="n">canonical_headers</span> <span class="o">=</span> <span class="s">'host:'</span> <span class="o">+</span> <span class="n">endpoint</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span> <span class="s">'x-amz-date:'</span> <span class="o">+</span> <span class="n">amzdate</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span>
+    <span class="n">signed_headers</span> <span class="o">=</span> <span class="s">'host;x-amz-date'</span>
+    <span class="n">payload_hash</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="s">''</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+    <span class="n">canonical_request</span> <span class="o">=</span> <span class="n">method</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span> <span class="n">canonical_uri</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span> <span class="n">canonical_querystring</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span> <span class="n">canonical_headers</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span> <span class="n">signed_headers</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span> <span class="n">payload_hash</span>
+
+    <span class="n">algorithm</span> <span class="o">=</span> <span class="s">'AWS4-HMAC-SHA256'</span>
+    <span class="n">credential_scope</span> <span class="o">=</span> <span class="n">datestamp</span> <span class="o">+</span> <span class="s">'/'</span> <span class="o">+</span> <span class="n">region</span> <span class="o">+</span> <span class="s">'/'</span> <span class="o">+</span> <span class="n">service</span> <span class="o">+</span> <span class="s">'/'</span> <span class="o">+</span> <span class="s">'aws4_request'</span>
+    <span class="n">string_to_sign</span> <span class="o">=</span> <span class="n">algorithm</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span>  <span class="n">amzdate</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span>  <span class="n">credential_scope</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span> <span class="o">+</span>  <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical_request</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+    <span class="n">signing_key</span> <span class="o">=</span> <span class="n">getSignatureKey</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">datestamp</span><span class="p">,</span> <span class="n">region</span><span class="p">,</span> <span class="n">service</span><span class="p">)</span>
+    <span class="n">signature</span> <span class="o">=</span> <span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">signing_key</span><span class="p">,</span> <span class="p">(</span><span class="n">string_to_sign</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">'utf-8'</span><span class="p">),</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+    <span class="n">authorization_header</span> <span class="o">=</span> <span class="n">algorithm</span> <span class="o">+</span> <span class="s">' '</span> <span class="o">+</span> <span class="s">'Credential='</span> <span class="o">+</span> <span class="n">access_key</span> <span class="o">+</span> <span class="s">'/'</span> <span class="o">+</span> <span class="n">credential_scope</span> <span class="o">+</span> <span class="s">', '</span> <span class="o">+</span>  <span class="s">'SignedHeaders='</span> <span class="o">+</span> <span class="n">signed_headers</span> <span class="o">+</span> <span class="s">', '</span> <span class="o">+</span> <span class="s">'Signature='</span> <span class="o">+</span> <span class="n">signature</span>
+
+    <span class="n">headers</span> <span class="o">=</span> <span class="p">{</span>
+          <span class="s">'Content-Type'</span><span class="p">:</span> <span class="s">'application/json'</span><span class="p">,</span>
+                <span class="s">'Host'</span><span class="p">:</span> <span class="n">endpoint</span><span class="p">,</span>
+                <span class="s">'X-Amz-Security-Token'</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'AWS_SESSION_TOKEN'</span><span class="p">),</span>
+                <span class="s">'X-Amz-Date'</span><span class="p">:</span> <span class="n">amzdate</span><span class="p">,</span>
+                <span class="s">'Authorization'</span><span class="p">:</span> <span class="n">authorization_header</span>
+    <span class="p">}</span>
+
+    <span class="n">req</span> <span class="o">=</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="n">headers</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">print</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">req</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">URLError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">print</span> <span class="n">e</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+</pre></div>
+</div>
+
+<p>このヘッダ、botocoreのモジュール使えばさくっと作るんだろうか？ と思いつつ。</p>
+
+<blockquote>
+<p>追記：その、『botocoreのモジュール使えばさくっと作る』の例はこちら。<br>
+<a href="http://dev.classmethod.jp/cloud/aws/botocore-signed-process/" title="[小ネタ] botocoreのAWS APIリクエストの署名プロセスのみを利用する ｜ Developers.IO" rel="nofollow noopener" target="_blank">[小ネタ] botocoreのAWS APIリクエストの署名プロセスのみを利用する ｜ Developers.IO</a></p>
+</blockquote>
+
+<h2>
+<span id="you-know-for-search" class="fragment"></span><a href="#you-know-for-search"><i class="fa fa-link"></i></a>You Know, for Search</h2>
+
+<p>一応手元からESにcURLしてみると、ちゃんとブロックされている。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl search-sandbox01-xxxxxxxxxx.ap-northeast-1.es.amazonaws.com
+{"Message":"User: anonymous is not authorized to perform: es:ESHttpGet on resource: arn:aws:es:ap-northeast-1:xxxxxxxxx:domain/sandbox01/"}
+</pre></div></div>
+
+<p>Lambdaを開き、前述のコードを<code>Save and Test</code>すると、無事にESからの返事がきたね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>START RequestId: b6ce7399-85eb-11e5-b2c3-99a74c2c1765 Version: $LATEST
+{
+  "status" : 200,
+  "name" : "Chief Examiner",
+  "cluster_name" : "xxxxxxxxxxx:sandbox01",
+  "version" : {
+    "number" : "1.5.2",
+    "build_hash" : "62ff9868b4c8a0c45860bebb259e21980778ab1c",
+    "build_timestamp" : "2015-04-27T09:21:06Z",
+    "build_snapshot" : false,
+    "lucene_version" : "4.10.4"
+  },
+  "tagline" : "You Know, for Search"
+}
+
+END RequestId: b6ce7399-85eb-11e5-b2c3-99a74c2c1765
+REPORT RequestId: b6ce7399-85eb-11e5-b2c3-99a74c2c1765  Duration: 64.87 ms  Billed Duration: 100 ms     Memory Size: 128 MB Max Memory Used: 16 MB
+</pre></div></div>

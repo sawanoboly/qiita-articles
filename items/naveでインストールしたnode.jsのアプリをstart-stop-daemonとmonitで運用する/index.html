@@ -1,0 +1,91 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>node.jsで作ったアプリの運用を始めるので管理の方法を検討した。</p>
+
+<h2>
+<span id="方針" class="fragment"></span><a href="#%E6%96%B9%E9%87%9D"><i class="fa fa-link"></i></a>方針</h2>
+
+<p>node.jsはnave.shでバージョン管理する。PATHさえ通せば使えるのでusemainもしない。多分nodebrewもPATHだけなので同様の方法が使える模様。</p>
+
+<p>node.jsは単体ではでdaemonizeしない、依存増えそうなので。<br>
+プロセスの監視はmonit。手法としてはUpstartでのrespawnがよく紹介されているが、node.jsはゆるりと起動してくればよいのでmonit。</p>
+
+<h2>
+<span id="起動停止スクリプト" class="fragment"></span><a href="#%E8%B5%B7%E5%8B%95%E5%81%9C%E6%AD%A2%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88"><i class="fa fa-link"></i></a>起動＆停止スクリプト</h2>
+
+<p>任意バージョンのnode.jsで /opt/myapp にあるプログラムを操作するスクリプト。</p>
+
+<h3>
+<span id="起動" class="fragment"></span><a href="#%E8%B5%B7%E5%8B%95"><i class="fa fa-link"></i></a>起動</h3>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">start.sh</span></div>
+<div class="highlight"><pre><span class="nb">export </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"home/node/.nave/installed/0.8.2/bin:</span><span class="nv">$PATH</span><span class="s2">"</span>
+<span class="nb">export </span><span class="nv">NODE_ENV</span><span class="o">=</span>production
+start-stop-daemon <span class="nt">-S</span> <span class="se">\</span>
+ <span class="nt">-p</span> /var/run/myapp.pid <span class="se">\</span>
+ <span class="nt">-d</span> /opt/myapp <span class="se">\</span>
+ <span class="nt">-c</span> node
+ <span class="nt">-m</span> <span class="nt">-b</span> <span class="se">\</span>
+ <span class="nt">-x</span>/home/node/.nave/installed/0.8.2/bin/node <span class="nt">--</span> ./app.js <span class="nt">--applabel</span> myapp
+</pre></div>
+</div>
+
+<p>ちなみに最後のapplabelは複数のnodejsアプリが動作するときにpsで判別しやすくする目的でつけているので単体で動かすなら必要ない。</p>
+
+<p>ログなどを標準出力に出している場合は最後にリダイレクトで適当なファイルに出力すればOK。その場合のログローテーションはcopytruncateにしておくと良い。</p>
+
+<h3>
+<span id="停止" class="fragment"></span><a href="#%E5%81%9C%E6%AD%A2"><i class="fa fa-link"></i></a>停止</h3>
+
+<p>停止はpidを渡すだけ、特にENVはいらないけど気分的に追加。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">stop.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+<span class="nb">export </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"/home/node/.nave/installed/0.8.2/bin:</span><span class="nv">$PATH</span><span class="s2">"</span>
+<span class="nb">export </span><span class="nv">NODE_ENV</span><span class="o">=</span>production
+start-stop-daemon <span class="nt">-K</span> <span class="se">\</span>
+ <span class="nt">-p</span> /var/run/myapp.pid <span class="se">\</span>
+ <span class="nt">-R</span><span class="o">=</span>TERM/30/KILL/5
+</pre></div>
+</div>
+
+<p>Capistranoでデプロイする場合はスクリプトとpidをsharedの下に置き、-dに#{current_path}を指定するとよい。</p>
+
+<h2>
+<span id="monitのコンフィグと操作" class="fragment"></span><a href="#monit%E3%81%AE%E3%82%B3%E3%83%B3%E3%83%95%E3%82%A3%E3%82%B0%E3%81%A8%E6%93%8D%E4%BD%9C"><i class="fa fa-link"></i></a>monitのコンフィグと操作</h2>
+
+<p>monit自身は遠慮無くUpStartで起動しておこう。<br>
+最低限の設定としてはこのくらいか。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">myapp_monit.conf</span></div>
+<div class="highlight"><pre>check process myapp with pidfile /var/run/myapp.pid
+  group myapp
+  start program "/opt/myapp/bin/start.sh"
+  stop program "/opt/myapp/bin/stop.sh"
+  if 2 restarts within 3 cycles then unmonitor 
+</pre></div>
+</div>
+
+<p>グループ指定をしておくと</p>
+
+<h3>
+<span id="monitでnodejsのアプリを操作" class="fragment"></span><a href="#monit%E3%81%A7nodejs%E3%81%AE%E3%82%A2%E3%83%97%E3%83%AA%E3%82%92%E6%93%8D%E4%BD%9C"><i class="fa fa-link"></i></a>monitでnode.jsのアプリを操作</h3>
+
+<p>起動するとき</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>monit start myapp
+</pre></div></div>
+
+<p>停止するとき</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>monit stop myapp
+</pre></div></div>
+
+<p>これで死活監視とリスポーンとnode.jsのバージョン変更が楽に行える。</p>

@@ -1,0 +1,41 @@
+<p>test-kitchenでも<code>vagrant exec</code>みたいなことしたいよとクライアントが言ったので、実装してみたら意外と便利だったので本家にプルリクして採用。<br>
+次回リリース(v1.2.2かな?)から使えると思います。</p>
+
+<blockquote>
+<p>1.3.0に含まれました。</p>
+</blockquote>
+
+<p><a href="https://github.com/test-kitchen/test-kitchen/pull/373" title="Add new subcommand 'exec' by sawanoboly · Pull Request #373 · test-kitchen/test-kitchen" rel="nofollow noopener" target="_blank">Add new subcommand 'exec' by sawanoboly · Pull Request #373 · test-kitchen/test-kitchen</a></p>
+
+<p><code>kitchen create</code>と<code>converge</code>の間に一手間加えるとか、<code>converge</code>と<code>verify</code>の間にちょっと味付けするとかに使えるかもしれない。特にCIの時。</p>
+
+<p>そういえばその目的で、以前にこんな質問もしました。</p>
+
+<p><a href="https://github.com/test-kitchen/test-kitchen/issues/251" title="I would like to execute some tasks before chef-client run at `kitchen converge`. · Issue #251 · test-kitchen/test-kitchen" rel="nofollow noopener" target="_blank">I would like to execute some tasks before chef-client run at <code>kitchen converge</code>. · Issue #251 · test-kitchen/test-kitchen</a></p>
+
+<p>その時推奨されたやり方は<code>test/</code>の下に何かをprepareするCookbookを用意する、または<code>data/</code>ディレクトリを置けばついでにアップする、でした。</p>
+
+<p><code>test/</code>の下にcookbookは便利なので結構使ってます。<br>
+ただ、Provisionツールを実行するより完全に前の段階で仕込みたい時は、Chefなら<code>client/solo.rb</code>にRubyコードとして仕込んでしまうとか、少々強引な手法を取る必要がありました。</p>
+
+<h3>
+<span id="kitchen-exec-ヘルプ" class="fragment"></span><a href="#kitchen-exec-%E3%83%98%E3%83%AB%E3%83%97"><i class="fa fa-link"></i></a>kitchen exec ヘルプ</h3>
+
+<p>使用方法は他のコマンドと一緒。実行するリモートコマンドは<code>-c</code>で渡してあげよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>kitchen exec INSTANCE|REGEXP -c REMOTE_COMMAND  # Execute command on one or more instance
+</pre></div></div>
+
+<p>プラットフォームが1つの時は<code>INSTANCE|REGEXP</code>は省略可、あと全部を表す予約語の<code>all</code>もつかえます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>kitchen <span class="nb">exec </span>all <span class="nt">-c</span> <span class="s1">'hostname'</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Execute <span class="nb">command </span>on default-centos-64.
+       default-centos-64
+<span class="nt">-----</span><span class="o">&gt;</span> Execute <span class="nb">command </span>on mafalt-centos-64.
+       hogehoge-centos-64
+</pre></div></div>
+
+<h4>
+<span id="余談pty" class="fragment"></span><a href="#%E4%BD%99%E8%AB%87pty"><i class="fa fa-link"></i></a>余談：PTY</h4>
+
+<p>test-kitchenのリモート実行系はrequiretty(NET::SSHのrequest_pty)に対応しているのでsudoが必要な環境でも安心のexec。</p>

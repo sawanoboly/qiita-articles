@@ -1,0 +1,99 @@
+<p><a href="http://qiita.com/sawanoboly/items/c24a6ad45e18f682173d" title="h2oをbusyboxのコンテナに突っ込んだら軽そう - Qiita" id="reference-bd078cacbaef629b4892">h2oをbusyboxのコンテナに突っ込んだら軽そう - Qiita</a> の続編。</p>
+
+<p>前回、名前解決の関係で一部機能が使えてなかったところを改善したのでその記録。</p>
+
+<del>また、nss関連を取り込めたので、busyboxのベースを`busybox:ubuntu`から`busybox`に変更しても問題なくなった。イメージサイズも7MB =&gt; 5MBに。</del>
+
+<blockquote>
+<p>1.6.0でのTLSでperl, opensslコマンドが必要だったので、alpineに乗り換えました。 <a href="https://hub.docker.com/r/higanworks/h2o-alpine" class="autolink" rel="nofollow noopener" target="_blank">https://hub.docker.com/r/higanworks/h2o-alpine</a> <br>
+見た目のサイズは18MB ? perl, opensslパッケージの大きさと少々違う気がしますが...</p>
+</blockquote>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5eb4ca80-67fb-ec8a-a785-2456153aeed8.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=99f344b31e36e4de00d22016711e1d01" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5eb4ca80-67fb-ec8a-a785-2456153aeed8.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=99f344b31e36e4de00d22016711e1d01" alt="Docker_Hub.jpg" title="Docker_Hub.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/5eb4ca80-67fb-ec8a-a785-2456153aeed8.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5eb4ca80-67fb-ec8a-a785-2456153aeed8.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=4a50345e0f7d27fedf1089918e97e707 1x" loading="lazy"></a></p>
+
+<p>↓↓↓</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe5e66dd1-3673-8cbe-ac09-087ad3f4de4d.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fa6db1e32278e9e6bb3e63731af41527" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe5e66dd1-3673-8cbe-ac09-087ad3f4de4d.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fa6db1e32278e9e6bb3e63731af41527" alt="Docker_Hub.jpg" title="Docker_Hub.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/e5e66dd1-3673-8cbe-ac09-087ad3f4de4d.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe5e66dd1-3673-8cbe-ac09-087ad3f4de4d.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=ae61bed8b8eb647b7d6474fb99442161 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="glibcのdebカスタマイズならば--enable-static-nssだ" class="fragment"></span><a href="#glibc%E3%81%AEdeb%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%9E%E3%82%A4%E3%82%BA%E3%81%AA%E3%82%89%E3%81%B0--enable-static-nss%E3%81%A0"><i class="fa fa-link"></i></a>glibcのdebカスタマイズ、ならば<code>--enable-static-nss</code>だ</h2>
+
+<p><code>make h2o</code> 時に出ていた警告。getaddrinfoなどはこのglibcではあかんでーという話だった。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>CMakeFiles/h2o.dir/lib/common/serverutil.c.o: In function `h2o_setuidgid':
+/h2o/lib/common/serverutil.c:72: warning: Using 'initgroups' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+CMakeFiles/h2o.dir/src/main.c.o: In function `on_config_user':
+/h2o/src/main.c:970: warning: Using 'getpwnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+CMakeFiles/h2o.dir/lib/common/serverutil.c.o: In function `h2o_setuidgid':
+/h2o/lib/common/serverutil.c:60: warning: Using 'getpwnam_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+CMakeFiles/h2o.dir/deps/libyrmcds/connect.c.o: In function `connect_to_server':
+/h2o/deps/libyrmcds/connect.c:36: warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+</pre></div></div>
+
+<p>このlibnssあたりのライブラリを取り込んだbusyboxが<code>busybox:ubuntu</code>のようなんだが、結局SegFaultしていた。</p>
+
+<p>元々使おうとしていた用途でなら機能的に問題なさそうではあったが、OCSPとか動かんのかしらと気になっていたのでやっぱりglibcから作り直すことにした。</p>
+
+<p>雑いがこんな感じ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>FROM buildpack-deps
+RUN echo "deb-src http://ftp.jp.debian.org/debian/ jessie main" &gt;&gt; /etc/apt/sources.list
+RUN echo "deb-src http://security.debian.org/ jessie/updates main" &gt;&gt; /etc/apt/sources.list
+RUN mkdir -p /glibc
+WORKDIR /glibc
+RUN apt-get update &amp;&amp; apt-get install -y \
+cmake dpkg-dev \
+&amp;&amp; apt-get build-dep -y glibc --fix-missing \
+&amp;&amp; apt-get source -y glibc \
+&amp;&amp; rm -rf /var/lib/apt/lists/*
+
+# CONFARGS += --enable-static-nss
+WORKDIR /glibc/glibc-2.19
+ENV DEB_BUILD_OPTIONS="nocheck parallel=4"
+RUN sed -i '/--without-selinux/i\--enable-static-nss\ \\' debian/rules.d/build.mk
+RUN dpkg-buildpackage -us -uc -rfakeroot
+
+WORKDIR /glibc
+RUN dpkg -i *.deb
+
+WORKDIR /
+RUN git clone -b v1.6.0 https://github.com/h2o/h2o --depth 1
+WORKDIR /h2o
+RUN git submodule update --init --recursive
+RUN echo 'SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")' &gt;&gt; CMakeLists.txt
+RUN echo 'SET(BUILD_SHARED_LIBRARIES OFF)' &gt;&gt; CMakeLists.txt
+RUN echo 'SET(CMAKE_EXE_LINKER_FLAGS "-static -static-libstdc++ -static-libgcc")' &gt;&gt; CMakeLists.txt
+RUN cmake -DWITH_BUNDLED_SSL=on -DBUILD_SHARED_LIBS=no .\
+&amp;&amp; make h2o
+CMD ["/bin/bash"]
+</pre></div></div>
+
+<p>これでdocker buildするとイメージサイズが3GBを超える。あとはh2oをbusyboxに入れるだけなので、もはやビルドのほうは容量を気にしていない。</p>
+
+<blockquote>
+<p>修正: べースをalpineに変更</p>
+</blockquote>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>FROM alpine
+RUN apk --update add perl openssl \
+     &amp;&amp; rm -rf /var/cache/apk/*
+ADD build/h2o /usr/local/bin/h2o
+ADD build/share/* /usr/local/share/h2o/
+WORKDIR /usr/local
+CMD ["/bin/sh"]
+</pre></div></div>
+
+<p>スッキリ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ docker run -it --rm higanworks/h2o-alpine:1.6.0 h2o --version
+h2o version 1.6.0
+OpenSSL: LibreSSL 2.2.4
+</pre></div></div>
+
+<p>nobodyで動かせるし、<code>proxy.reverse.url</code>も利く。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>staticにしたことで(ほぼ)単品で動くようになった。この時点でそもそも64bitのlinuxならなんでもいい気がするので、Dockerコンテナでなくでもいいっちゃいい。。<br>
+が、コンテナのベースはやっぱり小さい方がよいよねえと。composeとかでちょちょっと増やしたりにも。</p>

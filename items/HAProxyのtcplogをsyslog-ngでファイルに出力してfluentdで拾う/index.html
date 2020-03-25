@@ -1,0 +1,97 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>HAProxyの出力はsyslogなので、syslog-ngで単一のファイルにまとめる。<br>
+ついでにfluentdにも送るのでばらしてRubyのMatchDataにしよう。</p>
+
+<h2>
+<span id="syslog-ngの設定" class="fragment"></span><a href="#syslog-ng%E3%81%AE%E8%A8%AD%E5%AE%9A"><i class="fa fa-link"></i></a>syslog-ngの設定</h2>
+
+<p>設定を作ってインポートしよう、fluentdとかへの使い回しを考えなければファイル名に日付マクロを使ってもいい。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">syslog-ng_haproxy.conf</span></div>
+<div class="highlight"><pre>template t_haproxy {
+  template("$MSGHDR$PRIORITY $MSG\n");
+  template_escape(no);
+};
+
+destination d_haproxy {
+  file("/var/log/haproxy/haproxy.log",
+  create_dirs(yes),
+  template(t_haproxy));
+};
+
+filter f_haproxy {
+  program(haproxy);
+};
+
+log {
+  source(s_src);
+  filter(f_haproxy);
+  destination(d_haproxy);
+};
+</pre></div>
+</div>
+
+<p>haproxy側ではsyslog-ngのs_srcにログが届くようにしておく、ローカルなら/dev/log宛など。</p>
+
+<h2>
+<span id="ログの出力例" class="fragment"></span><a href="#%E3%83%AD%E3%82%B0%E3%81%AE%E5%87%BA%E5%8A%9B%E4%BE%8B"><i class="fa fa-link"></i></a>ログの出力例</h2>
+
+<p>HAProxyのドキュメントにはPriorityが無いが、わかりやすいので出しておく。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>haproxy[27508]: info 127.0.0.1:45111 [12/Jul/2012:15:19:03.258] wss-relay wss-relay/local02_9876 0/0/50015 1277 cD 1/0/0/0/0 0/0
+</pre></div></div>
+
+<h3>
+<span id="fluentdのためにmatchdataへ" class="fragment"></span><a href="#fluentd%E3%81%AE%E3%81%9F%E3%82%81%E3%81%ABmatchdata%E3%81%B8"><i class="fa fa-link"></i></a>fluentdのためにMatchDataへ</h3>
+
+<p>fluentdに送るだけなら実はテンプレート変更をせずにsyslog形式で送ればよいのだが、HAProxyのtcplogフォーマットが$MSGで一緒くたにされる。<br>
+公式ドキュメントを参考にRubyのMatchDataにバラすテスト。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">irb(pry)</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="n">m</span> <span class="o">=</span> <span class="s2">"haproxy[27508]: info 127.0.0.1:45111 [12/Jul/2012:15:19:03.258] wss-relay wss-relay/local02_9876 0/0/50015 1277 cD 1/0/0/0/0 0/0"</span>
+
+
+<span class="o">&gt;</span> <span class="n">m</span> <span class="o">=</span> <span class="n">txt</span><span class="p">.</span><span class="nf">match</span><span class="p">(</span><span class="sr">/(?&lt;ps&gt;\w+)\[(?&lt;pid&gt;\d+)\]: (?&lt;pri&gt;\w+) (?&lt;c_ip&gt;[\w\.]+):(?&lt;c_port&gt;\d+) \[(?&lt;a_date&gt;.+)\] (?&lt;f_end&gt;[\w-]+) (?&lt;b_end&gt;[\w-]+)\/(?&lt;b_server&gt;[\w-]+) (?&lt;tw&gt;\d+)\/(?&lt;tc&gt;\d+)\/(?&lt;tt&gt;\d+) (?&lt;bytes&gt;\d+) (?&lt;t_state&gt;[\w-]+) (?&lt;actconn&gt;\d+)\/(?&lt;feconn&gt;\d+)\/(?&lt;beconn&gt;\d+)\/(?&lt;srv_conn&gt;\d+)\/(?&lt;retries&gt;\d+) (?&lt;srv_queue&gt;\d+)\/(?&lt;backend_queue&gt;\d+)/</span><span class="p">)</span>
+<span class="o">&gt;</span> <span class="n">m</span><span class="p">.</span><span class="nf">names</span><span class="p">.</span><span class="nf">each</span> <span class="p">{</span><span class="o">|</span><span class="n">x</span><span class="o">|</span> <span class="nb">puts</span> <span class="s2">"</span><span class="si">#{</span><span class="n">x</span><span class="si">}</span><span class="s2"> =&gt; </span><span class="si">#{</span><span class="n">m</span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span> <span class="p">}</span>
+<span class="n">ps</span> <span class="o">=&gt;</span> <span class="n">haproxy</span>
+<span class="n">pid</span> <span class="o">=&gt;</span> <span class="mi">27508</span>
+<span class="n">pri</span> <span class="o">=&gt;</span> <span class="n">info</span>
+<span class="n">c_ip</span> <span class="o">=&gt;</span> <span class="mf">127.0</span><span class="o">.</span><span class="mf">0.1</span>
+<span class="n">c_port</span> <span class="o">=&gt;</span> <span class="mi">45111</span>
+<span class="n">a_date</span> <span class="o">=&gt;</span> <span class="mi">12</span><span class="o">/</span><span class="no">Jul</span><span class="o">/</span><span class="mi">2012</span><span class="p">:</span><span class="mi">15</span><span class="p">:</span><span class="mi">19</span><span class="p">:</span><span class="mo">03</span><span class="o">.</span><span class="mi">258</span>
+<span class="n">f_end</span> <span class="o">=&gt;</span> <span class="n">wss</span><span class="o">-</span><span class="n">relay</span>
+<span class="n">b_end</span> <span class="o">=&gt;</span> <span class="n">wss</span><span class="o">-</span><span class="n">relay</span>
+<span class="n">b_server</span> <span class="o">=&gt;</span> <span class="n">local02_9876</span>
+<span class="n">tw</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+<span class="n">tc</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+<span class="n">tt</span> <span class="o">=&gt;</span> <span class="mi">50015</span>
+<span class="n">bytes</span> <span class="o">=&gt;</span> <span class="mi">1277</span>
+<span class="n">t_state</span> <span class="o">=&gt;</span> <span class="n">cD</span>
+<span class="n">actconn</span> <span class="o">=&gt;</span> <span class="mi">1</span>
+<span class="n">feconn</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+<span class="n">beconn</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+<span class="n">srv_conn</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+<span class="n">retries</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+<span class="n">srv_queue</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+<span class="n">backend_queue</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+</pre></div>
+</div>
+
+<p>後の解析のためといえ数が多いと大変ね。</p>
+
+<p>時間が変な形式なのでRubyでTimeに変換するならstrptimeで。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>puts DateTime.strptime(m["a_date"],"%d/%B/%Y:%H:%M:%S")  #=&gt; 2012-07-12T15:19:03+00:00
+</pre></div></div>
+
+<p>よってfluentdのtime_formatはこうなる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>time_format "%d/%B/%Y:%H:%M:%S"
+</pre></div></div>

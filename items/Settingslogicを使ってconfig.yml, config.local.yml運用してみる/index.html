@@ -1,0 +1,58 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://github.com/binarylogic/settingslogic" rel="nofollow noopener" target="_blank">Settingslogic</a> は設定ファイルを一回ERbで処理してから使えるステキなRubygem。</p>
+
+<p>CIやherokuなどは<code>config.yml</code>を読んで環境変数を使いつつ、ローカル環境では<code>config.local.yml</code>で上書きしたいと思ったので試してみた。</p>
+
+<p>ちなみに<code>*.local.yml</code>を使うという運用方はtest-kitchenから拝借。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">app.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'settingslogic'</span>
+
+<span class="k">class</span> <span class="nc">EnvSettings</span> <span class="o">&lt;</span> <span class="no">Settingslogic</span>
+  <span class="n">source</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'../config.yml'</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exist?</span><span class="p">(</span><span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'../config.local.yml'</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">))</span>
+  <span class="k">class</span> <span class="nc">EnvLocalSettings</span> <span class="o">&lt;</span> <span class="no">Settingslogic</span>
+    <span class="n">source</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'../config.local.yml'</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+  <span class="k">end</span>
+  <span class="no">EnvSettings</span><span class="p">.</span><span class="nf">merge!</span><span class="p">(</span><span class="no">EnvLocalSettings</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="nb">puts</span> <span class="no">EnvSettings</span><span class="p">[</span><span class="ss">:hoge</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<p>多少冗長のような気もするが、既存のコードも<code>if</code>ブロックを一個追加で同じ対応ができるしOK。</p>
+
+<p>とりあえず<code>config.yml</code>のみで実行。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">config.yml</span></div>
+<div class="highlight"><pre><span class="na">hoge</span><span class="pi">:</span> <span class="s">&lt;%= ENV['HOGEHOGE'] %&gt;</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre> <span class="nv">$ HOGEHOGE</span><span class="o">=</span>moge ruby ./app.rb 
+moge
+</pre></div></div>
+
+<p><code>config.local.yml</code>を置いて実行。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">config.local.yml</span></div>
+<div class="highlight"><pre><span class="na">hoge</span><span class="pi">:</span> <span class="s">mogemoge</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ HOGEHOGE=moge ruby ./app.rb 
+mogemoge
+</pre></div></div>
+
+<p>local側がENVを読んでもいいんだけど、使い勝手を考えるとこの順番かな。</p>

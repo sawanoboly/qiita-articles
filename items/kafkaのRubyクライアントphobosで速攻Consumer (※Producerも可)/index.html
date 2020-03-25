@@ -1,0 +1,273 @@
+<p>kafkaを楽に扱いたいなあと、良い感じのRubygemsを探しました。でもよく紹介されているのはたいていRailsとの連携を前提にしているRubyGemsたちです。</p>
+
+<p>目的はただ、topicをサブスクライブしてカジュアルにディスパッチがしたいんだー。というのにはちょっと重たいかなって。</p>
+
+<p>そんななか、見つけたのがphobosです。コード数行からConsumerをつくれてとってもハッピーです。</p>
+
+<ul>
+<li><a href="https://github.com/phobos/phobos" rel="nofollow noopener" target="_blank">phobos/phobos: Simplifying Kafka for ruby apps</a></li>
+</ul>
+
+<p>これなら(俺でも)スクリプト感覚でリアクションかけちゃうじゃないか。ということで紹介します。</p>
+
+<h2>
+<span id="テスト用kafka-brokerの準備" class="fragment"></span><a href="#%E3%83%86%E3%82%B9%E3%83%88%E7%94%A8kafka-broker%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>テスト用kafka-brokerの準備</h2>
+
+<p>このあたりから引用して、とりあえずローカルでkafka-brokerを動かします。</p>
+
+<ul>
+<li><a href="https://docs.confluent.io/current/installation/docker/docs/config-reference.html" class="autolink" rel="nofollow noopener" target="_blank">https://docs.confluent.io/current/installation/docker/docs/config-reference.html</a></li>
+</ul>
+
+<p>ポートやenvをちょっとアレンジ。</p>
+
+<p>zookeeperと、</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">run-zookeeper</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-d</span> <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">-p</span> 2181:2181 <span class="se">\</span>
+  <span class="nt">--name</span><span class="o">=</span>zookeeper <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">ZOOKEEPER_CLIENT_PORT</span><span class="o">=</span>2181 <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">ZOOKEEPER_TICK_TIME</span><span class="o">=</span>2000 <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">ZOOKEEPER_SYNC_LIMIT</span><span class="o">=</span>2 <span class="se">\</span>
+  confluentinc/cp-zookeeper:5.1.0
+</pre></div>
+</div>
+
+<p>brokerです。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">run-broker</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">-d</span> <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">-p</span> 9092:9092 <span class="se">\</span>
+  <span class="nt">--name</span><span class="o">=</span>kafka <span class="se">\</span>
+  <span class="nt">--link</span><span class="o">=</span>zookeeper <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">KAFKA_ZOOKEEPER_CONNECT</span><span class="o">=</span>zookeeper:2181 <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">KAFKA_ADVERTISED_LISTENERS</span><span class="o">=</span>PLAINTEXT://127.0.0.1:9092 <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">KAFKA_BROKER_ID</span><span class="o">=</span>1 <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR</span><span class="o">=</span>1 <span class="se">\</span>
+  <span class="nt">-e</span> <span class="nv">KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE</span><span class="o">=</span><span class="nb">false</span> <span class="se">\</span>
+  confluentinc/cp-kafka:5.1.0
+</pre></div>
+</div>
+
+<p>docker-composeならこんな感じ。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">docker-compose.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">version</span><span class="pi">:</span> <span class="s2">"</span><span class="s">3.1"</span>
+<span class="na">services</span><span class="pi">:</span>
+  <span class="na">zookeeper</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">confluentinc/cp-zookeeper:5.1.0</span>
+    <span class="na">ports</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">2181:2181</span>
+    <span class="na">environment</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">ZOOKEEPER_CLIENT_PORT=2181</span>
+      <span class="pi">-</span> <span class="s">ZOOKEEPER_TICK_TIME=2000</span>
+      <span class="pi">-</span> <span class="s">ZOOKEEPER_SYNC_LIMIT=2</span>
+  <span class="na">kafka</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">confluentinc/cp-kafka:5.1.0</span>
+    <span class="na">ports</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">9092:9092</span>
+    <span class="na">links</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">zookeeper</span>
+    <span class="na">environment</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181</span>
+      <span class="pi">-</span> <span class="s">KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://127.0.0.1:9092</span>
+      <span class="pi">-</span> <span class="s">KAFKA_BROKER_ID=2</span>
+      <span class="pi">-</span> <span class="s">KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1</span>
+      <span class="pi">-</span> <span class="s">KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE=false</span>
+</pre></div>
+</div>
+
+<p>さて、kafka-brokerの準備が整ったところで、phobosの話へ移りましょう。</p>
+
+<h2>
+<span id="phobosセットアップ" class="fragment"></span><a href="#phobos%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>phobosセットアップ</h2>
+
+<p>Rubygemsのphobosをインストール。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bundle init
+$ echo "gem 'phobos'" &gt;&gt; Gemfile 
+$ bundle install --binstubs --path vendor/bundle
+</pre></div></div>
+
+<p>ヘルプが出るか確認します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/phobos 
+Commands:
+  phobos help [COMMAND]  # Describe available commands or one specific command
+  phobos init            # Initialize your project with Phobos
+  phobos start           # Starts Phobos
+  phobos version         # Outputs the version number. Can be used with: phobos -v or phobos --version
+</pre></div></div>
+
+<p><code>phobos init</code>で初期ファイルを用意しましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/phobos init
+      create  config/phobos.yml
+      create  phobos_boot.rb
+</pre></div></div>
+
+<p>この時点ですでになんか親切ですね。</p>
+
+<h2>
+<span id="軽くphobosの動作確認" class="fragment"></span><a href="#%E8%BB%BD%E3%81%8Fphobos%E3%81%AE%E5%8B%95%E4%BD%9C%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>軽くphobosの動作確認</h2>
+
+<p><code>config/phobos.yml</code> に全体的な設定を記述します。</p>
+
+<ul>
+<li>接続情報などグローバルな設定</li>
+<li>Producer/Consumerのデフォルト設定</li>
+<li>Consumerの購読先(複数可)とリアクション</li>
+</ul>
+
+<p>ちょいとinitがこしらえた<code>config/phobos.yml</code>を覗いてみます。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">config/phobos.yml(part)</span></div>
+<div class="highlight"><pre><span class="na">listeners</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">handler</span><span class="pi">:</span> <span class="s">Phobos::EchoHandler</span>
+    <span class="na">topic</span><span class="pi">:</span> <span class="s">test</span>
+</pre></div>
+</div>
+
+<p><code>test</code>というtopicを購読、<code>Phobos::EchoHandler</code>という組み込みのハンドラが処理する、という定義ですね。</p>
+
+<p>前述の通りkafka-brokerがローカルに立ち上がっていれば変更は不要です、<code>phobos start</code>で起動してみましょう。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>./bin/phobos start
+______ _           _
+| ___ <span class="se">\ </span>|         | |
+| |_/ / |__   ___ | |__   ___  ___
+|  __/| <span class="s1">'_ \ / _ \| '</span>_ <span class="se">\ </span>/ _ <span class="se">\/</span> __|
+| |   | | | | <span class="o">(</span>_<span class="o">)</span> | |_<span class="o">)</span> | <span class="o">(</span>_<span class="o">)</span> <span class="se">\_</span>_ <span class="se">\</span>
+<span class="se">\_</span>|   |_| |_|<span class="se">\_</span>__/|_.__/ <span class="se">\_</span>__/|___/
+
+phobos_boot.rb - find this file at /Users/sawanoboriyu/develop/src/sandbox/qiita_ruby-phobos/phobos_boot.rb
+
+<span class="o">[</span>2019-02-03T18:11:59:345+0900Z] INFO  <span class="nt">--</span> Phobos : &lt;Hash&gt; <span class="o">{</span>:message<span class="o">=&gt;</span><span class="s2">"Phobos configured"</span>, :env<span class="o">=&gt;</span><span class="s2">"N/A"</span><span class="o">}</span>
+<span class="o">[</span>2019-02-03T18:11:59:374+0900Z] INFO  <span class="nt">--</span> Phobos : &lt;Hash&gt; <span class="o">{</span>:message<span class="o">=&gt;</span><span class="s2">"Listener started"</span>, :listener_id<span class="o">=&gt;</span><span class="s2">"442f72"</span>, :group_id<span class="o">=&gt;</span><span class="s2">"test-1"</span>, :topic<span class="o">=&gt;</span><span class="s2">"test"</span>, :handler<span class="o">=&gt;</span><span class="s2">"Phobos::EchoHandler"</span><span class="o">}</span>
+</pre></div></div>
+
+<p>最後の行から、<code>test</code>というtopicのConsumerとして稼働したことがわかります。なにか流し込んでみますか。</p>
+
+<p>では、流し込みに<a href="https://github.com/edenhill/kafkacat" rel="nofollow noopener" target="_blank">kafkacat</a>をつかいましょう。homebrewなりで入れちゃいます。</p>
+
+<ul>
+<li><a href="https://github.com/edenhill/kafkacat" rel="nofollow noopener" target="_blank">edenhill/kafkacat: Generic command line non-JVM Apache Kafka producer and consumer</a></li>
+</ul>
+
+<p>※ 実際のところ、<code>kafkacat</code>ですでにカジュアルなconsumerとして動かせるんですが、それは一旦置いときましょう。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">kafkacat-1</span></div>
+<div class="highlight"><pre><span class="nv">$ </span><span class="nb">echo </span>aa | kafkacat <span class="nt">-P</span> <span class="nt">-b</span> localhost <span class="nt">-t</span> <span class="nb">test</span>
+</pre></div>
+</div>
+
+<p><code>Phobos::EchoHandler</code>は受け取ったメッセージをログに出すだけのシンプルなハンドラです。<code>:message=&gt;"aa"</code>をちゃんと受け取ってますね。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>./bin/phobos start
+______ _           _
+| ___ <span class="se">\ </span>|         | |
+| |_/ / |__   ___ | |__   ___  ___
+|  __/| <span class="s1">'_ \ / _ \| '</span>_ <span class="se">\ </span>/ _ <span class="se">\/</span> __|
+
+<span class="c"># -- snip --</span>
+
+<span class="o">[</span>2019-02-03T18:12:14:481+0900Z] INFO  <span class="nt">--</span> Phobos : &lt;Hash&gt; <span class="o">{</span>:message<span class="o">=&gt;</span><span class="s2">"aa"</span>, :listener_id<span class="o">=&gt;</span><span class="s2">"442f72"</span>, :group_id<span class="o">=&gt;</span><span class="s2">"test-1"</span>, :topic<span class="o">=&gt;</span><span class="s2">"test"</span>, :handler<span class="o">=&gt;</span><span class="s2">"Phobos::EchoHandler"</span>, :key<span class="o">=&gt;</span>nil, :partition<span class="o">=&gt;</span>0, :offset<span class="o">=&gt;</span>0, :retry_count<span class="o">=&gt;</span>0<span class="o">}</span>
+</pre></div></div>
+
+<h3>
+<span id="ハンドラを作ってmessageを処理する" class="fragment"></span><a href="#%E3%83%8F%E3%83%B3%E3%83%89%E3%83%A9%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%A6message%E3%82%92%E5%87%A6%E7%90%86%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>ハンドラを作ってmessageを処理する。</h3>
+
+<p><code>phobos init</code>が作ったファイルはもう一つあります、<code>phobos_boot.rb</code>を見てみましょう。</p>
+
+<p>putしかない。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">phobos_boot.rb(initial)</span></div>
+<div class="highlight"><pre><span class="c1"># Use this file to load your code</span>
+<span class="nb">puts</span> <span class="o">&lt;&lt;~</span><span class="no">ART</span><span class="sh">
+  ______ _           _
+  | ___ </span><span class="se">\\</span><span class="sh"> |         | |
+  | |_/ / |__   ___ | |__   ___  ___
+  |  __/| '_ </span><span class="se">\\</span><span class="sh"> / _ </span><span class="se">\\</span><span class="sh">| '_ </span><span class="se">\\</span><span class="sh"> / _ </span><span class="se">\\</span><span class="sh">/ __|
+  | |   | | | | (_) | |_) | (_) </span><span class="se">\\</span><span class="sh">__ </span><span class="se">\\</span><span class="sh">
+  </span><span class="se">\\</span><span class="sh">_|   |_| |_|</span><span class="se">\\</span><span class="sh">___/|_.__/ </span><span class="se">\\</span><span class="sh">___/|___/
+</span><span class="no">ART</span>
+<span class="nb">puts</span> <span class="s2">"
+phobos_boot.rb - find this file at </span><span class="si">#{</span><span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">)</span><span class="si">}</span><span class="s2">
+
+"</span>
+</pre></div>
+</div>
+
+<p>これはデフォルトでphobosが参照するエントリーポイントです。なにかするならこれに追記していく格好ですね。</p>
+
+<p>では<code>Phobos::Handler</code>の代わりに使うハンドラを記述します、とりあえず<code>#consume</code>があればOKです。標準出力にputsするだけのハンドラ、<code>MyHandler</code>を次のように書いてみました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">phobos_boot.rb(append-1)</span></div>
+<div class="highlight"><pre><span class="k">class</span> <span class="nc">MyHandler</span>
+  <span class="kp">include</span> <span class="no">Phobos</span><span class="o">::</span><span class="no">Handler</span>
+
+  <span class="k">def</span> <span class="nf">consume</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">metadata</span><span class="p">)</span>
+    <span class="nb">puts</span> <span class="s1">'your message is '</span> <span class="o">+</span> <span class="n">payload</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>このハンドラを使うように<code>config/phobos.yml</code>で設定を変更します。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">config/phobos.yml(part)</span></div>
+<div class="highlight"><pre><span class="na">listeners</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">handler</span><span class="pi">:</span> <span class="s">MyHandler</span>
+    <span class="c1"># handler: Phobos::EchoHandler</span>
+    <span class="na">topic</span><span class="pi">:</span> <span class="s">test</span>
+</pre></div>
+</div>
+
+<p><code>phobos start</code>して、裏でmessageを流し込んでみます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ./bin/phobos start
+______ _           _
+| ___ \ |         | |
+| |_/ / |__   ___ | |__   ___  ___
+|  __/| '_ \ / _ \| '_ \ / _ \/ __|
+| |   | | | | (_) | |_) | (_) \__ \
+\_|   |_| |_|\___/|_.__/ \___/|___/
+
+phobos_boot.rb - find this file at /Users/sawanoboriyu/develop/src/sandbox/qiita_ruby-phobos/phobos_boot.rb
+
+[2019-02-03T18:45:52:276+0900Z] INFO  -- Phobos : &lt;Hash&gt; {:message=&gt;"Phobos configured", :env=&gt;"N/A"}
+[2019-02-03T18:45:52:287+0900Z] INFO  -- Phobos : &lt;Hash&gt; {:message=&gt;"Listener started", :listener_id=&gt;"b59783", :group_id=&gt;"test-1", :topic=&gt;"test", :handler=&gt;"MyHandler"}
+
+# 裏で `echo aa | kafkacat -P -b localhost -t test`
+
+your message is aa
+</pre></div></div>
+
+<p>やったぜ。</p>
+
+<p>ちなみに<code>Phobos::Producer</code>をincludeすれば任意のtopicにメッセージを流し込んだりできます。こちらも簡単なのでやっちゃってみてください。</p>
+
+<h3>
+<span id="例外どうなんの" class="fragment"></span><a href="#%E4%BE%8B%E5%A4%96%E3%81%A9%E3%81%86%E3%81%AA%E3%82%93%E3%81%AE"><i class="fa fa-link"></i></a>例外どうなんの？</h3>
+
+<p>Consumerの処理で例外があると、シンプルなBackoffアルゴリズムでランダム待ちのあと、リトライします。<br>
+ですが、ConsumerGroupの仕組み上、どこまで処理したか覚えてるようで、このmessageに対するリトライが繰り返してしまいます。<br>
+さっさとログに吐いて終了とするなり、通知したりリトライ用のトピックなどにペイロードを回しちゃうなりをしないと次を処理しないようなのでそのように。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>これだけ簡単に扱えると、kafkaがぐっと身近になった感じがします。感覚的にはredisくらいまでカジュアル感UPです。<br>
+既存のなにかに組み込んでライブラリ的に使うのもOKで、そっちは<code>amqp + bunny</code>な感じの使い勝手かなと思います。</p>
+
+<p>Phobos自体だけでもスレッドでの並列処理をパラメータ一つで行えたり、複数のlistnerを個別に取り扱えたりと便利な上に、<code>group_id</code>とかkafka側の仕組みがしっかりしているので雑にスケールできるのもよいですね。</p>

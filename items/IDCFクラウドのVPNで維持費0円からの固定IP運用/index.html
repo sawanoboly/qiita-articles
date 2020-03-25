@@ -1,0 +1,203 @@
+<p>理由は様々ですが、アクセス元のIPアドレスを固定したいことがあります。</p>
+
+<p>基本的にどこかに所属してオフィスで仕事、であればあまり気にしなくてよいのですが、それ以外の場所でも固定IPを利用する場合ではちょっとした環境のセットアップが必要です。</p>
+
+<ul>
+<li>オフィスまたは自宅に固定IP、VPNで一旦そこを経由</li>
+<li>適当なIaaSクラウドサービスでVPSや固定IPを取得して踏み台作成</li>
+</ul>
+
+<p>さて、固定IPアドレス、たいていは色々とケチっても1,000円弱くらいかかります。</p>
+
+<p>それに加えて、拠点に用意する場合はレンタル機材やらVPNエンドポイントのメンテナンス、物理的引っ越しへの対応などが必要ですし、クラウドサービスを利用する場合は維持に費用がかかったり、何かの拍子にアドレスをリリースして変更を余儀なくされたり、ということもあるので、安定運用するにはそれなりの手間を掛ける必要がでてきます。</p>
+
+<p>で、たまにしか固定IPを使わない私が色々検討して 、<a href="https://www.idcf.jp/cloud/" rel="nofollow noopener" target="_blank">IDCFクラウド</a>でいいやとなっています。</p>
+
+<ul>
+<li><a href="https://www.idcf.jp/cloud/" rel="nofollow noopener" target="_blank">IDCFクラウド</a></li>
+</ul>
+
+<p>運用方針は以下の通り。</p>
+
+<ul>
+<li>デフォルトルータにVPN</li>
+<li>RootディスクのみのVirtualMachine(VM)をDeploy/Destroy</li>
+<li>Socksプロキシ / SSHのTCPフォワードでVM経由のNAPTでインターネットへ</li>
+</ul>
+
+<p>これで、以下の金額でかつ、寝かせていてもアドレスを変更しなくてよい環境ができました。</p>
+
+<ul>
+<li>使わない月は0円</li>
+<li>使った月も上限500円 (500時間以上のVPN接続)
+
+<ul>
+<li>VM + Rootディスクの料金</li>
+<li>※ネットワークも一応無料枠があり、月あたり3TB以上をどこかに送信するなら超過分がかかります。</li>
+</ul>
+</li>
+</ul>
+
+<blockquote>
+<p>料金計算はこちら =&gt; <a href="https://www.idcf.jp/cloud/price.html" rel="nofollow noopener" target="_blank">IDCFクラウド 料金表</a></p>
+</blockquote>
+
+<p>運用方針をみて、ああなるほどと思った方はこの後の説明は特に必要ないかと思います。</p>
+
+<h2>
+<span id="idcfクラウドのサブネットとルータipアドレス" class="fragment"></span><a href="#idcf%E3%82%AF%E3%83%A9%E3%82%A6%E3%83%89%E3%81%AE%E3%82%B5%E3%83%96%E3%83%8D%E3%83%83%E3%83%88%E3%81%A8%E3%83%AB%E3%83%BC%E3%82%BFip%E3%82%A2%E3%83%89%E3%83%AC%E3%82%B9"><i class="fa fa-link"></i></a>IDCFクラウドのサブネットとルータ(IPアドレス)</h2>
+
+<p>ここからは補足の解説。まずIDCFクラウドのアカウントでつかえるネットワークについて。</p>
+
+<ul>
+<li>基本はプライベートサブネット</li>
+<li>インターネットアクセス用にデフォルトルータ(※表示上はIPアドレス)が標準搭載
+
+<ul>
+<li>プライベートサブネットのNAPT</li>
+<li>VPN機能付きで、プライベートサブネットと相互通信可能</li>
+<li>有料で追加も可能</li>
+</ul>
+</li>
+</ul>
+
+<p>このルータがアカウント払い出し時に全リージョンに無料でついているのがポイントで、今回の用途に都合がよい特性は以下の2つ。</p>
+
+<ul>
+<li>アドレスが変わらない</li>
+<li>放置でも無料</li>
+</ul>
+
+<h2>
+<span id="ルータvpnと踏み台ホスト" class="fragment"></span><a href="#%E3%83%AB%E3%83%BC%E3%82%BFvpn%E3%81%A8%E8%B8%8F%E3%81%BF%E5%8F%B0%E3%83%9B%E3%82%B9%E3%83%88"><i class="fa fa-link"></i></a>ルータVPNと踏み台ホスト</h2>
+
+<p>ルータのVPN機能はL2TPで、クライアント側の設定によりすべてのトラフィックをVPN経由とすることが可能です。</p>
+
+<p>しかし、さすがにサブネット以外へのアクセス(インターネット側など)は制限されています。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F34198568-15a7-7039-91ae-330679d11aef.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a9ed9c85951bdbebd5286caca58db978" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F34198568-15a7-7039-91ae-330679d11aef.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=a9ed9c85951bdbebd5286caca58db978" alt="idcf_fixip01.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/34198568-15a7-7039-91ae-330679d11aef.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F34198568-15a7-7039-91ae-330679d11aef.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=e0b13e318ce4ddee14fd7efd0dde1791 1x" loading="lazy"></a></p>
+
+<p>そのかわりプライベートサブネットには直接アクセスできるので、VMを作り、それを経由すればルータの外側IPアドレスをアクセス元のIPとして利用することができます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fae66f62d-f550-c1fe-9c0c-5e4106a5e64a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1f0a1fb83f095836bfe49edc517f2da1" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fae66f62d-f550-c1fe-9c0c-5e4106a5e64a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1f0a1fb83f095836bfe49edc517f2da1" alt="idcf_fixip02.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/ae66f62d-f550-c1fe-9c0c-5e4106a5e64a.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fae66f62d-f550-c1fe-9c0c-5e4106a5e64a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=eca34eae24419adaf96edafd7db5e769 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="vm作成削除をスクリプトにしておく" class="fragment"></span><a href="#vm%E4%BD%9C%E6%88%90%E5%89%8A%E9%99%A4%E3%82%92%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88%E3%81%AB%E3%81%97%E3%81%A6%E3%81%8A%E3%81%8F"><i class="fa fa-link"></i></a>VM作成削除をスクリプトにしておく</h2>
+
+<p>流石にVPNをつなぐたびにWebのコントロールパネル(以下コンパネ)からVMを作成削除するのは面倒なので、スクリプトにしておきます。</p>
+
+<p>CLIがあったので、これを使っています。</p>
+
+<ul>
+<li><a href="https://github.com/idcf/idcfcloud-cli" rel="nofollow noopener" target="_blank">idcf/idcfcloud-cli: A CLI client for IDCF Cloud.</a></li>
+</ul>
+
+<p>導入後、<code>idcfcloud init</code>してAPIキーなどの設定をしておきましょう。</p>
+
+<h3>
+<span id="vm作成" class="fragment"></span><a href="#vm%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>VM作成</h3>
+
+<p>idcfcloud-cliはjsonでパラメータを渡します。</p>
+
+<p>APIでつくると、コンパネでは不可能な<strong>追加ボリュームなし</strong>のVMを作成することができます。少しでもケチりたいので</p>
+
+<p>VM作成には次のようなJSONを用意します。各種IDは、一つコンパネからVMを作成して<code>idcfcloud compute listVirtualMachines</code>で取れる値を使うのが簡単です。</p>
+
+<p><code>ipaddress</code>はDHCPまかせでなく、作成後にSSHのDynamicForwardなどをスクリプトにしておく際に都合がよくなるのでプライベートサブネット内のIPを指定します。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">instance.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fixed-ip-bastion"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"zoneid"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ゾーンのID"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"serviceofferingid"</span><span class="p">:</span><span class="w"> </span><span class="s2">"VMサイズのID"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"templateid"</span><span class="p">:</span><span class="w"> </span><span class="s2">"OSイメージのID"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"ipaddress"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10.xx.0.xxx"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"keypair"</span><span class="p">:</span><span class="w"> </span><span class="s2">"SSHキーの登録名"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"startvm"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"passwordenabled"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<p>JSONを用意したら、<code>idcfcloud compute deployVirtualMachine</code>でVMを作成しましょう。出力を再利用して破棄用のJSONもついでに作成。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">deployVirtualMachine</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>idcfcloud compute deployVirtualMachine <span class="s2">"</span><span class="sb">`</span><span class="nb">cat </span>instance.json<span class="sb">`</span><span class="s2">"</span> | jq <span class="s1">'{id: .data.id, expunge: true}'</span> <span class="o">&gt;</span> id.json
+</pre></div>
+</div>
+
+<p>利用できるようになるまでは1分もかかりません。</p>
+
+<h3>
+<span id="vm破棄" class="fragment"></span><a href="#vm%E7%A0%B4%E6%A3%84"><i class="fa fa-link"></i></a>VM破棄</h3>
+
+<p>作成時に作っていおいたJSONをそのまま利用します。即破棄の<code>expunge: true</code>がないと、リストア待機で15分ほど同じIPのVMがつくれなくなります。今回用途では指定しておくほうが無難。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">id.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"作成済みVMのIP"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"expunge"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<p>固定IP利用の用事が済んだら<code>idcfcloud compute destroyVirtualMachine</code>で破棄しましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">destroyVirtualMachine</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>idcfcloud compute destroyVirtualMachine <span class="s2">"</span><span class="sb">`</span><span class="nb">cat </span>id.json<span class="sb">`</span><span class="s2">"</span> <span class="o">&amp;&amp;</span> <span class="nb">rm </span>id.json
+</pre></div>
+</div>
+
+<h3>
+<span id="vm起動停止のみ" class="fragment"></span><a href="#vm%E8%B5%B7%E5%8B%95%E5%81%9C%E6%AD%A2%E3%81%AE%E3%81%BF"><i class="fa fa-link"></i></a>VM起動、停止のみ</h3>
+
+<p>連日で何度もVPN接続・切断する場合は、VM作成の待ち(といっても数十秒ほどですが。。)が少々かったるいこともあるので、VMを維持しておいてもよいです。停止時はRootボリュームの料金がかかります。</p>
+
+<p>その場合、<code>startVirtualMachine</code>, <code>stopVirtualMachine</code>で起動・停止です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># VM起動
+$ idcfcloud compute startVirtualMachine "`cat id.json`"
+
+# VM停止
+$ idcfcloud compute stopVirtualMachine "`cat id.json`"
+</pre></div></div>
+
+<h2>
+<span id="shimoでvpn接続切断時にhook" class="fragment"></span><a href="#shimo%E3%81%A7vpn%E6%8E%A5%E7%B6%9A%E5%88%87%E6%96%AD%E6%99%82%E3%81%ABhook"><i class="fa fa-link"></i></a>ShimoでVPN接続/切断時にHook</h2>
+
+<p>こうなったらVM作成・破棄をVPN接続のタイミングで自働化したくなります。</p>
+
+<p>ちょうど自分はmacosがPPTPサポートを打ち切ったタイミングで有料のVPN管理ソフトウェアの<a href="https://www.shimovpn.com" rel="nofollow noopener" target="_blank">Shimo</a>を導入していたのでそれを利用します。</p>
+
+<ul>
+<li><a href="https://www.shimovpn.com/" rel="nofollow noopener" target="_blank">Shimo | VPN Client for Mac – for Everyone</a></li>
+</ul>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe4fa4be2-aab3-cbe2-16f2-aa65dbe9c0f8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=cf0ea49229138c25c274a870fa64f1d3" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe4fa4be2-aab3-cbe2-16f2-aa65dbe9c0f8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=cf0ea49229138c25c274a870fa64f1d3" alt="Shimo.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/e4fa4be2-aab3-cbe2-16f2-aa65dbe9c0f8.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe4fa4be2-aab3-cbe2-16f2-aa65dbe9c0f8.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=9ee6277af14f29c4ed193144e3d6bb9d 1x" loading="lazy"></a></p>
+
+<p>これが割と便利で、以下の仕組みをGUIで設定・管理できるので買っといてよかったなあと思っています。(※無料のVPN管理ソフトウェアでも設定すればできるはずです。Shimoはそれが楽というだけで。)</p>
+
+<ul>
+<li>StaticRouteの add/remove</li>
+<li>connection時スクリプト</li>
+<li>任意ドメインのLookup先NS指定</li>
+</ul>
+
+<p>このような感じで登録しています。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd5ae6cf3-eb60-421e-e9d9-0a71576cff99.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4195f8345aed0473aa1b5a09aec70cea" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd5ae6cf3-eb60-421e-e9d9-0a71576cff99.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4195f8345aed0473aa1b5a09aec70cea" alt="Shimo_actions.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d5ae6cf3-eb60-421e-e9d9-0a71576cff99.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd5ae6cf3-eb60-421e-e9d9-0a71576cff99.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=bfcab4712da4f432e5e8fba13eabfffb 1x" loading="lazy"></a></p>
+
+<p>ただ、切断時スクリプトは状況によって必ず実行されるとは限らないので、残ることはあります。その時は手動で<code>destroyVirtualMachine</code>のスクリプトを実行すればよいですね。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>メンテフリーでロケーションフリーで従量課金で(IDCFクラウドが健在である限り)アドレスが変わらない固定IP、だいたい良い感じです。</p>
+
+<p>すべてのトラフィックをVPN経由にはできないことは、むしろup方向3TB以上で料金がかかることを考えると良い方向に作用しています。(つなげっぱなしを忘れてISOを上げまくるなどの事故防止の観点)</p>
+
+<p>SOCKSに対応していないクライアントを使う場合はそれぞれにTCPForwardのSSHトンネルがいるのがちょっとだけ面倒ですが、極端な場合はVMの中からやってしまえばよさそう。</p>

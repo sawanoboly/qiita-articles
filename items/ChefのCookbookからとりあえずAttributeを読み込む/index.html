@@ -1,0 +1,73 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="https://github.com/opscode/chef" rel="nofollow noopener" target="_blank">Chefのソース</a>に結合テスト用のサンプルCookbookがあります。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ tree kitchen-tests/cookbooks/webapp/
+kitchen-tests/cookbooks/webapp/
+├── Berksfile
+├── README.md
+├── attributes
+│   └── default.rb
+├── metadata.rb
+├── recipes
+│   └── default.rb
+└── templates
+    └── default
+        ├── index.html.erb
+        └── index.php.erb
+
+4 directories, 7 files
+</pre></div></div>
+
+<p><code>attributes/default.rb</code>ってのがありますね。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">kitchen-tests/cookbooks/webapp/attributes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">default</span><span class="p">[</span><span class="s1">'apache'</span><span class="p">][</span><span class="s1">'remote_host_ip'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'127.0.0.1'</span>
+
+<span class="n">default</span><span class="p">[</span><span class="s1">'mysql'</span><span class="p">][</span><span class="s1">'version'</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"5.5"</span>
+
+<span class="n">default</span><span class="p">[</span><span class="s1">'webapp'</span><span class="p">][</span><span class="s1">'database'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'webapp'</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'webapp'</span><span class="p">][</span><span class="s1">'db_username'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'webapp'</span>
+<span class="n">default</span><span class="p">[</span><span class="s1">'webapp'</span><span class="p">][</span><span class="s1">'path'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'/var/www/'</span>
+</pre></div>
+</div>
+
+<p>外部プログラムから使うこともあるかもしれないので、<code>attributes/default.rb</code>を読んでみます。</p>
+
+<h2>
+<span id="pryで" class="fragment"></span><a href="#pry%E3%81%A7"><i class="fa fa-link"></i></a>Pryで</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>## とりあえずChefを読みます
+[1] pry(main)&gt; require 'chef'
+=&gt; true
+
+## Nodeオブジェクトをつくります
+[2] pry(main)&gt; node = Chef::Node.new
+=&gt; #&lt;Chef::Node:0x007f88e30ab7c0
+ @attributes={},
+ @chef_environment="_default",
+ @name=nil,
+ @override_runlist=#&lt;Chef::RunList:0x007f88e30ab6f8 @run_list_items=[]&gt;,
+ @primary_runlist=#&lt;Chef::RunList:0x007f88e30ab770 @run_list_items=[]&gt;,
+ @run_state={}&gt;
+
+
+## #from_fileでattributeファイルを読みます
+[3] pry(main)&gt; node.from_file('kitchen-tests/cookbooks/webapp/attributes/default.rb')
+=&gt; "/var/www/"
+
+
+## default.rbの分がnodeに格納されました。
+[4] pry(main)&gt; node[:mysql]
+=&gt; {"version"=&gt;"5.5"}
+
+[5] pry(main)&gt; node[:webapp][:db_username]
+=&gt; "webapp"
+</pre></div></div>
+
+<p>ファイルだけ読んでも仕方ないという場合は、ChefClient終了時の状態を丸ごとレポートハンドラでjsonダンプしとけば使いまわせるんじゃないかな。</p>

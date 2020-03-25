@@ -1,0 +1,99 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>前回の記事 <a href="http://qiita.com/items/26971eb6f4a7efb5bb69">ChefのProvidersを活用してServerSpecめいたものを作る、とりあえず一歩目</a> で始めたサーバー構築テストに向けてのChef資産の再利用の続きです。</p>
+
+<p>課題だったProvidersの再利用ができました、ソースリーディング協力 HT:  <a href="http://qiita.com/users/ogomr">@ogomr</a>,<a href="http://qiita.com/users/sutetotanuki">@sutetotanuki</a></p>
+
+<h2>
+<span id="特異メソッドchefplatformfind_provider" class="fragment"></span><a href="#%E7%89%B9%E7%95%B0%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89chefplatformfind_provider"><i class="fa fa-link"></i></a>特異メソッド<code>Chef::Platform.find_provider</code>
+</h2>
+
+<p>名前からしてコレっぽいという理由でソースからピックアップしたのが<code>find_provider</code>です。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">lib/chef/platform/provider_mapping.rb</span></div>
+<div class="highlight"><pre><span class="c1"># -- snip --</span>
+<span class="k">def</span> <span class="nf">find_provider</span><span class="p">(</span><span class="n">platform</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">resource_type</span><span class="p">)</span>
+  <span class="n">provider_klass</span> <span class="o">=</span> <span class="n">explicit_provider</span><span class="p">(</span><span class="n">platform</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">resource_type</span><span class="p">)</span> <span class="o">||</span>
+                   <span class="n">platform_provider</span><span class="p">(</span><span class="n">platform</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">resource_type</span><span class="p">)</span> <span class="o">||</span>
+                   <span class="n">resource_matching_provider</span><span class="p">(</span><span class="n">platform</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">resource_type</span><span class="p">)</span>
+
+  <span class="k">raise</span> <span class="no">ArgumentError</span><span class="p">,</span> <span class="s2">"Cannot find a provider for </span><span class="si">#{</span><span class="n">resource_type</span><span class="si">}</span><span class="s2"> on </span><span class="si">#{</span><span class="n">platform</span><span class="si">}</span><span class="s2"> version </span><span class="si">#{</span><span class="n">version</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">provider_klass</span><span class="p">.</span><span class="nf">nil?</span>
+
+  <span class="n">provider_klass</span>
+<span class="k">end</span>
+<span class="c1"># --snip --</span>
+</pre></div>
+</div>
+
+<p>なるほどコレっぽい。</p>
+
+<h2>
+<span id="providerの特定" class="fragment"></span><a href="#provider%E3%81%AE%E7%89%B9%E5%AE%9A"><i class="fa fa-link"></i></a>Providerの特定</h2>
+
+<p>早速叩いてみよう特異メソッドなので直接ひっぱたいてOK、<code>resource_type</code>はシンボルで渡します。</p>
+
+<div class="code-frame" data-lang="ruby;Irb-Out"><div class="highlight"><pre>&gt; Chef::Platform.find_provider(ohai.data[:platform], ohai.data[:platform_version],:service)
+=&gt; Chef::Provider::Service::Solaris
+
+&gt; Chef::Platform.find_provider(ohai.data[:platform], ohai.data[:platform_version],:package)
+=&gt; Chef::Provider::Package::SmartOS
+</pre></div></div>
+
+<p>自動判別OK!</p>
+
+<h2>
+<span id="自動判別からのcurrentresourceチェック" class="fragment"></span><a href="#%E8%87%AA%E5%8B%95%E5%88%A4%E5%88%A5%E3%81%8B%E3%82%89%E3%81%AEcurrentresource%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>自動判別からのCurrentResourceチェック</h2>
+
+<p>前回決め打ちだったProvidersを<code>Chef::Platform.find_provider</code>に置き換えてみます。</p>
+
+<h3>
+<span id="自動判別" class="fragment"></span><a href="#%E8%87%AA%E5%8B%95%E5%88%A4%E5%88%A5"><i class="fa fa-link"></i></a>自動判別</h3>
+
+<div class="code-frame" data-lang="ruby;Irb-Out"><div class="highlight"><pre>&gt; new_resource = Chef::Resource::Service.new('redis')
+&gt; current_resource = Chef::Resource::Service.new('redis')
+
+&gt; provider = Chef::Platform.find_provider(ohai.data[:platform], ohai.data[:platform_version],:service).new(new_resource, run_context)
+=&gt; #&lt;Chef::Provider::Service::Solaris:0x00000002272a70
+ @action=nil,
+ @converge_actions=nil,
+ @current_resource=nil,
+ @enabled=nil,
+ @init_command="/usr/sbin/svcadm",
+ @new_resource=
+  &lt;service[redis] @name: "redis" @noop: nil @before: nil @params: {} @provider: nil @allowed_actions: [:nothing, :enable, :disable, :start, :stop, :restart, :reload] @action: "nothing" @updated: false @updated_by_last_action: false @supports: {:restart=&gt;false, :reload=&gt;false, :status=&gt;false} @ignore_failure: false @retries: 0 @retry_delay: 2 @source_line: nil @elapsed_time: 0 @resource_name: :service @service_name: "redis" @enabled: nil @running: nil @parameters: nil @pattern: "redis" @start_command: nil @stop_command: nil @status_command: nil @restart_command: nil @reload_command: nil @init_command: nil @priority: nil @startup_type: :automatic&gt;,
+ @run_context=
+  #&lt;Chef::RunContext:0x00000002ad69f0
+   @cookbook_collection={},
+   @definitions={},
+   @delayed_notification_collection={},
+   @events=#&lt;Chef::EventDispatch::Dispatcher:0x00000002c02770 @subscribers=[]&gt;,
+   @immediate_notification_collection={},
+   @loaded_attributes={},
+   @loaded_recipes={},
+   @node=node[],
+   @resource_collection=
+    #&lt;Chef::ResourceCollection:0x00000002ad69c8
+     @insert_after_idx=nil,
+     @resources=[],
+     @resources_by_name={}&gt;&gt;,
+ @status_command="/bin/svcs -l"&gt;
+</pre></div></div>
+
+<p>クラスを自動判別して目当てのオブジェクトができました。 <code>=&gt; #&lt;Chef::Provider::Service::Solaris:0x00000002272a70</code></p>
+
+<h3>
+<span id="currentresouceチェック" class="fragment"></span><a href="#currentresouce%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>CurrentResouceチェック</h3>
+
+<div class="code-frame" data-lang="ruby;Irb-Out"><div class="highlight"><pre>&gt; provider.load_current_resource
+=&gt; &lt;service[redis] @name: "redis" @noop: nil @before: nil @params: {} @provider: nil @allowed_actions: [:nothing, :enable, :disable, :start, :stop, :restart, :reload] @action: "nothing" @updated: false @updated_by_last_action: false @supports: {:restart=&gt;false, :reload=&gt;false, :status=&gt;false} @ignore_failure: false @retries: 0 @retry_delay: 2 @source_line: nil @elapsed_time: 0 @resource_name: :service @service_name: "redis" @enabled: true @running: true @parameters: nil @pattern: "redis" @start_command: nil @stop_command: nil @status_command: nil @restart_command: nil @reload_command: nil @init_command: nil @priority: nil @startup_type: :automatic&gt;
+
+&gt; provider.load_current_resource.enabled
+=&gt; true
+</pre></div></div>
+
+<p>できました、これでChef資産の再利用に目処がたちましたね。</p>

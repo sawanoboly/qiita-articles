@@ -1,0 +1,105 @@
+<p><a href="https://github.com/tootsuite/mastodon" rel="nofollow noopener" target="_blank">Mastodon</a>を見ていたら、<code>SINGLE_USER_MODE</code>という設定項目があった。</p>
+
+<ul>
+<li>トップページは<code>アカウントID=1</code>のストリームに固定(リダイレクト)される</li>
+<li>
+<code>/about</code>からサインアップできない。(入力はできるけど、トップに戻り何も起きない)</li>
+<li>Adminの管理はできる</li>
+</ul>
+
+<p>公開インスタンスリストにも3つばかりSingleな奴がいますし、作ってもいいんじゃないかと。</p>
+
+<p><a href="https://github.com/tootsuite/documentation/blob/master/Using-Mastodon/List-of-Mastodon-instances.md" rel="nofollow noopener" target="_blank">List-of-Mastodon-instances</a></p>
+
+<h2>
+<span id="single_user_modeをセットアップする" class="fragment"></span><a href="#single_user_mode%E3%82%92%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>SINGLE_USER_MODEをセットアップする</h2>
+
+<p>まずは普通に立ち上げよう。準備。</p>
+
+<ul>
+<li>cp .env.production.sample .env.production</li>
+<li>
+<code>vim</code> .env.production
+
+<ul>
+<li>
+<code>rake secret</code>を埋めたり。</li>
+<li>手元でやってみる場合、LOCAL_DOMAINはとりあえず<code>localhost:3000</code>を入れとくとよいです。</li>
+</ul>
+</li>
+</ul>
+
+<p>Rails的な色々をしつつ起動。</p>
+
+<ul>
+<li>docker-compose build/up</li>
+<li>rake db:migrate</li>
+<li>rake assets:precompile
+
+<ul>
+<li>Webにスタイルが当たってなかったらVolume失敗してるのでdocker-compose upしなおせばOK</li>
+</ul>
+</li>
+</ul>
+
+<p>サインアップします。</p>
+
+<p><a href="http://localhost:3000/about" class="autolink" rel="nofollow noopener" target="_blank">http://localhost:3000/about</a> で適当に入力。メールは送信できなくてもよい。</p>
+
+<h3>
+<span id="メール強制confirmationと管理者に昇格" class="fragment"></span><a href="#%E3%83%A1%E3%83%BC%E3%83%AB%E5%BC%B7%E5%88%B6confirmation%E3%81%A8%E7%AE%A1%E7%90%86%E8%80%85%E3%81%AB%E6%98%87%E6%A0%BC"><i class="fa fa-link"></i></a>メール強制confirmationと管理者に昇格</h3>
+
+<p>サインアップ後のメール認証はタスクでもできるのでします。お一人なので管理者にもしておきましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>docker-compose run --rm web rails mastodon:confirm_email USER_EMAIL=sawanoboly@example.com
+docker-compose run --rm web rails mastodon:make_admin USERNAME=sawanoboly
+</pre></div></div>
+
+<p>一旦railsのコンテナを止めて、</p>
+
+<p>設定から<code>SINGLE_USER_MODE=true</code>とします。</p>
+
+<p>これでもう一度起動しすれば、たいていのアクセスは<code>http://localhost.local:3000/@sawanoboly</code>にリダイレクトされるようになります。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2e727edc-4228-6993-a527-2177fb4ea335.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=6a5d6911f1dc7b10728cc00d7a136b65" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2e727edc-4228-6993-a527-2177fb4ea335.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=6a5d6911f1dc7b10728cc00d7a136b65" alt="sawanoboly_-_Mastodon.jpg" title="sawanoboly_-_Mastodon.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/2e727edc-4228-6993-a527-2177fb4ea335.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F2e727edc-4228-6993-a527-2177fb4ea335.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=44558fb3f9a2c09f84c51e7cbfa6f13f 1x" loading="lazy"></a></p>
+
+<p>Tootするときには、 <a href="http://localhost:3000/auth/sign_in" class="autolink" rel="nofollow noopener" target="_blank">http://localhost:3000/auth/sign_in</a> に直接訪れれば自分はログインできるので<code>/web/*</code>でやりましょう。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1350b70d-3e00-c22f-e07d-211beea489a6.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bf51226c44b6ee12fe7f7787ce61ee36" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1350b70d-3e00-c22f-e07d-211beea489a6.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=bf51226c44b6ee12fe7f7787ce61ee36" alt="Mastodon.jpg" title="Mastodon.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1350b70d-3e00-c22f-e07d-211beea489a6.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1350b70d-3e00-c22f-e07d-211beea489a6.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=4bf82e05c0800da35c7b64a0bbdc7cd2 1x" loading="lazy"></a></p>
+
+<ul>
+<li>管理画面には<code>Open registration</code>の項目があるので、<code>Disabled</code>にすれば登録フォームが消えます。</li>
+</ul>
+
+<p>フェデレーション用のTCP/4000はどうなるのかまでを見てないですが(試すにはもう1セット立ち上げればよいのかな？)、シングル運用のインスタンスでもフォロー・フォロワーの数はあるしなんとかなるんでしょう。</p>
+
+<h2>
+<span id="運用" class="fragment"></span><a href="#%E9%81%8B%E7%94%A8"><i class="fa fa-link"></i></a>運用</h2>
+
+<p>スキーマ定義に<code>enable_extension "plpgsql"</code>ってあったから、RDBはPostgreSQLしかダメなのかなってなると、ホスティングしてるPaaSがよいなあと思う次第。<br>
+SideKiq用のRedisもいるし、公式デモに習ってscalingoやらherokuが楽かなって思いますが、web+workerになるのはなーと。</p>
+
+<p>画像などはローカルのほかにAmazon S3が使えます。S3のほうは互換性があれば他でもよさそう(rubygemsのPaperclipを使ってた。)。<code>S3_ENDPOINT(API),S3_HOSTNAME(配信ドメイン)</code>が環境変数から指定できるようになっているので、国内でも色々選択肢はあったはず。<br>
+手間とお金が安く運用できそうな組み合わせを考えてみるのもよいね。</p>
+
+<p>ちなみにメールはサンプル設定にもあるように、Mailgunで不自由しないと思います。それか場所によってはSMTP_METHODをsendmailにしときゃ十分。</p>
+
+<blockquote>
+<p>意外と反応が多いので追記: </p>
+
+<p>docker-composeでそのまま起動して運用もそこそこできますが、補足しておきます。</p>
+
+<ul>
+<li>docker-compose.ymlでは、volumeのコメントアウトを外して、(少なくとも)volumeをローカルのホストに書き出しておくと<code>docker-compose rm</code>しても残ります。</li>
+<li>3000, 4000はこのようにnginxでリバースプロキシをつけましょう。
+
+<ul>
+<li><a href="https://github.com/tootsuite/documentation/blob/master/Running-Mastodon/Production-guide.md" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/tootsuite/documentation/blob/master/Running-Mastodon/Production-guide.md</a></li>
+<li>証明書はサンプルにもあるようにLetsEncryptでやるとよいです。</li>
+</ul>
+</li>
+<li>この例そのまま、localhostでやっては意味がないので、それがよくわからなかったらやめとく方が無難です。</li>
+</ul>
+</blockquote>
+
+<p>なお、データをエクスポートできるようなので飽きたら止めて移住できそう。フォロワーから見てドメインがどうなるんだろうという点は気になりますけど。</p>

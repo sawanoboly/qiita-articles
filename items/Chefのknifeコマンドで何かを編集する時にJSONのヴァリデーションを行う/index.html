@@ -1,0 +1,50 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>knifeでChefServer上の情報を編集したら、しょっちゅうJSONのパースエラーで全部パアになる。<br>
+<code>from_file</code>でローカル編集してからというのも手だが、アップロード前に手軽に確認する方法がある。</p>
+
+<p>この方法は<code>EDITOR</code>がvimのとき限定ですが、他のエディタでも似たようなことはできるでしょう。</p>
+
+<h2>
+<span id="コケるとき" class="fragment"></span><a href="#%E3%82%B3%E3%82%B1%E3%82%8B%E3%81%A8%E3%81%8D"><i class="fa fa-link"></i></a>コケるとき</h2>
+
+<p>エディタの終了=ChefServerへのアップロードなので、編集したJsonがおかしいとコケる上に編集していた内容がなくなる。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>knife role edit monit_smartos
+
+<span class="nt">--</span> 編集後 <span class="nt">--</span>
+
+ERROR: Yajl::ParseError: parse error: unallowed token at this point <span class="k">in </span>JSON text
+                                 <span class="s2">"name"</span>: <span class="s2">"monit_smartos"</span>,   <span class="s2">"descripti
+                     (right here) ------^
+</span></pre></div>
+</div>
+
+<p>これが意外と面倒くさい。</p>
+
+<h2>
+<span id="vimからjson_verifyをコール" class="fragment"></span><a href="#vim%E3%81%8B%E3%82%89json_verify%E3%82%92%E3%82%B3%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>Vimからjson_verifyをコール</h2>
+
+<p><code>!</code> でシステムコマンド実行、と<code>%</code>がカレントのファイルパスに置き換えられるので、<code>json_verify</code>コマンドに渡してみよう。</p>
+
+<div class="code-frame" data-lang="vim">
+<div class="code-lang"><span class="bold">Vimのコマンドモードで</span></div>
+<div class="highlight"><pre><span class="p">:!</span><span class="k">cat</span> % <span class="p">|</span> json_verify
+
+<span class="p">--</span> コンソール側にvarifyの結果 <span class="p">--</span>
+
+JSON <span class="k">is</span> valid
+
+Press ENTER or type command <span class="k">to</span> continue
+</pre></div>
+</div>
+
+<p>またVimに帰ってくるので、続けて編集するか終了してChefServerにアップロードするか選ぼう。</p>
+
+<p>json_verifyはMacOSXならbrewで手に入る、linux系でも<code>yajl</code>等のパッケージに付いてくるはずなのでそちらを使うとよい。</p>

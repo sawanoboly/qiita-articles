@@ -1,0 +1,537 @@
+<p>このエントリは2016-07-27（水）開催の<br>
+<a href="https://jaws-ug-kobe.doorkeeper.jp/events/47410" rel="nofollow noopener" target="_blank">Alexa meetup #01 | JAWS-UG Kobe</a><br>
+での発表スライドです。</p>
+
+<p>※表示にはQiitaのスライドモード全画面を推奨。(モードが残っていれば)</p>
+
+<hr>
+
+<h2>
+<span id="このエントリで扱う範囲" class="fragment"></span><a href="#%E3%81%93%E3%81%AE%E3%82%A8%E3%83%B3%E3%83%88%E3%83%AA%E3%81%A7%E6%89%B1%E3%81%86%E7%AF%84%E5%9B%B2"><i class="fa fa-link"></i></a>このエントリで扱う範囲</h2>
+
+<ul>
+<li>Skills Kitの作成と公開に限定。</li>
+<li>Smart Home対応デバイス連携はまた別の話なのでゴメン。</li>
+<li>Getting Startedでは微妙にわかりづらい事を補う感じです。</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="alexa-skills-kit-" class="fragment"></span><a href="#alexa-skills-kit-"><i class="fa fa-link"></i></a>Alexa Skills Kit ?</h2>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd242a4cb-6c95-75ed-1564-54d7ff7a94ef.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9bd8f7fca26166a6ed94e793e24a5f2a" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd242a4cb-6c95-75ed-1564-54d7ff7a94ef.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=9bd8f7fca26166a6ed94e793e24a5f2a" alt="Alexa_Skills_Kit__ASK__-_Amazon_Apps___Games_Developer_Portal.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/d242a4cb-6c95-75ed-1564-54d7ff7a94ef.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fd242a4cb-6c95-75ed-1564-54d7ff7a94ef.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=cbb4dcfbd26757ddc0c7a2279a6a33fb 1x" loading="lazy"></a></p>
+
+<ul>
+<li>Alexaデバイス用の自作APIです。</li>
+<li>実体はAmazon Lambdaのfunction.</li>
+<li>Echoに話した文章を聞き取って、アクションを実行します。</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="alexa-amimoto-ninja" class="fragment"></span><a href="#alexa-amimoto-ninja"><i class="fa fa-link"></i></a>Alexa Amimoto Ninja</h2>
+
+<p><a href="https://amimoto-ami.com/amimoto-ninja/" rel="nofollow noopener" target="_blank"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F43283d03-dcee-983b-4d56-1a441f44754f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e5a459fac8d966dd8070779215cc8f7d" alt="Alexa_AMIMOTO_Ninja___High_Performance_WordPress_AWS_AMI.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/43283d03-dcee-983b-4d56-1a441f44754f.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F43283d03-dcee-983b-4d56-1a441f44754f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=aba70543b9e81da98d3dcf53070fa166 1x" loading="lazy"></a></p>
+
+<hr>
+
+<h1>
+<span id="amimoto-ninjaとは" class="fragment"></span><a href="#amimoto-ninja%E3%81%A8%E3%81%AF"><i class="fa fa-link"></i></a>Amimoto Ninjaとは</h1>
+
+<p>EUのWordCampブース設置用に(<del>ネタで</del>)作成。(※ Alexa本来の利用法とは相当かけ離れています。)</p>
+
+<ul>
+<li>名前を聞く(セッション中のみ記憶)。</li>
+<li>Amimotoに関する質問をしてもらい、回答する。
+
+<ul>
+<li>聞き取れなかったらランダムにお勧めを紹介する。 </li>
+</ul>
+</li>
+<li>感想を聞いて、『名前 + 感想』をWordpress及びTwitterにポストする。
+
+<ul>
+<li>ついでにKinesis firehoseでs3にログを保存する。</li>
+</ul>
+</li>
+</ul>
+
+<p>ソースは公開： <a href="https://github.com/amimoto-ami/amimoto-amazon-alexa" rel="nofollow noopener" target="_blank">amimoto-ami/amimoto-amazon-alexa | Github</a></p>
+
+<hr>
+
+<h2>
+<span id="反響はひっそりそこそこ" class="fragment"></span><a href="#%E5%8F%8D%E9%9F%BF%E3%81%AF%E3%81%B2%E3%81%A3%E3%81%9D%E3%82%8A%E3%81%9D%E3%81%93%E3%81%9D%E3%81%93"><i class="fa fa-link"></i></a>反響はひっそりそこそこ。</h2>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F264cfc56-8898-3b71-eb43-48b7af674ff0.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=0716ef4e301e3f1cfb3b32900982c132" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F264cfc56-8898-3b71-eb43-48b7af674ff0.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=0716ef4e301e3f1cfb3b32900982c132" alt="Takayuki_MiyauchiさんはInstagramを利用しています_「Alexaと口喧嘩をする某有名エンジニア。」.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/264cfc56-8898-3b71-eb43-48b7af674ff0.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F264cfc56-8898-3b71-eb43-48b7af674ff0.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0652c83af9c7f04445c9a65b4c837a0f 1x" loading="lazy"></a></p>
+
+<p><a href="https://www.instagram.com/p/BHCiP-rjzJf/" rel="nofollow noopener" target="_blank">https://www.instagram.com/p/BHCiP-rjzJf/</a></p>
+
+<hr>
+
+<h2>
+<span id="skills-kitのフロー" class="fragment"></span><a href="#skills-kit%E3%81%AE%E3%83%95%E3%83%AD%E3%83%BC"><i class="fa fa-link"></i></a>Skills Kitのフロー</h2>
+
+<ul>
+<li>AlexaにSkill起動を指示(<code>ask amimoto ninja</code>)。</li>
+<li>セッションを初期化して、起動したSkillが何か案内を流す。</li>
+<li>Skill側の案内に応じて、人が何かを話す。</li>
+<li>話した内容をAlexa(サービス側)が言語解析、 <em>定義済の</em> どの意図にあたるかを自動判別する。</li>
+<li>意図＋変数のセットでLambda functionがキックされる</li>
+<li>Lambda functionでなんらかの処理を行い、レスポンスを作る。</li>
+<li>レスポンスがEchoデバイスから発音される。</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="echoデバイスで使えるようにするには" class="fragment"></span><a href="#echo%E3%83%87%E3%83%90%E3%82%A4%E3%82%B9%E3%81%A7%E4%BD%BF%E3%81%88%E3%82%8B%E3%82%88%E3%81%86%E3%81%AB%E3%81%99%E3%82%8B%E3%81%AB%E3%81%AF"><i class="fa fa-link"></i></a>Echoデバイスで使えるようにするには？</h2>
+
+<ul>
+<li>Lambdaファンクションのデプロイ</li>
+<li>Amazon Developer console [<a href="https://developer.amazon.com/alexa-skills-kit%5D%E3%81%A7Skill%E3%81%AE%E7%99%BB%E9%8C%B2" class="autolink" rel="nofollow noopener" target="_blank">https://developer.amazon.com/alexa-skills-kit]でSkillの登録</a>
+</li>
+</ul>
+
+<p>の2系統を処理する必要があります。</p>
+
+<hr>
+
+<h2>
+<span id="skills-kitの要素" class="fragment"></span><a href="#skills-kit%E3%81%AE%E8%A6%81%E7%B4%A0"><i class="fa fa-link"></i></a>Skills Kitの要素</h2>
+
+<ul>
+<li>
+<strong>Intent</strong>
+
+<ul>
+<li>定義する意図(Intent)、メソッドみたいなもの。組み込みとユーザ定義がある。Lambdaではこれを判断してDispatchする。</li>
+</ul>
+</li>
+<li>
+<strong>Utterances</strong>
+
+<ul>
+<li>意図(Intent)と自然言語のマッピング。変数としてあつかう場所を指定できる。</li>
+</ul>
+</li>
+<li>
+<strong>Slot</strong>
+
+<ul>
+<li>言葉の選択肢をリストとして定義、組み込みもある。フリーワード(聞き取れた通りの単語を使用する)として扱わせるように指定も可能。フロー説明での変数にあたる。</li>
+</ul>
+</li>
+<li>
+<strong>Intent Schema</strong>
+
+<ul>
+<li>このSkillがもつ意図とSlotの一覧。ユーザ定義も組み込みも、これに書いたものだけが使用できる。</li>
+</ul>
+</li>
+<li>
+<strong>Session</strong>
+
+<ul>
+<li>Skills起動時に初期化され、IDが振られる。セッション中は少々の変数をEchoデバイスと共有できる。</li>
+</ul>
+</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="要素を踏まえてskills-kitの具体的フロー" class="fragment"></span><a href="#%E8%A6%81%E7%B4%A0%E3%82%92%E8%B8%8F%E3%81%BE%E3%81%88%E3%81%A6skills-kit%E3%81%AE%E5%85%B7%E4%BD%93%E7%9A%84%E3%83%95%E3%83%AD%E3%83%BC"><i class="fa fa-link"></i></a>要素を踏まえて、Skills Kitの具体的フロー</h2>
+
+<p>Skill例『GymLeader Spy Go』 質問:『XXXのジムリーダーは誰？』</p>
+
+<ul>
+<li>Alexa(サービスが)言語解析。<code>ジムリーダーは誰？</code>にマッチするので、XXXを変数と判断。
+
+<ul>
+<li>Lambdaを<code>Intent=WhoisLeader</code>, <code>Location(Slot)=XXX</code>でキック</li>
+<li>XXXがフリーワードで判断しづらい場合、頑張ってリストをつくってSlotにする。</li>
+</ul>
+</li>
+<li>Lambda内で他所のAPIにジムリーダー情報を問い合わせる。
+
+<ul>
+<li>Echoデバイスへのレスポンスを組み立てる。</li>
+</ul>
+</li>
+<li>『XXXのジムリーダーはBさんです。』などとEchoデバイスがしゃべる。</li>
+</ul>
+
+<p>※ Alexaユーザ名とゲームのScreenNameから、『あなた様です、流石です』などと言わせたい場合は、別途ひも付けのDBを用意する必要がある。</p>
+
+<hr>
+
+<h2>
+<span id="intent--utterances" class="fragment"></span><a href="#intent--utterances"><i class="fa fa-link"></i></a>Intent &amp; Utterances</h2>
+
+<hr>
+
+<h3>
+<span id="組み込み-intent" class="fragment"></span><a href="#%E7%B5%84%E3%81%BF%E8%BE%BC%E3%81%BF-intent"><i class="fa fa-link"></i></a>組み込み Intent</h3>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc1ca7633-8a34-68de-ff4f-3208c1d0653c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=d868ee51336b605562c54b9c924f98a2" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc1ca7633-8a34-68de-ff4f-3208c1d0653c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=d868ee51336b605562c54b9c924f98a2" alt="Implementing_the_Built-in_Intents_-_Amazon_Apps___Services_Developer_Portal.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/c1ca7633-8a34-68de-ff4f-3208c1d0653c.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fc1ca7633-8a34-68de-ff4f-3208c1d0653c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=c646c187a9cbf3cd98f5e44d32e9c267 1x" loading="lazy"></a></p>
+
+<ul>
+<li><a href="https://developer.amazon.com/public/solutions/alexa/alexa-skills-kit/docs/implementing-the-built-in-intents" rel="nofollow noopener" target="_blank">Implementing the Built-in Intents - Amazon Apps &amp; Services Developer Portal</a></li>
+</ul>
+
+<hr>
+
+<h3>
+<span id="ユーザー定義-utterances" class="fragment"></span><a href="#%E3%83%A6%E3%83%BC%E3%82%B6%E3%83%BC%E5%AE%9A%E7%BE%A9-utterances"><i class="fa fa-link"></i></a>ユーザー定義 Utterances</h3>
+
+<p>Amimoto Ninjaで使用しているIntentとUtterancesの例。<code>{例文|Slot名}</code>で変数。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>MyNameIsIntent my name is {john smith|VisitorName}
+MyNameIsIntent i am {john smith|VisitorName}
+MyNameIsIntent i'm {john smith|VisitorName}
+WhatIsIntent what is {amimoto name|AskedQuestion}
+WhatIsIntent what's {amimoto name|AskedQuestion}
+WhatIsIntent what about {amimoto name|AskedQuestion}
+WhatIsIntent tell me about {amimoto name|AskedQuestion}
+CanIUseIntent can i use {free trial|AskedQuestion}
+CanIUseIntent do you have {free trial|AskedQuestion}
+CanIUseIntent how about {free trial|AskedQuestion}
+...
+</pre></div></div>
+
+<hr>
+
+<h3>
+<span id="intent--utterances--session勘所" class="fragment"></span><a href="#intent--utterances--session%E5%8B%98%E6%89%80"><i class="fa fa-link"></i></a>Intent &amp; Utterances (&amp; Session)勘所</h3>
+
+<ul>
+<li>言語解析の対応部分は基本的に <strong>小文字</strong> で記述しましょう。
+
+<ul>
+<li>人間は大文字や、アラビア数字を発声しているわけではありません。</li>
+<li>
+<code>Wordpress 4.1</code>と聞き取りたい &gt; <code>wordpress four point one</code> として渡される。</li>
+</ul>
+</li>
+<li>各Intentはどのタイミングでも送信されることを念頭に置く。
+
+<ul>
+<li>Amimoto Ninjaのように、想定した応答シナリオがあるとわりとつらい。</li>
+<li>セッション中は<code>session_attribute</code>という格納領域があるので、名前を格納したり状態の管理につかった。</li>
+<li>Alexa本体開発者からのお勧めは？ =&gt; DynamoDBを使えばいいじゃん。</li>
+</ul>
+</li>
+<li>Utterancesの<code>{例文|Slot名}</code>の記述。
+
+<ul>
+<li>例文の単語がひとつなら、単語として聞き取られる。</li>
+<li>2語以上なら、文章として聞き取ってくれる。</li>
+</ul>
+</li>
+<li>YesIntent, NoIntentは精度が高くて便利。
+
+<ul>
+<li>ただ、これもシナリオ上のどのシチュエーションかによって更に内部でDispatchする必要がある。</li>
+</ul>
+</li>
+<li>Skill公開申請時にはHelpIntentが必須です。</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="slot" class="fragment"></span><a href="#slot"><i class="fa fa-link"></i></a>Slot</h2>
+
+<p>このようにTypeを指定。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>    {
+      "intent": "MyNameIsIntent",
+      "slots": [
+        {
+          "name": "VisitorName",
+          "type": "AMAZON.LITERAL"
+        }
+      ]
+    },
+</pre></div></div>
+
+<hr>
+
+<h2>
+<span id="slotの大雑把な種類わけと勘所" class="fragment"></span><a href="#slot%E3%81%AE%E5%A4%A7%E9%9B%91%E6%8A%8A%E3%81%AA%E7%A8%AE%E9%A1%9E%E3%82%8F%E3%81%91%E3%81%A8%E5%8B%98%E6%89%80"><i class="fa fa-link"></i></a>Slotの大雑把な種類わけと勘所</h2>
+
+<ul>
+<li>組み込み Slot (次頁で紹介)
+
+<ul>
+<li>Typeから選んで、内容を丸めたりLambdaに渡す前に自動変換を行える。</li>
+<li>便利なんだけど、英語のみ対応。</li>
+</ul>
+</li>
+<li>リスト Slot
+
+<ul>
+<li>テキスト形式でリスト(ASCII文字のみ)を登録しておく。</li>
+<li>聞き取った内容をある程度丸めることができる(のかも)？</li>
+<li>リストから見つからない場合の対応も必要。</li>
+</ul>
+</li>
+<li>フリーワード Slot
+
+<ul>
+<li>
+<code>Type: AMAZON.LITERAL</code>でフリーワード</li>
+<li>(英語ネイティブでなければ)基本的に地獄</li>
+</ul>
+</li>
+</ul>
+
+<hr>
+
+<h3>
+<span id="組み込みslot紹介" class="fragment"></span><a href="#%E7%B5%84%E3%81%BF%E8%BE%BC%E3%81%BFslot%E7%B4%B9%E4%BB%8B"><i class="fa fa-link"></i></a>組み込みSlot紹介</h3>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5487150e-2322-b53a-e498-04ab608d74cc.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=531041436247815650d1a522403d557d" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5487150e-2322-b53a-e498-04ab608d74cc.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=531041436247815650d1a522403d557d" alt="Alexa_Skills_Kit_Custom_Interaction_Model_Reference_-_Amazon_Apps___Services_Developer_Portal.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/5487150e-2322-b53a-e498-04ab608d74cc.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F5487150e-2322-b53a-e498-04ab608d74cc.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=5385e92221d9e5a713548476c2adbb51 1x" loading="lazy"></a></p>
+
+<p><a href="https://developer.amazon.com/public/solutions/alexa/alexa-skills-kit/docs/alexa-skills-kit-interaction-model-reference" rel="nofollow noopener" target="_blank">Alexa Skills Kit Custom Interaction Model Reference - Amazon Apps &amp; Services Developer Portal</a></p>
+
+<hr>
+
+<h3>
+<span id="フリーワードslotの地獄" class="fragment"></span><a href="#%E3%83%95%E3%83%AA%E3%83%BC%E3%83%AF%E3%83%BC%E3%83%89slot%E3%81%AE%E5%9C%B0%E7%8D%84"><i class="fa fa-link"></i></a>フリーワードSlotの地獄</h3>
+
+<p>日本人は言いました...『wordpress』</p>
+
+<blockquote>
+<p>Alexa heard...<br>
+<code>the valkyries</code> , <code>worth press</code>, <code>well press</code>, <code>was the price</code>, <code>why the press</code>, <code>what the press</code>, <code>what race</code></p>
+</blockquote>
+
+<hr>
+
+<h3>
+<span id="amimoto-ninjaでは別途リストを作って無理やり丸めて対応" class="fragment"></span><a href="#amimoto-ninja%E3%81%A7%E3%81%AF%E5%88%A5%E9%80%94%E3%83%AA%E3%82%B9%E3%83%88%E3%82%92%E4%BD%9C%E3%81%A3%E3%81%A6%E7%84%A1%E7%90%86%E3%82%84%E3%82%8A%E4%B8%B8%E3%82%81%E3%81%A6%E5%AF%BE%E5%BF%9C"><i class="fa fa-link"></i></a>Amimoto Ninjaでは別途リストを作って、無理やり丸めて対応。</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>---
+wordpress: # (これら全部Wordpressと聞こえたことにする)
+  - the valkyries
+  - worth press
+  - well press
+  - was the price
+  - why the press
+  - what the press
+  - what race
+
+amimoto: # (これら全部AMIMOTOと聞こえたことにする)
+  - an immortal
+  - a motel
+  - available
+  - a moto
+  - it i'm a mother
+  - ammy moto
+</pre></div></div>
+
+<hr>
+
+<h2>
+<span id="レスポンススピーチ" class="fragment"></span><a href="#%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9%E3%82%B9%E3%83%94%E3%83%BC%E3%83%81"><i class="fa fa-link"></i></a>レスポンススピーチ</h2>
+
+<hr>
+
+<h3>
+<span id="レスポンスのスピーチで用意するテキストは3種類" class="fragment"></span><a href="#%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9%E3%81%AE%E3%82%B9%E3%83%94%E3%83%BC%E3%83%81%E3%81%A7%E7%94%A8%E6%84%8F%E3%81%99%E3%82%8B%E3%83%86%E3%82%AD%E3%82%B9%E3%83%88%E3%81%AF3%E7%A8%AE%E9%A1%9E"><i class="fa fa-link"></i></a>レスポンスのスピーチで用意するテキストは3種類</h3>
+
+<ul>
+<li>outputSpeech
+
+<ul>
+<li>まずしゃべる内容。はじめの案内や、聞かれたことへの回答が主。</li>
+</ul>
+</li>
+<li>reprompt
+
+<ul>
+<li>数秒応答がなかったらしゃべる内容。</li>
+<li>繰り返してもよいし、ヘルプっぽい案内でもよい。</li>
+</ul>
+</li>
+<li>card
+
+<ul>
+<li>AlexaユーザーのWebコンソールに表示する内容</li>
+<li>音声でやり取りできない事情への対応かな？</li>
+</ul>
+</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="cardが自分には分かりづらかったので例" class="fragment"></span><a href="#card%E3%81%8C%E8%87%AA%E5%88%86%E3%81%AB%E3%81%AF%E5%88%86%E3%81%8B%E3%82%8A%E3%81%A5%E3%82%89%E3%81%8B%E3%81%A3%E3%81%9F%E3%81%AE%E3%81%A7%E4%BE%8B"><i class="fa fa-link"></i></a>Cardが(自分には)分かりづらかったので例</h2>
+
+<p>ここにこのように出ます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F869a66ec-99ec-c716-56d5-1fe8ed2a4880.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=920129ae20623101615ada91c5ad69e5" target="_blank" rel="nofollow noopener"><img width="980" alt="スクリーンショット_2016-07-26_13_59_56.jpg" src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F869a66ec-99ec-c716-56d5-1fe8ed2a4880.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=920129ae20623101615ada91c5ad69e5" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/869a66ec-99ec-c716-56d5-1fe8ed2a4880.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F869a66ec-99ec-c716-56d5-1fe8ed2a4880.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=2c2f192cc3129cf5d4bb665dc6ff944a 1x" loading="lazy"></a></p>
+
+<hr>
+
+<h2>
+<span id="レスポンススピーチ勘所" class="fragment"></span><a href="#%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9%E3%82%B9%E3%83%94%E3%83%BC%E3%83%81%E5%8B%98%E6%89%80"><i class="fa fa-link"></i></a>レスポンススピーチ勘所</h2>
+
+<ul>
+<li>SSML(Speech Synthesis Markup Language)の一部に対応している！
+
+<ul>
+<li>ブレスを入れたり、Echoに自然に話してもらうためにはプレーンテキストよりSSMLをつかおう。</li>
+<li>発音記号でAMIMOTOもなめらかに発音することができる。</li>
+<li><code>&lt;p&gt;Hi, I'm  &lt;phoneme alphabet="ipa" ph="amimoʊtoʊ"&gt;AMIMOTO&lt;/phoneme&gt; Ninja.&lt;/p&gt;</code></li>
+</ul>
+</li>
+<li>Cardのテキストも使い回しで済ませたい場合はSSMLタグを除去する必要がある。
+
+<ul>
+<li>AMIMOTO NinjaではSSMLテキストをXMLパースしてテキストだけ抜き出すようにした。</li>
+<li>ただ、Cardやrepromptを真面目に組み立てるのは、Skill公開申請する場合だけでよい。</li>
+</ul>
+</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="聞き取れなかった際向けにはやさしい返事を作りましょう" class="fragment"></span><a href="#%E8%81%9E%E3%81%8D%E5%8F%96%E3%82%8C%E3%81%AA%E3%81%8B%E3%81%A3%E3%81%9F%E9%9A%9B%E5%90%91%E3%81%91%E3%81%AB%E3%81%AF%E3%82%84%E3%81%95%E3%81%97%E3%81%84%E8%BF%94%E4%BA%8B%E3%82%92%E4%BD%9C%E3%82%8A%E3%81%BE%E3%81%97%E3%82%87%E3%81%86"><i class="fa fa-link"></i></a>聞き取れなかった際向けには、やさしい返事を作りましょう。</h2>
+
+<hr>
+
+<h2>
+<span id="回答をpardonだけとかにするとだとテストする人の心が折れていくようです" class="fragment"></span><a href="#%E5%9B%9E%E7%AD%94%E3%82%92pardon%E3%81%A0%E3%81%91%E3%81%A8%E3%81%8B%E3%81%AB%E3%81%99%E3%82%8B%E3%81%A8%E3%81%A0%E3%81%A8%E3%83%86%E3%82%B9%E3%83%88%E3%81%99%E3%82%8B%E4%BA%BA%E3%81%AE%E5%BF%83%E3%81%8C%E6%8A%98%E3%82%8C%E3%81%A6%E3%81%84%E3%81%8F%E3%82%88%E3%81%86%E3%81%A7%E3%81%99"><i class="fa fa-link"></i></a>回答を『Pardon?』だけとかにするとだとテストする人の心が折れていくようです。</h2>
+
+<hr>
+
+<h2>
+<span id="lambda-function" class="fragment"></span><a href="#lambda-function"><i class="fa fa-link"></i></a>Lambda function</h2>
+
+<hr>
+
+<h2>
+<span id="lambda-function-pythonの場合" class="fragment"></span><a href="#lambda-function-python%E3%81%AE%E5%A0%B4%E5%90%88"><i class="fa fa-link"></i></a>Lambda function (Pythonの場合)</h2>
+
+<p>まずはLambdaに最初からあるサンプルを参考にしましょう。</p>
+
+<ul>
+<li><a href="https://developer.amazon.com/public/solutions/alexa/alexa-skills-kit/docs/developing-an-alexa-skill-as-a-lambda-function#Sample%20Interaction%20Model%20for%20the%20Color%20Expert%20Blueprint" rel="nofollow noopener" target="_blank">Sample Interaction Model for the Color Expert Blueprint | Amazon Developer</a></li>
+</ul>
+
+<p>一応コツ？</p>
+
+<ul>
+<li>イベントにはAlexaを指定します(Webコンソールからのみ可)。</li>
+<li>最初のみ<code>['session']['new']</code>が<code>true</code>でくるので、判別して初期化処理します。</li>
+<li>最初のハンドラ(lambda_handler)は、LaunchかEndか、または何らかのインテント、という3種類を振り分けておきます。</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="あとはとにかく地道にdispatchします" class="fragment"></span><a href="#%E3%81%82%E3%81%A8%E3%81%AF%E3%81%A8%E3%81%AB%E3%81%8B%E3%81%8F%E5%9C%B0%E9%81%93%E3%81%ABdispatch%E3%81%97%E3%81%BE%E3%81%99"><i class="fa fa-link"></i></a>あとはとにかく地道にDispatchします</h2>
+
+<p>※勘所とは言いづらいのですが。。こんな感じに作りました。</p>
+
+<div class="code-frame" data-lang="python"><div class="highlight"><pre><span class="o">...</span>
+    <span class="c1"># Dispatch to your skill's intent handlers
+</span>    <span class="k">if</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"MyNameIsIntent"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">set_visitor_name_from_session</span><span class="p">(</span><span class="n">intent</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"WhatIsIntent"</span> <span class="ow">or</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"CanIUseIntent"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dispatch_question</span><span class="p">(</span><span class="n">intent</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"ImpressionIntent"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">collect_impression</span><span class="p">(</span><span class="n">intent</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"AMAZON.YesIntent"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dispatch_yes_intent</span><span class="p">(</span><span class="n">intent</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"AMAZON.NoIntent"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dispatch_no_intent</span><span class="p">(</span><span class="n">intent</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"AMAZON.HelpIntent"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">return_help_response</span><span class="p">(</span><span class="n">intent</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"AMAZON.CancelIntent"</span> <span class="ow">or</span> <span class="n">intent_name</span> <span class="o">==</span> <span class="s">"AMAZON.StopIntent"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">handle_session_end_request</span><span class="p">(</span><span class="n">intent</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="nb">ValueError</span><span class="p">(</span><span class="s">"Invalid intent"</span><span class="p">)</span>
+<span class="o">...</span>
+</pre></div></div>
+
+<hr>
+
+<h2>
+<span id="skillのデバッグ" class="fragment"></span><a href="#skill%E3%81%AE%E3%83%87%E3%83%90%E3%83%83%E3%82%B0"><i class="fa fa-link"></i></a>Skillのデバッグ</h2>
+
+<p>まずはWebの管理画面で行います。Echoデバイスを持っていれば、そのまま実機テストも可能。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F7e979fe8-adf6-954b-ee84-c9217ff6686c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=03c1450adccae81f952824988fa474b8" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F7e979fe8-adf6-954b-ee84-c9217ff6686c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=03c1450adccae81f952824988fa474b8" alt="Amazon_Apps___Services_Developer_Portal_と_「Alexa_Skills_Kit_の勘所」を編集_-_Qiita.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/7e979fe8-adf6-954b-ee84-c9217ff6686c.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F7e979fe8-adf6-954b-ee84-c9217ff6686c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=2966b08e23ed6e828b2e9ae023c1998f 1x" loading="lazy"></a></p>
+
+<hr>
+
+<h2>
+<span id="デバッグ勘所" class="fragment"></span><a href="#%E3%83%87%E3%83%90%E3%83%83%E3%82%B0%E5%8B%98%E6%89%80"><i class="fa fa-link"></i></a>デバッグ勘所</h2>
+
+<ul>
+<li>Lambdaのログを見やすいように、<code>awslogs</code>コマンドまたは関連ツールをつかいましょう。</li>
+<li>実機では、聞き取った内容がユーザのSkills管理画面に出てきます、確認につかいましょう。</li>
+<li>実機確認、できればネイティブを連れてきましょう。。</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="デプロイ" class="fragment"></span><a href="#%E3%83%87%E3%83%97%E3%83%AD%E3%82%A4"><i class="fa fa-link"></i></a>デプロイ</h2>
+
+<ul>
+<li>Skillの定義(Interaction Model)は、まだAPIがありません。
+
+<ul>
+<li>
+<code>Intent Schema</code>, <code>Custom Slot</code>, <code>Utterances</code>はおとなしくブラウザから入力しましょう。</li>
+<li>テキストなので、手元でGit管理にはしておきます。</li>
+</ul>
+</li>
+<li>Lambda functionのデプロイは、lamveryをおすすめします。
+
+<ul>
+<li><a href="https://github.com/marcy-terui/lamvery" rel="nofollow noopener" target="_blank">marcy-terui/lamvery: User-friendly deployment and management tool for AWS Lambda function</a></li>
+</ul>
+</li>
+</ul>
+
+<hr>
+
+<h3>
+<span id="amimoto-ninjaのデプロイ" class="fragment"></span><a href="#amimoto-ninja%E3%81%AE%E3%83%87%E3%83%97%E3%83%AD%E3%82%A4"><i class="fa fa-link"></i></a>Amimoto Ninjaのデプロイ</h3>
+
+<ol>
+<li>CircleCIでPython文法、Yaml Syntaxのチェック</li>
+<li>自動デプロイでLambda functionを更新</li>
+</ol>
+
+<p><a href="https://circleci.com/gh/amimoto-ami/amimoto-amazon-alexa" rel="nofollow noopener" target="_blank">amimoto-ami/amimoto-amazon-alexa | CircleCI</a></p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Febc2cabf-f42c-bdbd-8179-c7d7e9aaaafe.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c35f452a1f72d348122f09de6f608085" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Febc2cabf-f42c-bdbd-8179-c7d7e9aaaafe.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=c35f452a1f72d348122f09de6f608085" alt="amimoto-ami_amimoto-amazon-alexa__235_-_CircleCI.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/ebc2cabf-f42c-bdbd-8179-c7d7e9aaaafe.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Febc2cabf-f42c-bdbd-8179-c7d7e9aaaafe.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=7220c39bdc9b287a504f19fa78f885a2 1x" loading="lazy"></a></p>
+
+<hr>
+
+<h2>
+<span id="ちょっと役に立つ情報" class="fragment"></span><a href="#%E3%81%A1%E3%82%87%E3%81%A3%E3%81%A8%E5%BD%B9%E3%81%AB%E7%AB%8B%E3%81%A4%E6%83%85%E5%A0%B1"><i class="fa fa-link"></i></a>ちょっと役に立つ情報</h2>
+
+<ul>
+<li>公開を前提にするなら、ベストプラクティスを遵守しましょう。審査でハネられます。
+
+<ul>
+<li><a href="https://developer.amazon.com/public/solutions/alexa/alexa-skills-kit/docs/alexa-skills-kit-voice-design-best-practices" rel="nofollow noopener" target="_blank">Alexa Skills Kit Voice Design Best Practices - Amazon Apps &amp; Services Developer Portal</a></li>
+</ul>
+</li>
+</ul>
+
+<hr>
+
+<h2>
+<span id="おわり" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A"><i class="fa fa-link"></i></a>おわり</h2>

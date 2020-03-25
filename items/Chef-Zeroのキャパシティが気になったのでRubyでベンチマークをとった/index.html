@@ -1,0 +1,742 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>実行したコードはこちら。 <a href="https://github.com/higanworks/chefzero-benchmark" title="higanworks/chefzero-benchmark" rel="nofollow noopener" target="_blank">higanworks/chefzero-benchmark</a></p>
+
+<p><a href="https://www.ruby-toolbox.com/categories/Benchmarking" title="The Ruby Toolbox - Benchmarking" rel="nofollow noopener" target="_blank">The Ruby Toolbox - Benchmarking</a>からなにかしら結果が見やすいとか使いやすいのはないかと見てみたけど、結局普通の<code>Benchmark.measure</code>を使い、次のやり方で計測しました。</p>
+
+<ol>
+<li>Chef-Zefoを起動する</li>
+<li>ダミーのノードを<a href="https://github.com/customink/fauxhai" rel="nofollow noopener" target="_blank">Fauxhai</a>で生成する</li>
+<li>
+<a href="https://github.com/RiotGames/ridley" rel="nofollow noopener" target="_blank">Ridley</a>でノードをChef-Zeroに登録する
+
+<ul>
+<li>登録数は [50, 100, 500, 1000, 5000] の5パターン</li>
+</ul>
+</li>
+<li>次の3つを計測
+
+<ul>
+<li>ノードを1つ抽出する</li>
+<li>サーチで単純なクエリにマッチするNodeを抽出する</li>
+<li>サーチでワイルドカードを含むクエリにマッチするNodeを抽出する</li>
+</ul>
+</li>
+</ol>
+
+<p>Chef-Zeroの保存方式(データストア)は標準のオンメモリと、実際のディレクトリを直接使用するファイルシステム(※こっちに期待)の2種類。</p>
+
+<p>ベンチマークはこんな条件の下で行った。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>MacBook Pro Retina, 13-inch, Late 2013
+Processor: 2.8 GHz Intel Core i7
+Memory: 16 GB 1600 MHz DDR3
+
+RUBY_VERSION #=&gt; 2.1.2
+RbConfig::CONFIG["PATCHLEVEL"] #=&gt; 95
+ChefZero::VERSION #=&gt; 3.0
+</pre></div></div>
+
+<h2>
+<span id="結果のまとめ" class="fragment"></span><a href="#%E7%B5%90%E6%9E%9C%E3%81%AE%E3%81%BE%E3%81%A8%E3%82%81"><i class="fa fa-link"></i></a>結果のまとめ</h2>
+
+<p>どちらのデータストアでも、単体を取得する分には特に劣化がなかった。<br>
+オンメモリなら1000ノードのサーチも2秒程度、流石に5000ノードあったら10秒以上かかっていたけど許容範囲。</p>
+
+<p>本命のファイルシステムだと、500ノードを超えたあたりからサーチが徐々に厳しくなっていく。<br>
+5000ノードでサーチすると流石にRidley標準のタイムアウトで終了した。</p>
+
+<p>でもサーチを使わなければ、動かすマシンにもよるが5000程度のオブジェクトがあってもへっちゃら感です。</p>
+
+<h2>
+<span id="ベンチマークのソース" class="fragment"></span><a href="#%E3%83%99%E3%83%B3%E3%83%81%E3%83%9E%E3%83%BC%E3%82%AF%E3%81%AE%E3%82%BD%E3%83%BC%E3%82%B9"><i class="fa fa-link"></i></a>ベンチマークのソース</h2>
+
+<p><code>Benchmark#measure</code>を使う部分はまとめるべきだったと思いつつベタ書き。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Rakefile</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'chef_zero/server'</span>
+<span class="nb">require</span> <span class="s1">'ridley'</span>
+<span class="nb">require</span> <span class="s1">'fauxhai'</span>
+<span class="nb">require</span> <span class="s1">'benchmark'</span>
+<span class="nb">require</span> <span class="s1">'tempfile'</span>
+<span class="nb">require</span> <span class="s1">'faker'</span>
+
+<span class="no">TIMES</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">]</span>
+
+<span class="k">def</span> <span class="nf">ridley_init</span>
+  <span class="n">f</span> <span class="o">=</span> <span class="no">Tempfile</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="s1">'pem'</span><span class="p">)</span>
+  <span class="no">File</span><span class="p">.</span><span class="nf">write</span><span class="p">(</span><span class="n">f</span><span class="p">.</span><span class="nf">path</span><span class="p">,</span> <span class="no">OpenSSL</span><span class="o">::</span><span class="no">PKey</span><span class="o">::</span><span class="no">RSA</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="mi">2048</span><span class="p">))</span>
+
+  <span class="n">ridley</span> <span class="o">=</span> <span class="no">Ridley</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span>
+    <span class="ss">server_url: </span><span class="s2">"http://localhost:4000"</span><span class="p">,</span>
+    <span class="ss">client_name: </span><span class="s2">"reset"</span><span class="p">,</span>
+    <span class="ss">client_key: </span><span class="n">f</span><span class="p">.</span><span class="nf">path</span>
+  <span class="p">)</span>
+  <span class="n">ridley</span><span class="p">.</span><span class="nf">logger</span><span class="p">.</span><span class="nf">level</span> <span class="o">=</span> <span class="mi">3</span>
+  <span class="n">ridley</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">create_fake_node</span><span class="p">(</span><span class="n">ridley</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span>
+  <span class="n">count</span><span class="p">.</span><span class="nf">times</span> <span class="k">do</span> <span class="o">|</span><span class="n">t</span><span class="o">|</span>
+    <span class="n">obj</span> <span class="o">=</span> <span class="n">ridley</span><span class="p">.</span><span class="nf">node</span><span class="p">.</span><span class="nf">new</span>
+    <span class="n">obj</span><span class="p">.</span><span class="nf">name</span> <span class="o">=</span> <span class="p">[</span><span class="no">Faker</span><span class="o">::</span><span class="no">Internet</span><span class="p">.</span><span class="nf">domain_word</span> <span class="o">+</span> <span class="n">t</span><span class="p">.</span><span class="nf">to_s</span> <span class="p">,</span> <span class="no">Faker</span><span class="o">::</span><span class="no">Internet</span><span class="p">.</span><span class="nf">domain_name</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span>
+    <span class="vi">@nodes</span> <span class="o">&lt;&lt;</span> <span class="n">obj</span><span class="p">.</span><span class="nf">name</span>
+    <span class="n">obj</span><span class="p">.</span><span class="nf">chef_environment</span> <span class="o">=</span> <span class="n">get_env_sample</span>
+    <span class="n">obj</span><span class="p">.</span><span class="nf">automatic</span> <span class="o">=</span> <span class="no">Fauxhai</span><span class="p">.</span><span class="nf">mock</span><span class="p">(</span><span class="ss">platform: </span><span class="s1">'ubuntu'</span><span class="p">,</span> <span class="ss">version: </span><span class="s1">'12.04'</span><span class="p">).</span><span class="nf">data</span>
+    <span class="n">ridley</span><span class="p">.</span><span class="nf">node</span><span class="p">.</span><span class="nf">create</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">get_env_sample</span>
+  <span class="p">[</span>
+    <span class="s1">'development'</span><span class="p">,</span>
+    <span class="s1">'production'</span><span class="p">,</span>
+    <span class="s1">'office'</span><span class="p">,</span>
+    <span class="s1">'resort'</span>
+  <span class="p">].</span><span class="nf">sample</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="nf">version</span>
+  <span class="nb">puts</span> <span class="s1">'============================'</span>
+  <span class="nb">puts</span> <span class="p">[</span><span class="s1">'RUBY_VERSION'</span><span class="p">,</span> <span class="no">RUBY_VERSION</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">' #=&gt; '</span><span class="p">)</span>
+  <span class="nb">puts</span> <span class="p">[</span><span class="s1">'RbConfig::CONFIG["PATCHLEVEL"]'</span><span class="p">,</span> <span class="no">RbConfig</span><span class="o">::</span><span class="no">CONFIG</span><span class="p">[</span><span class="s1">'PATCHLEVEL'</span><span class="p">]].</span><span class="nf">join</span><span class="p">(</span><span class="s1">' #=&gt; '</span><span class="p">)</span>
+  <span class="nb">puts</span> <span class="p">[</span><span class="s1">'ChefZero::VERSION'</span><span class="p">,</span> <span class="no">ChefZero</span><span class="o">::</span><span class="no">VERSION</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">' #=&gt; '</span><span class="p">)</span>
+  <span class="nb">puts</span> <span class="s1">'============================'</span>
+<span class="k">end</span>
+
+<span class="n">desc</span> <span class="s1">'run benchmark both mem_store and disk_store.'</span>
+<span class="n">task</span> <span class="ss">:default</span> <span class="k">do</span>
+  <span class="no">Rake</span><span class="o">::</span><span class="no">Task</span><span class="p">[</span><span class="s1">'bench:mem'</span><span class="p">].</span><span class="nf">invoke</span>
+  <span class="no">Rake</span><span class="o">::</span><span class="no">Task</span><span class="p">[</span><span class="s1">'bench:disk'</span><span class="p">].</span><span class="nf">invoke</span>
+<span class="k">end</span>
+
+
+<span class="n">desc</span> <span class="s1">'memory_store benchmack'</span>
+<span class="n">namespace</span> <span class="ss">:bench</span> <span class="k">do</span>
+  <span class="n">task</span> <span class="ss">:mem</span> <span class="k">do</span>
+    <span class="n">version</span>
+    <span class="n">server</span> <span class="o">=</span> <span class="no">ChefZero</span><span class="o">::</span><span class="no">Server</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="ss">port: </span><span class="mi">4000</span><span class="p">)</span>
+    <span class="n">server</span><span class="p">.</span><span class="nf">start_background</span>
+
+    <span class="n">ridley</span> <span class="o">=</span> <span class="n">ridley_init</span>
+
+    <span class="no">TIMES</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">time</span><span class="o">|</span>
+      <span class="nb">puts</span> <span class="s2">"Preparing fake node objects upto </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2">..."</span>
+      <span class="c1">## Warmup</span>
+      <span class="vi">@nodes</span> <span class="o">=</span> <span class="p">[]</span>
+      <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+      <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+        <span class="n">create_fake_node</span><span class="p">(</span><span class="n">ridley</span><span class="p">,</span> <span class="n">time</span><span class="p">)</span>
+      <span class="p">}</span>
+      <span class="nb">puts</span> <span class="s2">"Done!"</span>
+      <span class="nb">puts</span> <span class="s2">"============================"</span>
+
+      <span class="nb">puts</span> <span class="s2">"Start benchmark for pick up one node 5 times of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> nodes (on memory)"</span>
+      <span class="mi">5</span><span class="p">.</span><span class="nf">times</span> <span class="k">do</span>
+        <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+          <span class="n">arr</span> <span class="o">=</span>  <span class="n">ridley</span><span class="p">.</span><span class="nf">node</span><span class="p">.</span><span class="nf">find</span><span class="p">(</span><span class="vi">@nodes</span><span class="p">.</span><span class="nf">sample</span><span class="p">)</span>
+          <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+        <span class="p">}</span>
+      <span class="k">end</span>
+
+      <span class="nb">puts</span> <span class="s2">"Start benchmark for search 5 times by simple match query of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> nodes (on memory)"</span>
+      <span class="mi">5</span><span class="p">.</span><span class="nf">times</span> <span class="k">do</span>
+        <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+          <span class="n">arr</span> <span class="o">=</span>  <span class="n">ridley</span><span class="p">.</span><span class="nf">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"chef_environment:</span><span class="si">#{</span><span class="n">get_env_sample</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+          <span class="nb">puts</span> <span class="s2">"--------Matched </span><span class="si">#{</span><span class="n">arr</span><span class="p">.</span><span class="nf">size</span><span class="si">}</span><span class="s2"> nodes of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> objects"</span>
+          <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+        <span class="p">}</span>
+      <span class="k">end</span>
+      <span class="nb">puts</span> <span class="s2">"Start benchmark for search 5 times with wildcard match query of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> nodes (on memory)"</span>
+      <span class="mi">5</span><span class="p">.</span><span class="nf">times</span> <span class="k">do</span>
+        <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+          <span class="n">arr</span> <span class="o">=</span>  <span class="n">ridley</span><span class="p">.</span><span class="nf">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"name:*</span><span class="si">#{</span><span class="no">Faker</span><span class="o">::</span><span class="no">Internet</span><span class="p">.</span><span class="nf">domain_suffix</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+          <span class="nb">puts</span> <span class="s2">"--------Matched </span><span class="si">#{</span><span class="n">arr</span><span class="p">.</span><span class="nf">size</span><span class="si">}</span><span class="s2"> nodes of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> objects"</span>
+          <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+        <span class="p">}</span>
+      <span class="k">end</span>
+      <span class="nb">puts</span> <span class="s2">"Done! Data will be cleared."</span>
+      <span class="nb">puts</span> <span class="s2">"============================</span><span class="se">\n\n</span><span class="s2">"</span>
+      <span class="n">server</span><span class="p">.</span><span class="nf">clear_data</span>
+    <span class="k">end</span>
+    <span class="n">server</span><span class="p">.</span><span class="nf">stop</span>
+  <span class="k">end</span>
+
+  <span class="n">desc</span> <span class="s1">'disk_store benchmack'</span>
+  <span class="n">task</span> <span class="ss">:disk</span> <span class="k">do</span>
+    <span class="nb">require</span> <span class="s1">'chef/chef_fs/chef_fs_data_store'</span>
+    <span class="nb">require</span> <span class="s1">'chef/chef_fs/config'</span>
+    <span class="nb">require</span> <span class="s1">'chef_zero/data_store/raw_file_store'</span>
+
+    <span class="n">version</span>
+
+    <span class="no">Dir</span><span class="p">.</span><span class="nf">mktmpdir</span> <span class="k">do</span> <span class="o">|</span><span class="n">tmpdir</span><span class="o">|</span>
+      <span class="nb">puts</span> <span class="s2">"Temporary data_store was created to </span><span class="si">#{</span><span class="n">tmpdir</span><span class="si">}</span><span class="s2">."</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:chef_repo_path</span><span class="p">]</span> <span class="o">=</span> <span class="n">tmpdir</span>
+      <span class="n">chef_fs</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">ChefFS</span><span class="o">::</span><span class="no">Config</span><span class="p">.</span><span class="nf">new</span><span class="p">.</span><span class="nf">local_fs</span>
+      <span class="n">chef_fs</span><span class="p">.</span><span class="nf">write_pretty_json</span> <span class="o">=</span> <span class="kp">true</span>
+      <span class="n">data_store</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">ChefFS</span><span class="o">::</span><span class="no">ChefFSDataStore</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">chef_fs</span><span class="p">)</span>
+
+      <span class="n">server_options</span> <span class="o">=</span> <span class="p">{}</span>
+      <span class="n">server_options</span><span class="p">[</span><span class="ss">:data_store</span><span class="p">]</span> <span class="o">=</span> <span class="n">data_store</span>
+      <span class="n">server_options</span><span class="p">[</span><span class="ss">:port</span><span class="p">]</span> <span class="o">=</span> <span class="mi">4000</span>
+
+      <span class="n">server</span> <span class="o">=</span> <span class="no">ChefZero</span><span class="o">::</span><span class="no">Server</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">server_options</span><span class="p">)</span>
+      <span class="n">server</span><span class="p">.</span><span class="nf">start_background</span>
+
+      <span class="n">ridley</span> <span class="o">=</span> <span class="n">ridley_init</span>
+
+      <span class="no">TIMES</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">time</span><span class="o">|</span>
+        <span class="nb">puts</span> <span class="s2">"Preparing fake node objects upto </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2">..."</span>
+        <span class="c1">## Warmup</span>
+        <span class="vi">@nodes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+        <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+          <span class="n">create_fake_node</span><span class="p">(</span><span class="n">ridley</span><span class="p">,</span> <span class="n">time</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="nb">puts</span> <span class="s2">"Done!"</span>
+        <span class="nb">puts</span> <span class="s2">"============================"</span>
+
+        <span class="nb">puts</span> <span class="s2">"Start benchmark for pick up one node 5 times of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> nodes (on filesystem)"</span>
+        <span class="mi">5</span><span class="p">.</span><span class="nf">times</span> <span class="k">do</span>
+          <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+            <span class="n">arr</span> <span class="o">=</span>  <span class="n">ridley</span><span class="p">.</span><span class="nf">node</span><span class="p">.</span><span class="nf">find</span><span class="p">(</span><span class="vi">@nodes</span><span class="p">.</span><span class="nf">sample</span><span class="p">)</span>
+            <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+          <span class="p">}</span>
+        <span class="k">end</span>
+
+        <span class="nb">puts</span> <span class="s2">"Start benchmark for search 5 times by simple match query of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> nodes (on filesystem)"</span>
+        <span class="mi">5</span><span class="p">.</span><span class="nf">times</span> <span class="k">do</span>
+          <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+            <span class="n">arr</span> <span class="o">=</span>  <span class="n">ridley</span><span class="p">.</span><span class="nf">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"chef_environment:</span><span class="si">#{</span><span class="n">get_env_sample</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="nb">puts</span> <span class="s2">"--------Matched </span><span class="si">#{</span><span class="n">arr</span><span class="p">.</span><span class="nf">size</span><span class="si">}</span><span class="s2"> nodes of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> objects"</span>
+            <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+          <span class="p">}</span>
+        <span class="k">end</span>
+        <span class="nb">puts</span> <span class="s2">"Start benchmark for search 5 times with wildcard match query of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> nodes (on filesystem)"</span>
+        <span class="mi">5</span><span class="p">.</span><span class="nf">times</span> <span class="k">do</span>
+          <span class="nb">puts</span> <span class="no">Benchmark</span><span class="p">.</span><span class="nf">measure</span> <span class="p">{</span>
+            <span class="n">arr</span> <span class="o">=</span>  <span class="n">ridley</span><span class="p">.</span><span class="nf">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"name:*</span><span class="si">#{</span><span class="no">Faker</span><span class="o">::</span><span class="no">Internet</span><span class="p">.</span><span class="nf">domain_suffix</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="nb">puts</span> <span class="s2">"--------Matched </span><span class="si">#{</span><span class="n">arr</span><span class="p">.</span><span class="nf">size</span><span class="si">}</span><span class="s2"> nodes of </span><span class="si">#{</span><span class="n">time</span><span class="si">}</span><span class="s2"> objects"</span>
+            <span class="nb">puts</span> <span class="no">Benchmark</span><span class="o">::</span><span class="no">CAPTION</span>
+          <span class="p">}</span>
+        <span class="k">end</span>
+
+        <span class="nb">puts</span> <span class="s2">"Done! Data will be cleared."</span>
+        <span class="nb">puts</span> <span class="s2">"============================</span><span class="se">\n\n</span><span class="s2">"</span>
+
+        <span class="n">chef_fs</span><span class="p">.</span><span class="nf">child_paths</span><span class="p">.</span><span class="nf">each_value</span> <span class="k">do</span> <span class="o">|</span><span class="n">dirs</span><span class="o">|</span>
+          <span class="n">dirs</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">dir</span><span class="o">|</span>
+            <span class="k">if</span> <span class="no">File</span><span class="p">.</span><span class="nf">exists?</span><span class="p">(</span><span class="n">dir</span><span class="p">)</span>
+              <span class="no">FileUtils</span><span class="p">.</span><span class="nf">rm</span><span class="p">(</span><span class="no">Dir</span><span class="p">.</span><span class="nf">glob</span><span class="p">(</span><span class="s2">"</span><span class="si">#{</span><span class="n">dir</span><span class="si">}</span><span class="s2">/*.json"</span><span class="p">))</span>
+            <span class="k">end</span>
+          <span class="k">end</span>
+        <span class="k">end</span>
+        <span class="n">server</span><span class="p">.</span><span class="nf">clear_data</span>
+      <span class="k">end</span>
+      <span class="n">server</span><span class="p">.</span><span class="nf">stop</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="ベンチマークの実行結果" class="fragment"></span><a href="#%E3%83%99%E3%83%B3%E3%83%81%E3%83%9E%E3%83%BC%E3%82%AF%E3%81%AE%E5%AE%9F%E8%A1%8C%E7%B5%90%E6%9E%9C"><i class="fa fa-link"></i></a>ベンチマークの実行結果</h2>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>rake 
+<span class="o">============================</span>
+RUBY_VERSION <span class="c">#=&gt; 2.1.2</span>
+RbConfig::CONFIG[<span class="s2">"PATCHLEVEL"</span><span class="o">]</span> <span class="c">#=&gt; 95</span>
+ChefZero::VERSION <span class="c">#=&gt; 3.0</span>
+<span class="o">============================</span>
+Preparing fake node objects upto 50...
+      user     system      total        real
+  0.750000   0.070000   0.820000 <span class="o">(</span>  1.190110<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 50 nodes <span class="o">(</span>on memory<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.009239<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.009327<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.009776<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.009797<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.009014<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 50 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 13 nodes of 50 objects
+      user     system      total        real
+  0.150000   0.010000   0.160000 <span class="o">(</span>  0.153010<span class="o">)</span>
+<span class="nt">--------Matched</span> 16 nodes of 50 objects
+      user     system      total        real
+  0.130000   0.010000   0.140000 <span class="o">(</span>  0.133699<span class="o">)</span>
+<span class="nt">--------Matched</span> 11 nodes of 50 objects
+      user     system      total        real
+  0.120000   0.010000   0.130000 <span class="o">(</span>  0.132803<span class="o">)</span>
+<span class="nt">--------Matched</span> 11 nodes of 50 objects
+      user     system      total        real
+  0.110000   0.000000   0.110000 <span class="o">(</span>  0.114197<span class="o">)</span>
+<span class="nt">--------Matched</span> 10 nodes of 50 objects
+      user     system      total        real
+  0.150000   0.010000   0.160000 <span class="o">(</span>  0.156211<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 50 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 10 nodes of 50 objects
+      user     system      total        real
+  0.110000   0.000000   0.110000 <span class="o">(</span>  0.112973<span class="o">)</span>
+<span class="nt">--------Matched</span> 9 nodes of 50 objects
+      user     system      total        real
+  0.110000   0.010000   0.120000 <span class="o">(</span>  0.117174<span class="o">)</span>
+<span class="nt">--------Matched</span> 10 nodes of 50 objects
+      user     system      total        real
+  0.110000   0.000000   0.110000 <span class="o">(</span>  0.120937<span class="o">)</span>
+<span class="nt">--------Matched</span> 6 nodes of 50 objects
+      user     system      total        real
+  0.120000   0.000000   0.120000 <span class="o">(</span>  0.117076<span class="o">)</span>
+<span class="nt">--------Matched</span> 6 nodes of 50 objects
+      user     system      total        real
+  0.100000   0.010000   0.110000 <span class="o">(</span>  0.110966<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 100...
+      user     system      total        real
+  1.170000   0.130000   1.300000 <span class="o">(</span>  1.319404<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 100 nodes <span class="o">(</span>on memory<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.010000   0.010000 <span class="o">(</span>  0.007963<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008128<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008020<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.007828<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008201<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 100 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 16 nodes of 100 objects
+      user     system      total        real
+  0.250000   0.010000   0.260000 <span class="o">(</span>  0.258547<span class="o">)</span>
+<span class="nt">--------Matched</span> 22 nodes of 100 objects
+      user     system      total        real
+  0.210000   0.000000   0.210000 <span class="o">(</span>  0.215202<span class="o">)</span>
+<span class="nt">--------Matched</span> 22 nodes of 100 objects
+      user     system      total        real
+  0.250000   0.010000   0.260000 <span class="o">(</span>  0.264075<span class="o">)</span>
+<span class="nt">--------Matched</span> 22 nodes of 100 objects
+      user     system      total        real
+  0.230000   0.000000   0.230000 <span class="o">(</span>  0.239582<span class="o">)</span>
+<span class="nt">--------Matched</span> 34 nodes of 100 objects
+      user     system      total        real
+  0.260000   0.010000   0.270000 <span class="o">(</span>  0.268535<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 100 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 12 nodes of 100 objects
+      user     system      total        real
+  0.230000   0.020000   0.250000 <span class="o">(</span>  0.240597<span class="o">)</span>
+<span class="nt">--------Matched</span> 22 nodes of 100 objects
+      user     system      total        real
+  0.320000   0.020000   0.340000 <span class="o">(</span>  0.341606<span class="o">)</span>
+<span class="nt">--------Matched</span> 14 nodes of 100 objects
+      user     system      total        real
+  0.240000   0.000000   0.240000 <span class="o">(</span>  0.243652<span class="o">)</span>
+<span class="nt">--------Matched</span> 12 nodes of 100 objects
+      user     system      total        real
+  0.190000   0.010000   0.200000 <span class="o">(</span>  0.197043<span class="o">)</span>
+<span class="nt">--------Matched</span> 19 nodes of 100 objects
+      user     system      total        real
+  0.210000   0.000000   0.210000 <span class="o">(</span>  0.215121<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 500...
+      user     system      total        real
+  5.730000   0.660000   6.390000 <span class="o">(</span>  6.489995<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 500 nodes <span class="o">(</span>on memory<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008062<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.007949<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007695<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007941<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.010000   0.020000 <span class="o">(</span>  0.008567<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 500 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 141 nodes of 500 objects
+      user     system      total        real
+  1.190000   0.020000   1.210000 <span class="o">(</span>  1.224797<span class="o">)</span>
+<span class="nt">--------Matched</span> 134 nodes of 500 objects
+      user     system      total        real
+  1.260000   0.060000   1.320000 <span class="o">(</span>  1.316611<span class="o">)</span>
+<span class="nt">--------Matched</span> 141 nodes of 500 objects
+      user     system      total        real
+  1.300000   0.030000   1.330000 <span class="o">(</span>  1.329287<span class="o">)</span>
+<span class="nt">--------Matched</span> 134 nodes of 500 objects
+      user     system      total        real
+  1.300000   0.030000   1.330000 <span class="o">(</span>  1.333752<span class="o">)</span>
+<span class="nt">--------Matched</span> 112 nodes of 500 objects
+      user     system      total        real
+  1.330000   0.040000   1.370000 <span class="o">(</span>  1.369286<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 500 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 88 nodes of 500 objects
+      user     system      total        real
+  1.040000   0.020000   1.060000 <span class="o">(</span>  1.059881<span class="o">)</span>
+<span class="nt">--------Matched</span> 86 nodes of 500 objects
+      user     system      total        real
+  1.200000   0.050000   1.250000 <span class="o">(</span>  1.254659<span class="o">)</span>
+<span class="nt">--------Matched</span> 88 nodes of 500 objects
+      user     system      total        real
+  1.170000   0.020000   1.190000 <span class="o">(</span>  1.189626<span class="o">)</span>
+<span class="nt">--------Matched</span> 86 nodes of 500 objects
+      user     system      total        real
+  1.080000   0.020000   1.100000 <span class="o">(</span>  1.099927<span class="o">)</span>
+<span class="nt">--------Matched</span> 76 nodes of 500 objects
+      user     system      total        real
+  1.240000   0.030000   1.270000 <span class="o">(</span>  1.264090<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 1000...
+      user     system      total        real
+ 11.460000   1.310000  12.770000 <span class="o">(</span> 12.823895<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 1000 nodes <span class="o">(</span>on memory<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007845<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.008117<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007736<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007951<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.009608<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 1000 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 238 nodes of 1000 objects
+      user     system      total        real
+  2.460000   0.040000   2.500000 <span class="o">(</span>  2.514587<span class="o">)</span>
+<span class="nt">--------Matched</span> 247 nodes of 1000 objects
+      user     system      total        real
+  2.540000   0.050000   2.590000 <span class="o">(</span>  2.595222<span class="o">)</span>
+<span class="nt">--------Matched</span> 261 nodes of 1000 objects
+      user     system      total        real
+  2.750000   0.060000   2.810000 <span class="o">(</span>  2.810951<span class="o">)</span>
+<span class="nt">--------Matched</span> 247 nodes of 1000 objects
+      user     system      total        real
+  2.550000   0.050000   2.600000 <span class="o">(</span>  2.621313<span class="o">)</span>
+<span class="nt">--------Matched</span> 238 nodes of 1000 objects
+      user     system      total        real
+  2.650000   0.050000   2.700000 <span class="o">(</span>  2.719356<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 1000 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 174 nodes of 1000 objects
+      user     system      total        real
+  2.540000   0.050000   2.590000 <span class="o">(</span>  2.600654<span class="o">)</span>
+<span class="nt">--------Matched</span> 164 nodes of 1000 objects
+      user     system      total        real
+  2.850000   0.080000   2.930000 <span class="o">(</span>  2.945433<span class="o">)</span>
+<span class="nt">--------Matched</span> 174 nodes of 1000 objects
+      user     system      total        real
+  3.050000   0.060000   3.110000 <span class="o">(</span>  3.134419<span class="o">)</span>
+<span class="nt">--------Matched</span> 185 nodes of 1000 objects
+      user     system      total        real
+  2.520000   0.050000   2.570000 <span class="o">(</span>  2.582858<span class="o">)</span>
+<span class="nt">--------Matched</span> 174 nodes of 1000 objects
+      user     system      total        real
+  2.410000   0.040000   2.450000 <span class="o">(</span>  2.453993<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 5000...
+      user     system      total        real
+ 58.740000   6.480000  65.220000 <span class="o">(</span> 65.438612<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 5000 nodes <span class="o">(</span>on memory<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008116<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.008034<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008345<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008565<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008128<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 5000 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 1234 nodes of 5000 objects
+      user     system      total        real
+ 21.720000   0.440000  22.160000 <span class="o">(</span> 22.189359<span class="o">)</span>
+<span class="nt">--------Matched</span> 1234 nodes of 5000 objects
+      user     system      total        real
+ 16.100000   0.330000  16.430000 <span class="o">(</span> 16.437395<span class="o">)</span>
+<span class="nt">--------Matched</span> 1234 nodes of 5000 objects
+      user     system      total        real
+ 12.600000   0.350000  12.950000 <span class="o">(</span> 12.960188<span class="o">)</span>
+<span class="nt">--------Matched</span> 1280 nodes of 5000 objects
+      user     system      total        real
+ 13.010000   0.320000  13.330000 <span class="o">(</span> 13.400405<span class="o">)</span>
+<span class="nt">--------Matched</span> 1280 nodes of 5000 objects
+      user     system      total        real
+ 13.110000   0.300000  13.410000 <span class="o">(</span> 13.486141<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 5000 nodes <span class="o">(</span>on memory<span class="o">)</span>
+<span class="nt">--------Matched</span> 852 nodes of 5000 objects
+      user     system      total        real
+ 13.220000   0.460000  13.680000 <span class="o">(</span> 13.835438<span class="o">)</span>
+<span class="nt">--------Matched</span> 862 nodes of 5000 objects
+      user     system      total        real
+ 12.290000   0.300000  12.590000 <span class="o">(</span> 12.635503<span class="o">)</span>
+<span class="nt">--------Matched</span> 871 nodes of 5000 objects
+      user     system      total        real
+ 13.030000   0.250000  13.280000 <span class="o">(</span> 13.518441<span class="o">)</span>
+<span class="nt">--------Matched</span> 862 nodes of 5000 objects
+      user     system      total        real
+ 12.390000   0.240000  12.630000 <span class="o">(</span> 12.693962<span class="o">)</span>
+<span class="nt">--------Matched</span> 813 nodes of 5000 objects
+      user     system      total        real
+ 11.980000   0.220000  12.200000 <span class="o">(</span> 12.211569<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+<span class="o">============================</span>
+RUBY_VERSION <span class="c">#=&gt; 2.1.2</span>
+RbConfig::CONFIG[<span class="s2">"PATCHLEVEL"</span><span class="o">]</span> <span class="c">#=&gt; 95</span>
+ChefZero::VERSION <span class="c">#=&gt; 3.0</span>
+<span class="o">============================</span>
+Temporary data_store was created to /var/folders/s9/kwcs_8ln0d32v_n4hdfb7td00000gn/T/d20140826-31513-1innb9o.
+Preparing fake node objects upto 50...
+      user     system      total        real
+  0.690000   0.090000   0.780000 <span class="o">(</span>  0.795218<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 50 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007690<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.007726<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007594<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.007664<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.009790<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 50 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 50 objects
+      user     system      total        real
+  0.050000   0.010000   0.060000 <span class="o">(</span>  0.055999<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 50 objects
+      user     system      total        real
+  0.110000   0.020000   0.130000 <span class="o">(</span>  0.119940<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 50 objects
+      user     system      total        real
+  0.050000   0.010000   0.060000 <span class="o">(</span>  0.056107<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 50 objects
+      user     system      total        real
+  0.050000   0.010000   0.060000 <span class="o">(</span>  0.067170<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 50 objects
+      user     system      total        real
+  0.060000   0.010000   0.070000 <span class="o">(</span>  0.073780<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 50 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 8 nodes of 50 objects
+      user     system      total        real
+  0.040000   0.010000   0.050000 <span class="o">(</span>  0.052666<span class="o">)</span>
+<span class="nt">--------Matched</span> 7 nodes of 50 objects
+      user     system      total        real
+  0.050000   0.010000   0.060000 <span class="o">(</span>  0.055499<span class="o">)</span>
+<span class="nt">--------Matched</span> 7 nodes of 50 objects
+      user     system      total        real
+  0.040000   0.010000   0.050000 <span class="o">(</span>  0.052032<span class="o">)</span>
+<span class="nt">--------Matched</span> 4 nodes of 50 objects
+      user     system      total        real
+  0.160000   0.010000   0.170000 <span class="o">(</span>  0.165832<span class="o">)</span>
+<span class="nt">--------Matched</span> 6 nodes of 50 objects
+      user     system      total        real
+  0.040000   0.010000   0.050000 <span class="o">(</span>  0.052942<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 100...
+      user     system      total        real
+  1.320000   0.160000   1.480000 <span class="o">(</span>  1.497286<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 100 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.010000   0.020000 <span class="o">(</span>  0.008849<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008563<span class="o">)</span>
+      user     system      total        real
+  0.000000   0.000000   0.000000 <span class="o">(</span>  0.008509<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.008801<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.011175<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 100 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 100 objects
+      user     system      total        real
+  0.220000   0.030000   0.250000 <span class="o">(</span>  0.246197<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 100 objects
+      user     system      total        real
+  0.130000   0.030000   0.160000 <span class="o">(</span>  0.163799<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 100 objects
+      user     system      total        real
+  0.260000   0.030000   0.290000 <span class="o">(</span>  0.284852<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 100 objects
+      user     system      total        real
+  0.140000   0.030000   0.170000 <span class="o">(</span>  0.171276<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 100 objects
+      user     system      total        real
+  0.250000   0.030000   0.280000 <span class="o">(</span>  0.276693<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 100 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 15 nodes of 100 objects
+      user     system      total        real
+  0.150000   0.030000   0.180000 <span class="o">(</span>  0.188616<span class="o">)</span>
+<span class="nt">--------Matched</span> 19 nodes of 100 objects
+      user     system      total        real
+  0.260000   0.030000   0.290000 <span class="o">(</span>  0.291682<span class="o">)</span>
+<span class="nt">--------Matched</span> 19 nodes of 100 objects
+      user     system      total        real
+  0.150000   0.040000   0.190000 <span class="o">(</span>  0.189395<span class="o">)</span>
+<span class="nt">--------Matched</span> 19 nodes of 100 objects
+      user     system      total        real
+  0.330000   0.040000   0.370000 <span class="o">(</span>  0.380891<span class="o">)</span>
+<span class="nt">--------Matched</span> 21 nodes of 100 objects
+      user     system      total        real
+  0.150000   0.030000   0.180000 <span class="o">(</span>  0.173191<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 500...
+      user     system      total        real
+  6.940000   0.900000   7.840000 <span class="o">(</span>  7.878502<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 500 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+      user     system      total        real
+  0.020000   0.000000   0.020000 <span class="o">(</span>  0.014835<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.015202<span class="o">)</span>
+      user     system      total        real
+  0.080000   0.010000   0.090000 <span class="o">(</span>  0.086860<span class="o">)</span>
+      user     system      total        real
+  0.010000   0.000000   0.010000 <span class="o">(</span>  0.015377<span class="o">)</span>
+      user     system      total        real
+  0.020000   0.000000   0.020000 <span class="o">(</span>  0.015287<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 500 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 500 objects
+      user     system      total        real
+  4.500000   0.810000   5.310000 <span class="o">(</span>  5.316760<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 500 objects
+      user     system      total        real
+  4.530000   0.790000   5.320000 <span class="o">(</span>  5.314164<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 500 objects
+      user     system      total        real
+  4.470000   0.780000   5.250000 <span class="o">(</span>  5.270624<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 500 objects
+      user     system      total        real
+  4.440000   0.780000   5.220000 <span class="o">(</span>  5.215047<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 500 objects
+      user     system      total        real
+  4.830000   0.830000   5.660000 <span class="o">(</span>  5.705454<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 500 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 101 nodes of 500 objects
+      user     system      total        real
+  4.410000   0.760000   5.170000 <span class="o">(</span>  5.172413<span class="o">)</span>
+<span class="nt">--------Matched</span> 75 nodes of 500 objects
+      user     system      total        real
+  4.540000   0.760000   5.300000 <span class="o">(</span>  5.332210<span class="o">)</span>
+<span class="nt">--------Matched</span> 74 nodes of 500 objects
+      user     system      total        real
+  4.500000   0.760000   5.260000 <span class="o">(</span>  5.259890<span class="o">)</span>
+<span class="nt">--------Matched</span> 89 nodes of 500 objects
+      user     system      total        real
+  4.430000   0.760000   5.190000 <span class="o">(</span>  5.200891<span class="o">)</span>
+<span class="nt">--------Matched</span> 101 nodes of 500 objects
+      user     system      total        real
+  4.520000   0.790000   5.310000 <span class="o">(</span>  5.326836<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 1000...
+      user     system      total        real
+ 14.400000   1.850000  16.250000 <span class="o">(</span> 16.261022<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 1000 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+      user     system      total        real
+  0.020000   0.000000   0.020000 <span class="o">(</span>  0.022240<span class="o">)</span>
+      user     system      total        real
+  0.020000   0.010000   0.030000 <span class="o">(</span>  0.023544<span class="o">)</span>
+      user     system      total        real
+  0.020000   0.000000   0.020000 <span class="o">(</span>  0.025304<span class="o">)</span>
+      user     system      total        real
+  0.020000   0.010000   0.030000 <span class="o">(</span>  0.025084<span class="o">)</span>
+      user     system      total        real
+  0.020000   0.000000   0.020000 <span class="o">(</span>  0.027034<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 1000 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 1000 objects
+      user     system      total        real
+ 18.240000   3.240000  21.480000 <span class="o">(</span> 21.577591<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 1000 objects
+      user     system      total        real
+ 17.410000   3.020000  20.430000 <span class="o">(</span> 20.477257<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 1000 objects
+      user     system      total        real
+ 17.430000   3.100000  20.530000 <span class="o">(</span> 20.582965<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 1000 objects
+      user     system      total        real
+ 17.150000   3.000000  20.150000 <span class="o">(</span> 20.186336<span class="o">)</span>
+<span class="nt">--------Matched</span> 0 nodes of 1000 objects
+      user     system      total        real
+ 17.700000   3.100000  20.800000 <span class="o">(</span> 20.857837<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>with wildcard match query of 1000 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+<span class="nt">--------Matched</span> 171 nodes of 1000 objects
+      user     system      total        real
+ 17.660000   3.070000  20.730000 <span class="o">(</span> 20.761662<span class="o">)</span>
+<span class="nt">--------Matched</span> 171 nodes of 1000 objects
+      user     system      total        real
+ 17.200000   3.030000  20.230000 <span class="o">(</span> 20.273779<span class="o">)</span>
+<span class="nt">--------Matched</span> 174 nodes of 1000 objects
+      user     system      total        real
+ 17.210000   3.000000  20.210000 <span class="o">(</span> 20.221381<span class="o">)</span>
+<span class="nt">--------Matched</span> 159 nodes of 1000 objects
+      user     system      total        real
+ 17.470000   3.030000  20.500000 <span class="o">(</span> 20.542159<span class="o">)</span>
+<span class="nt">--------Matched</span> 171 nodes of 1000 objects
+      user     system      total        real
+ 17.400000   3.020000  20.420000 <span class="o">(</span> 20.460623<span class="o">)</span>
+Done! Data will be cleared.
+<span class="o">============================</span>
+
+Preparing fake node objects upto 5000...
+      user     system      total        real
+ 69.430000   9.860000  79.290000 <span class="o">(</span> 79.626666<span class="o">)</span>
+Done!
+<span class="o">============================</span>
+Start benchmark <span class="k">for </span>pick up one node 5 <span class="nb">times </span>of 5000 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+      user     system      total        real
+  0.080000   0.010000   0.090000 <span class="o">(</span>  0.093334<span class="o">)</span>
+      user     system      total        real
+  0.070000   0.020000   0.090000 <span class="o">(</span>  0.091920<span class="o">)</span>
+      user     system      total        real
+  0.080000   0.020000   0.100000 <span class="o">(</span>  0.090885<span class="o">)</span>
+      user     system      total        real
+  0.180000   0.010000   0.190000 <span class="o">(</span>  0.196649<span class="o">)</span>
+      user     system      total        real
+  0.070000   0.020000   0.090000 <span class="o">(</span>  0.097520<span class="o">)</span>
+Start benchmark <span class="k">for </span>search 5 <span class="nb">times </span>by simple match query of 5000 nodes <span class="o">(</span>on filesystem<span class="o">)</span>
+E, <span class="o">[</span>2014-08-26T20:23:35.452344 <span class="c">#31513] ERROR -- : Actor crashed!</span>
+Ridley::Errors::TimeoutError: too many connection resets <span class="o">(</span>due to Net::ReadTimeout - Net::ReadTimeout<span class="o">)</span> after 0 requests on 2597410980, last used 125.772078 seconds ago
+</pre></div></div>

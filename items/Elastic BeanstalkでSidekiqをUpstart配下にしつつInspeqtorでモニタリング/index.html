@@ -1,0 +1,219 @@
+<p>AWSのElastic BeanstalkにRailsプロジェクトをおいていて、非同期のジョブを<a href="http://sidekiq.org" rel="nofollow noopener" target="_blank">Sidekiq</a>にやらせている。<br>
+で、原因は色々とあるようだがたまにsidekiqプロセスが居なくなることがあった。</p>
+
+<p>取り急ぎ、止まっていたら起動するように2つの方針を考えた。</p>
+
+<ul>
+<li>monitでモニタリング&amp;restart</li>
+<li>Upstartでrespawn
+
+<ul>
+<li>inspeqtorでモニタリング</li>
+</ul>
+</li>
+</ul>
+
+<p>EBのRuby(puma)コンテナではRails用のpumaがUpstartで動いている。<br>
+monit(+M/Monit)の柔軟設定とゆるさは鉄板だが(飽きてきたので)、ここはsidekiqの作者<a href="https://github.com/mperham" rel="nofollow noopener" target="_blank">Mike Perham</a>さんのプロダクトであるinspeqtorと組み合わせてみよう。パーハム祭りである。</p>
+
+<p>参考： <a href="http://contribsys.com/inspeqtor/" title="Inspeqtor - application infrastructure monitoring" rel="nofollow noopener" target="_blank">Inspeqtor - application infrastructure monitoring</a></p>
+
+<h2>
+<span id="sidekiqをupstart配下にする" class="fragment"></span><a href="#sidekiq%E3%82%92upstart%E9%85%8D%E4%B8%8B%E3%81%AB%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>SidekiqをUpstart配下にする</h2>
+
+<p>まずは 『Sidekiq x Upstart』。<br>
+設置したファイルは3つです。Upstart用のファイルはほぼEBのpumaから流用。</p>
+
+<ul>
+<li><code>/opt/elasticbeanstalk/hooks/appdeploy/post/50_restart_sidekiq</code></li>
+<li><code>/opt/elasticbeanstalk/hooks/appdeploy/pre/03_mute_sidekiq</code></li>
+<li>
+<code>/opt/elasticbeanstalk/support/conf/sidekiq.conf</code> (<code>/etc/init/sidekiq.conf</code>にシンボリックリンク作成)</li>
+</ul>
+
+<p>まず必要なファイルを設置。<br>
+pumaのコンフィグで特に参考になったのは<code>exec /bin/bash &lt;&lt;"EOT"</code>。その手があったかー。<br>
+Sidekiqの起動オプションはお好みで。muteは一応。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">15_sidekiq_initial.config</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">files</span><span class="pi">:</span>
+  <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/hooks/appdeploy/post/50_restart_sidekiq"</span><span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">000755"</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="s">#!/bin/bash</span>
+      <span class="s">initctl restart sidekiq || initctl start sidekiq</span>
+
+      <span class="s">ln -sf /var/app/current/log/sidekiq.log /var/app/containerfiles/logs/sidekiq.log</span>
+
+  <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/hooks/appdeploy/pre/03_mute_sidekiq"</span><span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">000755"</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="s">#!/bin/bash</span>
+
+      <span class="s">. /opt/elasticbeanstalk/support/envvars</span>
+
+      <span class="s">PIDFILE=/var/app/containerfiles/pids/sidekiq.pid</span>
+      <span class="s">if [ -f ${PIDFILE} ]; then</span>
+        <span class="s">if [ -d /proc/`cat ${PIDFILE}` ]; then</span>
+          <span class="s">kill -USR1 `cat ${PIDFILE}`</span>
+        <span class="s">fi</span>
+      <span class="s">fi</span>
+
+  <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/support/conf/sidekiq.conf"</span><span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">000644"</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="pi">|</span>
+      <span class="s">description "Elastic Beanstalk Sidekiq Upstart Manager"</span>
+
+      <span class="s">start on runlevel [2345]</span>
+      <span class="s">stop on runlevel [!2345]</span>
+
+      <span class="s"># explained above</span>
+      <span class="s">respawn</span>
+      <span class="s">respawn limit 3 30</span>
+
+      <span class="s">script</span>
+      <span class="s"># scripts run in /bin/sh by default</span>
+      <span class="s"># respawn as bash so we can source in rbenv</span>
+      <span class="s">exec /bin/bash &lt;&lt;"EOT"</span>
+        <span class="s">EB_SCRIPT_DIR=$(/opt/elasticbeanstalk/bin/get-config container -k script_dir)</span>
+        <span class="s">EB_SUPPORT_DIR=$(/opt/elasticbeanstalk/bin/get-config container -k support_dir)</span>
+
+        <span class="s">. $EB_SUPPORT_DIR/envvars</span>
+        <span class="s">. $EB_SCRIPT_DIR/use-app-ruby.sh</span>
+
+        <span class="s">EB_APP_DEPLOY_DIR=$(/opt/elasticbeanstalk/bin/get-config container -k app_deploy_dir)</span>
+        <span class="s">EB_APP_PID_DIR=$(/opt/elasticbeanstalk/bin/get-config container -k app_pid_dir)</span>
+        <span class="s">cd $EB_APP_DEPLOY_DIR</span>
+
+        <span class="s">exec su -s /bin/bash -c "sidekiq -e ${RACK_ENV} -c ${SIDEKIQ_WORKERS:-2} -L ${EB_APP_DEPLOY_DIR}/log/sidekiq.log -C ${EB_APP_DEPLOY_DIR}/config/sidekiq.yml -P ${EB_APP_PID_DIR}/sidekiq.pid" webapp</span>
+      <span class="s">EOT</span>
+      <span class="s">end script</span>
+</pre></div>
+</div>
+
+<p>pumaの真似をしてリンク作成、initcrlをリロード。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">16_sidekiq_setup.config</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">files</span><span class="pi">:</span>
+  <span class="s2">"</span><span class="s">/etc/init/sidekiq.conf"</span> <span class="pi">:</span>
+    <span class="na">mode</span><span class="pi">:</span> <span class="s2">"</span><span class="s">120400"</span>
+    <span class="na">content</span><span class="pi">:</span> <span class="s2">"</span><span class="s">/opt/elasticbeanstalk/support/conf/sidekiq.conf"</span>
+
+<span class="na">commands</span><span class="pi">:</span>
+  <span class="na">reload_initctl_for_sidekiq</span><span class="pi">:</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="s2">"</span><span class="s">initctl</span><span class="nv"> </span><span class="s">reload-configuration"</span>
+</pre></div>
+</div>
+
+<p>これでeb deployすればsidekiqがUpstart配下で起動する。</p>
+
+<h3>
+<span id="sidekiqがupstart配下にあることを確認する" class="fragment"></span><a href="#sidekiq%E3%81%8Cupstart%E9%85%8D%E4%B8%8B%E3%81%AB%E3%81%82%E3%82%8B%E3%81%93%E3%81%A8%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>SidekiqがUpstart配下にあることを確認する</h3>
+
+<p>一応見に行こう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo initctl status sidekiq
+sidekiq start/running, process 22745
+</pre></div></div>
+
+<p>killしてもリスポーンすることもついでに確認しておくとよいかも。</p>
+
+<h2>
+<span id="inspeqtorをelsticbeanstalkのrubyコンテナに導入する" class="fragment"></span><a href="#inspeqtor%E3%82%92elsticbeanstalk%E3%81%AEruby%E3%82%B3%E3%83%B3%E3%83%86%E3%83%8A%E3%81%AB%E5%B0%8E%E5%85%A5%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>inspeqtorをElsticBeanstalkのRubyコンテナに導入する</h2>
+
+<p>リポジトリを登録して、yumからインストール。<br>
+ここは別ファイルにしないとpackagesが先に実行されるみたい。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">10_inspeqtor_repo.config</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">commands</span><span class="pi">:</span>
+  <span class="na">01_download_inspeqtor_repo_register</span><span class="pi">:</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="s2">"</span><span class="s">/usr/bin/curl</span><span class="nv"> </span><span class="s">-L</span><span class="nv"> </span><span class="s">https://bit.ly/InspeqtorRPM</span><span class="nv"> </span><span class="s">-o</span><span class="nv"> </span><span class="s">/tmp/InspeqtorRPM"</span>
+  <span class="na">02_setup_inspeqtor_repo</span><span class="pi">:</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="s2">"</span><span class="s">/bin/bash</span><span class="nv"> </span><span class="s">/tmp/InspeqtorRPM"</span>
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">11_inspeqtor_install.config</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">packages</span><span class="pi">:</span>
+  <span class="na">yum</span><span class="pi">:</span>
+    <span class="na">nc</span><span class="pi">:</span> <span class="pi">[]</span>
+    <span class="na">inspeqtor</span><span class="pi">:</span> <span class="pi">[]</span>
+</pre></div>
+</div>
+
+<p>このrpmはインストール後に自動でinspeqtorが起動する。操作はinitctlで。</p>
+
+<h2>
+<span id="sidekiqをinspectorでモニタリングする" class="fragment"></span><a href="#sidekiq%E3%82%92inspector%E3%81%A7%E3%83%A2%E3%83%8B%E3%82%BF%E3%83%AA%E3%83%B3%E3%82%B0%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>SidekiqをInspectorでモニタリングする</h2>
+
+<p>次は『sidekiq x inspector』。<br>
+ファイルを置いてinspeqtorをリスタートしよう。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">21_monitor_sidekiq_by_inspeqtor.config</span></div>
+<div class="highlight"><pre>---
+files:
+  "/etc/inspeqtor/services.d/sidekiq.inq":
+    content: |
+      check service sidekiq
+        if memory:rss &gt; 500m then restart
+        if cpu:user &gt; 60% for 2 cycles then restart
+
+commands:
+  reload_inspeqtor:
+    command: "initctl restart inspeqtor || initctl start inspeqtor"
+</pre></div>
+</div>
+
+<p>メール通知の行き先は適当に。自分はこういうのはPagerdutyに送る。</p>
+
+<h3>
+<span id="inspectorがsidekiqの状態を見ていることを確認" class="fragment"></span><a href="#inspector%E3%81%8Csidekiq%E3%81%AE%E7%8A%B6%E6%85%8B%E3%82%92%E8%A6%8B%E3%81%A6%E3%81%84%E3%82%8B%E3%81%93%E3%81%A8%E3%82%92%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>InspectorがSidekiqの状態を見ていることを確認。</h3>
+
+<p><code>inspeqtorctl</code>で状況を確認できる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo inspeqtorctl status
+Inspeqtor 0.8.1, uptime: 47m47.786741131s, pid: 3685
+
+Host: ip-xx-xx-xx-xx
+  cpu                                 0.8%           
+  cpu:iowait                          0.1%           
+  cpu:steal                           0.1%           
+  cpu:system                          0.2%           
+  cpu:user                            0.5%           
+  disk:/                              50.0%           90%
+  load:1                              0.00           
+  load:15                             0.05           
+  load:5                              0.01            10
+  swap                                1.0%            20%
+
+Service: sidekiq [Up/22745]
+  cpu:system                          0.0%           
+  cpu:total_system                    0.0%           
+  cpu:total_user                      0.0%           
+  cpu:user                            0.0%            60%
+  memory:rss                          1.42m           500m
+</pre></div></div>
+
+<p>よし見てるね。これで仕様は次の通り。</p>
+
+<ul>
+<li>止まってたらリスタート</li>
+<li>よーわからん高負荷だったらリスタート(アラート)</li>
+</ul>
+
+<h2>
+<span id="ほか" class="fragment"></span><a href="#%E3%81%BB%E3%81%8B"><i class="fa fa-link"></i></a>ほか</h2>
+
+<p><code>Sidekiq::Stats</code>なデータはカスタムメトリクスでClowdWatchに送るなりもOK。<br>
+ついでにNew RericとAirBrakeも使っている。</p>
+
+<p>Sidekiq用のRedisはアプリ間で共有が必須かどうかなどの要件に応じて、<a href="http://redistogo.com/" title="Redis To Go" rel="nofollow noopener" target="_blank">Redis To Go</a>、ローカルRedis(epelからさくっと入れることができる)、ElastiCache から選ぶといい。</p>

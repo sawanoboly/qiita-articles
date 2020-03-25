@@ -1,0 +1,356 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>以前、<a href="http://opsrock.in/2013/09/24/768" title="ChefをつかってmrubyをCookbookから手軽に入れよう | Opsrock" rel="nofollow noopener" target="_blank">ChefをつかってmrubyをCookbookから手軽に入れよう | Opsrock</a>という記事を公開しました。<br>
+mrubyのCookbookはOpscodeのコミュニティCookbookとしても公開されているので、どうぞご自由にご利用ください。</p>
+
+<p>なのですが、試すサーバも無いよという方のために、今日はtest-kitchen(with vagrant-driver)でmrubyを触ってみる方法を紹介。</p>
+
+<blockquote>
+<p>追記: mod_mrubyにも対応した</p>
+</blockquote>
+
+<h2>
+<span id="test-kitchenの事前準備" class="fragment"></span><a href="#test-kitchen%E3%81%AE%E4%BA%8B%E5%89%8D%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>test-kitchenの事前準備</h2>
+
+<p>事前にこれらを公式のパッケージで入れましょう、あとRubyね。</p>
+
+<ul>
+<li>virtualbox</li>
+<li>vagrant</li>
+</ul>
+
+<p>入れましたね。</p>
+
+<h2>
+<span id="test-kitchenのセットアップ" class="fragment"></span><a href="#test-kitchen%E3%81%AE%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>test-kitchenのセットアップ</h2>
+
+<p>mruby Cookbookをリポジトリからクローンします。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash-cli_git_clone</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>git clone https://github.com/higanworks-cookbooks/mruby.git
+<span class="nv">$ </span><span class="nb">cd </span>mruby
+</pre></div>
+</div>
+
+<p>bundlerで tes-kitchenをインストールしましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash-cli_bundle</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>bundle
+Using rake <span class="o">(</span>10.1.0<span class="o">)</span> 
+Using archive-tar-minitar <span class="o">(</span>0.5.2<span class="o">)</span> 
+<span class="nt">--</span> snip <span class="nt">--</span>
+Using test-kitchen <span class="o">(</span>1.1.0<span class="o">)</span> 
+Using kitchen-vagrant <span class="o">(</span>0.13.0<span class="o">)</span> 
+Using librarian <span class="o">(</span>0.1.0<span class="o">)</span> 
+Using librarian-chef <span class="o">(</span>0.0.1<span class="o">)</span> 
+Using bundler <span class="o">(</span>1.3.5<span class="o">)</span> 
+Your bundle is <span class="nb">complete</span><span class="o">!</span>
+Use <span class="sb">`</span>bundle show <span class="o">[</span>gemname]<span class="sb">`</span> to see where a bundled gem is installed.
+
+
+<span class="nv">$ </span>kitchen <span class="nt">-v</span>
+Test Kitchen version 1.1.0
+</pre></div>
+</div>
+
+<p>はい、できましたね。</p>
+
+<h2>
+<span id="作成できる環境--mrubyのセットを確認する" class="fragment"></span><a href="#%E4%BD%9C%E6%88%90%E3%81%A7%E3%81%8D%E3%82%8B%E7%92%B0%E5%A2%83--mruby%E3%81%AE%E3%82%BB%E3%83%83%E3%83%88%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>作成できる環境 + mrubyのセットを確認する</h2>
+
+<p><code>kitchen list</code>コマンドで、作れる環境をの一覧を表示してみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash-cli_kitchen_list</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>kitchen list
+Instance               Driver   Provisioner  Last Action
+default-ubuntu-1204    Vagrant  ChefSolo     &lt;Not Created&gt;
+default-centos-64      Vagrant  ChefSolo     &lt;Not Created&gt;
+rbenv-ubuntu-1204      Vagrant  ChefSolo     &lt;Not Created&gt;
+rbenv-centos-64        Vagrant  ChefSolo     &lt;Not Created&gt;
+ngx-mruby-ubuntu-1204  Vagrant  ChefSolo     &lt;Not Created&gt;
+ngx-mruby-centos-64    Vagrant  ChefSolo     &lt;Not Created&gt;
+</pre></div>
+</div>
+
+<p>2系統のプラットフォームで3種類ずつの環境が作れます。</p>
+
+<h2>
+<span id="仮想マシンに普通のmubyを使える環境を構築" class="fragment"></span><a href="#%E4%BB%AE%E6%83%B3%E3%83%9E%E3%82%B7%E3%83%B3%E3%81%AB%E6%99%AE%E9%80%9A%E3%81%AEmuby%E3%82%92%E4%BD%BF%E3%81%88%E3%82%8B%E7%92%B0%E5%A2%83%E3%82%92%E6%A7%8B%E7%AF%89"><i class="fa fa-link"></i></a>仮想マシンに普通のmubyを使える環境を構築</h2>
+
+<p><code>default-*</code>がそれにあたります。UbuntuとCentOSとありますね。<br>
+<code>kitchen converge</code>コマンドで両方作ってみましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash-cli_converge_default</span></div>
+<div class="highlight"><pre><span class="nv">$ </span> kitchen converge default
+<span class="nt">-----</span><span class="o">&gt;</span> Starting Kitchen <span class="o">(</span>v1.1.0<span class="o">)</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Creating &lt;default-ubuntu-1204&gt;...
+       Bringing machine <span class="s1">'default'</span> up with <span class="s1">'virtualbox'</span> provider...
+       <span class="o">[</span>default] Importing base box <span class="s1">'opscode-ubuntu-12.04'</span>...
+</pre></div>
+</div>
+
+<p>Ubuntu環境の作成が始まりました、しばらく待ちましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>...
+Build summary:       
+
+================================================       
+      Config Name: host       
+ Output Directory: build/host       
+         Binaries: mruby, mrbc, mirb       
+    Included Gems:       
+             mruby-sprintf - 0.0.0       
+             mruby-print - 0.0.0       
+             mruby-math - 0.0.0       
+             mruby-time - 0.0.0       
+             mruby-struct - 0.0.0       
+             mruby-enum-ext - 0.0.0       
+             mruby-string-ext - 0.0.0
+             mruby-numeric-ext - 0.0.0
+             mruby-array-ext - 0.0.0
+             mruby-hash-ext - 0.0.0
+             mruby-range-ext - 0.0.0
+             mruby-proc-ext - 0.0.0
+             mruby-symbol-ext - 0.0.0
+             mruby-random - 0.0.0
+             mruby-object-ext - 0.0.0
+             mruby-objectspace - 0.0.0
+             mruby-fiber - 0.0.0
+             mruby-toplevel-ext - 0.0.0
+             mruby-bin-mirb - 0.0.0
+               - Binaries: mirb
+             mruby-bin-mruby - 0.0.0
+               - Binaries: mruby
+             mruby-io - 0.0.0
+       ================================================
+...
+</pre></div></div>
+
+<p>mrubyビルドぽいログが。</p>
+
+<p>間髪入れずにCentOSも始まります。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>-----&gt; Creating &lt;default-centos-64&gt;...
+       Bringing machine 'default' up with 'virtualbox' provider...
+       [default] Importing base box 'opscode-centos-6.4'...
+</pre></div></div>
+
+<p>まだまだ放っておきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>...
+       Build summary:
+
+       ================================================
+             Config Name: host
+        Output Directory: build/host
+         Binaries: mruby, mrbc, mirb
+           Included Gems:
+...
+</pre></div></div>
+
+<p>ビルド来てますね。</p>
+
+<h4>
+<span id="mrubyを確認する" class="fragment"></span><a href="#mruby%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>mrubyを確認する</h4>
+
+<p><code>kitchen login</code>コマンドで仮想マシンにログインして確認してみましょう、Ubuntuから。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen login default-ubuntu-1204
+Welcome to Ubuntu 12.04.2 LTS (GNU/Linux 3.5.0-23-generic x86_64)
+
+## 以下仮想マシン内
+
+vagrant@default-ubuntu-1204:~$ mruby --version
+mruby - Embeddable Ruby  Copyright (c) 2010-2013 mruby developers
+</pre></div></div>
+
+<p>次はCentOSへ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen login default-centos-64
+Last login: Fri Dec  6 05:14:40 2013 from 10.0.2.2
+
+## 以下仮想マシン内
+
+[vagrant@default-centos-64 ~]$ mruby --version
+mruby - Embeddable Ruby  Copyright (c) 2010-2013 mruby developers
+</pre></div></div>
+
+<p>やったね。</p>
+
+<p>ちなみにmrubyのバージョンはmasterのHEADです、自由に選べるようにもしているので興味があれば変更してみましょう。</p>
+
+<h3>
+<span id="おかたづけ" class="fragment"></span><a href="#%E3%81%8A%E3%81%8B%E3%81%9F%E3%81%A5%E3%81%91"><i class="fa fa-link"></i></a>おかたづけ</h3>
+
+<p>mrubyを存分に触ったら、仮想マシンを消しましょう。<br>
+<code>kitchen destroy</code>コマンドです。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash-cli_</span></div>
+<div class="highlight"><pre><span class="nv">$ </span> kitchen destroy default
+<span class="nt">-----</span><span class="o">&gt;</span> Starting Kitchen <span class="o">(</span>v1.1.0<span class="o">)</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Destroying &lt;default-ubuntu-1204&gt;...
+       <span class="o">[</span>default] Forcing shutdown of VM...
+       <span class="o">[</span>default] Destroying VM and associated drives...
+       Vagrant instance &lt;default-ubuntu-1204&gt; destroyed.
+       Finished destroying &lt;default-ubuntu-1204&gt; <span class="o">(</span>0m2.49s<span class="o">)</span><span class="nb">.</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Destroying &lt;default-centos-64&gt;...
+       <span class="o">[</span>default] Forcing shutdown of VM...
+       <span class="o">[</span>default] Destroying VM and associated drives...
+       Vagrant instance &lt;default-centos-64&gt; destroyed.
+       Finished destroying &lt;default-centos-64&gt; <span class="o">(</span>0m2.51s<span class="o">)</span><span class="nb">.</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Kitchen is finished. <span class="o">(</span>0m5.30s<span class="o">)</span>
+</pre></div>
+</div>
+
+<p>消したね。</p>
+
+<h2>
+<span id="ngx_mrubyを組み込んだnginx" class="fragment"></span><a href="#ngx_mruby%E3%82%92%E7%B5%84%E3%81%BF%E8%BE%BC%E3%82%93%E3%81%A0nginx"><i class="fa fa-link"></i></a>ngx_mrubyを組み込んだnginx</h2>
+
+<p><code>ngx-mruby-*</code>はmrubyをインストールするついでに、ngx_mrubyモジュールを組み込んだNginxをビルドする環境です。<br>
+ついでにやってみましょう。</p>
+
+<p>ngx_mrubyについてはこちらをどうぞ。</p>
+
+<p><a href="http://blog.matsumoto-r.jp/?p=3737" title="人間とウェブの未来 - ngx_mrubyの紹介 ならびに nginx+mruby+Redisによる動的なリバースプロキシの実装案" rel="nofollow noopener" target="_blank">人間とウェブの未来 - ngx_mrubyの紹介 ならびに nginx+mruby+Redisによる動的なリバースプロキシの実装案</a></p>
+
+<p>ちなみにこちらの環境はmrubyのバージョンが<a href="https://github.com/mruby/mruby/tree/9b2f4c4423ed11f12d6393ae1f0dd4fe3e51ffa0" rel="nofollow noopener" target="_blank">9b2f4c4423ed11f12d6393ae1f0dd4fe3e51ffa0</a>に固定となってます。指定は<code>.kitchen.yml</code>ファイルで。</p>
+
+<blockquote class="twitter-tweet">
+<p>mod_mrubyとngx_mruby、submoduleで保存しているmrubyのcommitバージョンじゃないと動かない（最新mrubyのバイトコードの持ち方が大きく変更されているため）ので注意して下さい。年末対応予定です。</p>— MATSUMOTO, Ryosuke (@matsumotory) <a href="https://twitter.com/matsumotory/statuses/408833398040305664" rel="nofollow noopener" target="_blank">2013, 12月 6</a>
+</blockquote>
+
+
+
+<p>さあ、なにはともあれ<code>kitchen converge</code>です。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash-cli_converge_ngx_mruby</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>kitchen converge ngx-mruby
+<span class="nt">-----</span><span class="o">&gt;</span> Starting Kitchen <span class="o">(</span>v1.1.0<span class="o">)</span>
+<span class="nt">-----</span><span class="o">&gt;</span> Creating &lt;ngx-mruby-ubuntu-1204&gt;...
+<span class="nt">--</span> snip <span class="nt">--</span>
+</pre></div>
+</div>
+
+<p>またしばらく待ちましょう。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bash-cli_ngx_mruby</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>kitchen login ngx-mruby-ubuntu-1204
+Welcome to Ubuntu 12.04.2 LTS <span class="o">(</span>GNU/Linux 3.5.0-23-generic x86_64<span class="o">)</span>
+
+vagrant@ngx-mruby-ubuntu-1204:~<span class="nv">$ </span>/opt/nginx-1.4.2/sbin/nginx <span class="nt">-V</span>
+nginx version: nginx/1.4.2
+built by gcc 4.6.3 <span class="o">(</span>Ubuntu/Linaro 4.6.3-1ubuntu5<span class="o">)</span> 
+TLS SNI support enabled
+configure arguments: <span class="nt">--prefix</span><span class="o">=</span>/opt/nginx-1.4.2 <span class="nt">--conf-path</span><span class="o">=</span>/etc/nginx/nginx.conf <span class="nt">--sbin-path</span><span class="o">=</span>/opt/nginx-1.4.2/sbin/nginx <span class="nt">--with-debug</span> <span class="nt">--add-module</span><span class="o">=</span>/opt/chef_mruby/ngx_mruby <span class="nt">--add-module</span><span class="o">=</span>/opt/chef_mruby/ngx_mruby/dependence/ngx_devel_kit <span class="nt">--with-http_ssl_module</span> <span class="nt">--with-http_geoip_module</span> <span class="nt">--with-ld-opt</span><span class="o">=</span><span class="s1">'-Wl,-R,/usr/local/lib -L /usr/local/lib'</span> <span class="nt">--with-http_realip_module</span> <span class="nt">--with-http_stub_status_module</span> <span class="nt">--with-http_gzip_static_module</span>
+</pre></div>
+</div>
+
+<p><code>--add-module=/opt/chef_mruby/ngx_mruby</code>がついてます、やったね。</p>
+
+<h2>
+<span id="mod_mrubyをapache-httpdに追加1213追記" class="fragment"></span><a href="#mod_mruby%E3%82%92apache-httpd%E3%81%AB%E8%BF%BD%E5%8A%A01213%E8%BF%BD%E8%A8%98"><i class="fa fa-link"></i></a>mod_mrubyをapache httpdに追加(12/13追記)</h2>
+
+<blockquote class="twitter-tweet">
+<p>これ、mod_mrubyのイメージもあったら開発環境として個人的に最高だな…</p>— MATSUMOTO, Ryosuke (@matsumotory) <a href="https://twitter.com/matsumotory/statuses/409342266017210368" rel="nofollow noopener" target="_blank">2013, 12月 7</a>
+</blockquote>
+
+
+
+<p>つかまえたフィードバックから、レシピを追加することにしました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen list
+Instance               Driver   Provisioner  Last Action
+default-ubuntu-1204    Vagrant  ChefSolo     &lt;Not Created&gt;
+default-centos-64      Vagrant  ChefSolo     &lt;Not Created&gt;
+rbenv-ubuntu-1204      Vagrant  ChefSolo     &lt;Not Created&gt;
+rbenv-centos-64        Vagrant  ChefSolo     &lt;Not Created&gt;
+ngx-mruby-ubuntu-1204  Vagrant  ChefSolo     &lt;Not Created&gt;
+ngx-mruby-centos-64    Vagrant  ChefSolo     &lt;Not Created&gt;
+mod-mruby-ubuntu-1204  Vagrant  ChefSolo     Converged
+mod-mruby-centos-64    Vagrant  ChefSolo     Converged
+</pre></div></div>
+
+<p>mod_mruby環境のお試しはこちら。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen converge mod-mruby
+</pre></div></div>
+
+<p>VM内で確認してみますよ。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ kitchen login mod-mruby-centos
+
+$ sudo httpd -M
+Loaded Modules:
+ core_module (static)
+ mpm_prefork_module (static)
+ http_module (static)
+ so_module (static)
+ mruby_module (shared)
+ alias_module (shared)
+ auth_basic_module (shared)
+ authn_file_module (shared)
+ authz_default_module (shared)
+ authz_groupfile_module (shared)
+ authz_host_module (shared)
+ authz_user_module (shared)
+ autoindex_module (shared)
+ deflate_module (shared)
+ dir_module (shared)
+ env_module (shared)
+ log_config_module (shared)
+ logio_module (shared)
+ mime_module (shared)
+ negotiation_module (shared)
+ setenvif_module (shared)
+ status_module (shared)
+Syntax OK
+</pre></div></div>
+
+<p>適当にファイルを置いて動作チェック。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cat -n /var/www/html/hoge.rb 
+     1  if server_name == "NGINX"
+     2    Server = Nginx
+     3  elsif server_name == "Apache"
+     4    Server = Apache
+     5  end
+     6  
+     7  Server::rputs "Hello #{Server::module_name}/#{Server::module_version} world!\n"
+</pre></div></div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl localhost/hoge.rb
+Hello mod_mruby/0.9.4 world!
+</pre></div></div>
+
+<p>でましたねえ。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>CookbookのREADMEに任意のmgemを組み込む方法が書いてありますので、それも是非やってみましょう。</p>
+
+<h2>
+<span id="追記1227" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%981227"><i class="fa fa-link"></i></a>　追記:12/27</h2>
+
+<blockquote class="twitter-tweet">
+<p><a href="https://twitter.com/sawanoboly" rel="nofollow noopener" target="_blank">@sawanoboly</a> <a href="https://t.co/02uAltxjmJ" rel="nofollow noopener" target="_blank">https://t.co/02uAltxjmJ</a> 最新のmruby対応しましたので、advent calendarの環境構築ツールも最初書いていたのに合わしていただけると嬉しいです！</p>— MATSUMOTO, Ryosuke (@matsumotory) <a href="https://twitter.com/matsumotory/statuses/416182604526653440" rel="nofollow noopener" target="_blank">2013, 12月 26</a>
+</blockquote>
+
+
+
+<p>mruby最新のビルドに対応してきたようです。<br>
+ただ、元から任意のリビジョンのmrubyをビルドできるようにしているから、レシピに変更するところはないのです。</p>
+
+<p>どこを変えたらいいかな? この記事を読んだ人は是非やってみよう。</p>

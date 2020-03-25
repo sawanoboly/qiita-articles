@@ -1,0 +1,561 @@
+<p>先日Googleから <a href="https://opensource.googleblog.com/2018/01/container-structure-tests-unit-tests.html" rel="nofollow noopener" target="_blank">Container Structure Tests: Unit Tests for Docker Images | Google Open Source Blog</a> というお話が出ていました。</p>
+
+<p>やってみよう。</p>
+
+<p>テストできるのは次のパターン。</p>
+
+<ul>
+<li>コマンド実行結果</li>
+<li>ファイルの場所とパーミッション</li>
+<li>ファイルの中身</li>
+<li>コンテナイメージのメタデータ(EXPOSEとかWORKDIRなど)</li>
+<li>含まれるOSSのライセンス (GCP上で動かしてもよいかのチェックなのかな？とりあえずdebianのみ対応)</li>
+</ul>
+
+<p>内容からして、ファイルの記述が正しければ動作も正しいだろう、という観点で使うもののようですね。 Structureっつってんだからそういうもんでしょう。</p>
+
+<h2>
+<span id="macosでのセットアップ" class="fragment"></span><a href="#macos%E3%81%A7%E3%81%AE%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97"><i class="fa fa-link"></i></a>MacOSでのセットアップ</h2>
+
+<p>配布しているバイナリはLinuxでのみ動くよ、とのことです。コンテナを配布しているのでそっちを使ってみましょう。</p>
+
+<p>コンテナはこちらに。<a href="https://console.cloud.google.com/gcr/images/gcp-runtimes/GLOBAL/container-structure-test" rel="nofollow noopener" target="_blank">gcr.io/gcp-runtimes/container-structure-test</a></p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker pull gcr.io/gcp-runtimes/container-structure-test:v0.1.3
+v0.1.3: Pulling from gcp-runtimes/container-structure-test
+cd2f5b7886e9: Pull <span class="nb">complete 
+</span>9be56f236f9a: Pull <span class="nb">complete 
+</span>Digest: sha256:15ae6f3996ebc05b657a042bd5dd8f4d4d66b015effea5fd024c70b8a1f9c42a
+Status: Downloaded newer image <span class="k">for </span>gcr.io/gcp-runtimes/container-structure-test:v0.1.3
+</pre></div></div>
+
+<p>ヘルプを出してみます。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker run gcr.io/gcp-runtimes/container-structure-test:v0.1.3 <span class="nt">-h</span>
+Usage of /go_default_test:
+  <span class="nt">-driver</span> string
+        driver to use when running tests <span class="o">(</span>default <span class="s2">"docker"</span><span class="o">)</span>
+  <span class="nt">-image</span> string
+        path to <span class="nb">test </span>image
+  <span class="nt">-pull</span>
+        force a pull of the image before running tests
+  <span class="nt">-save</span>
+        preserve created containers after <span class="nb">test </span>run
+  <span class="nt">-test</span>.bench regexp
+        run only benchmarks matching regexp
+  <span class="nt">-test</span>.benchmem
+        print memory allocations <span class="k">for </span>benchmarks
+  <span class="nt">-test</span>.benchtime d
+        run each benchmark <span class="k">for </span>duration d <span class="o">(</span>default 1s<span class="o">)</span>
+  <span class="nt">-test</span>.blockprofile file
+        write a goroutine blocking profile to file
+  <span class="nt">-test</span>.blockprofilerate rate
+        <span class="nb">set </span>blocking profile rate <span class="o">(</span>see runtime.SetBlockProfileRate<span class="o">)</span> <span class="o">(</span>default 1<span class="o">)</span>
+  <span class="nt">-test</span>.count n
+        run tests and benchmarks n <span class="nb">times</span> <span class="o">(</span>default 1<span class="o">)</span>
+  <span class="nt">-test</span>.coverprofile file
+        write a coverage profile to file
+  <span class="nt">-test</span>.cpu list
+        comma-separated list of cpu counts to run each <span class="nb">test </span>with
+  <span class="nt">-test</span>.cpuprofile file
+        write a cpu profile to file
+  <span class="nt">-test</span>.memprofile file
+        write a memory profile to file
+  <span class="nt">-test</span>.memprofilerate rate
+        <span class="nb">set </span>memory profiling rate <span class="o">(</span>see runtime.MemProfileRate<span class="o">)</span>
+  <span class="nt">-test</span>.mutexprofile string
+        write a mutex contention profile to the named file after execution
+  <span class="nt">-test</span>.mutexprofilefraction int
+        <span class="k">if</span> <span class="o">&gt;=</span> 0, calls runtime.SetMutexProfileFraction<span class="o">()</span> <span class="o">(</span>default 1<span class="o">)</span>
+  <span class="nt">-test</span>.outputdir <span class="nb">dir
+        </span>write profiles to <span class="nb">dir</span>
+  <span class="nt">-test</span>.parallel n
+        run at most n tests <span class="k">in </span>parallel <span class="o">(</span>default 3<span class="o">)</span>
+  <span class="nt">-test</span>.run regexp
+        run only tests and examples matching regexp
+  <span class="nt">-test</span>.short
+        run smaller <span class="nb">test </span>suite to save <span class="nb">time</span>
+  <span class="nt">-test</span>.timeout d
+        fail <span class="nb">test </span>binary execution after duration d <span class="o">(</span>0 means unlimited<span class="o">)</span>
+  <span class="nt">-test</span>.trace file
+        write an execution trace to file
+  <span class="nt">-test</span>.v
+        verbose: print additional output
+</pre></div></div>
+
+<p>よしよし。</p>
+
+<h2>
+<span id="サンプルのテストを実行する" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AE%E3%83%86%E3%82%B9%E3%83%88%E3%82%92%E5%AE%9F%E8%A1%8C%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>サンプルのテストを実行する</h2>
+
+<p>リポジトリにテスト用のファイルがあるので、それを使ってみましょう。<a href="https://github.com/GoogleCloudPlatform/container-structure-test/blob/79b5f1e0e7eabd7e273873de802552cf528196b9/tests/debian_test.yaml" rel="nofollow noopener" target="_blank">container-structure-test/tests/debian_test.yaml</a></p>
+
+<p>メタデータ以外のテストが網羅されていますね。</p>
+
+<p>まずMacOSでdockerドライバ(default)をつかってみます。<code>docker.sock</code>をマウントすればOKでしょうきっと。コンフィグファイルもマウントしましょう、ルート直下でOK。</p>
+
+<p>このとき<code>-pull</code>をつけておくとイメージタグが必須になり(-pullでなければローカルからlatestを探索)、テストの前にpullしてくれます。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">-v</span> /var/run/docker.sock:/var/run/docker.sock <span class="se">\</span>
+  <span class="nt">-v</span> <span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>/debian_test.yaml:/debian_test.yaml <span class="se">\</span>
+  gcr.io/gcp-runtimes/container-structure-test:v0.1.3 <span class="se">\</span>
+  <span class="nt">-pull</span> <span class="se">\</span>
+  <span class="nt">-test</span>.v <span class="se">\</span>
+  <span class="nt">--image</span> gcr.io/google-appengine/debian8:latest <span class="se">\</span>
+  debian_test.yaml
+
+latest: Pulling from google-appengine/debian8
+Digest: sha256:412ef4d53215ff4a95d275ad48fe5196cb51f4f96b99c05058054b3bdf9443c1
+Status: Image is up to <span class="nb">date </span><span class="k">for </span>gcr.io/google-appengine/debian8:latest
+Using driver docker
+<span class="o">===</span> RUN   TestAll
+<span class="o">===</span> RUN   TestAll/Command_Test:_apt-get
+2018/01/11 06:40:59 Running tests <span class="k">for </span>file debian_test.yaml
+<span class="o">===</span> RUN   TestAll/Command_Test:_apt-config
+<span class="o">===</span> RUN   TestAll/Command_Test:_path
+<span class="o">===</span> RUN   TestAll/File_Existence_Test:_Root
+<span class="o">===</span> RUN   TestAll/File_Existence_Test:_Netbase
+<span class="o">===</span> RUN   TestAll/File_Existence_Test:_Machine_ID
+<span class="o">===</span> RUN   TestAll/File_Content_Test:_Debian_Sources
+<span class="o">===</span> RUN   TestAll/File_Content_Test:_Retry_Policy
+<span class="o">===</span> RUN   TestAll/Metadata_Test
+<span class="o">===</span> RUN   TestAll/License_Test_#0
+<span class="nt">---</span> PASS: TestAll <span class="o">(</span>36.99s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/Command_Test:_apt-get <span class="o">(</span>1.25s<span class="o">)</span>
+        docker_driver.go:74: stdout: apt 1.0.9.8.4 <span class="k">for </span>amd64 compiled on Dec 11 2016 09:48:19
+            Usage: apt-get <span class="o">[</span>options] <span class="nb">command
+                   </span>apt-get <span class="o">[</span>options] <span class="nb">install</span>|remove pkg1 <span class="o">[</span>pkg2 ...]
+                   apt-get <span class="o">[</span>options] <span class="nb">source </span>pkg1 <span class="o">[</span>pkg2 ...]
+
+            apt-get is a simple <span class="nb">command </span>line interface <span class="k">for </span>downloading and
+            installing packages. The most frequently used commands are update
+            and install.
+
+            Commands:
+               update - Retrieve new lists of packages
+               upgrade - Perform an upgrade
+               <span class="nb">install</span> - Install new packages <span class="o">(</span>pkg is libc6 not libc6.deb<span class="o">)</span>
+               remove - Remove packages
+               autoremove - Remove automatically all unused packages
+               purge - Remove packages and config files
+               <span class="nb">source</span> - Download <span class="nb">source </span>archives
+               build-dep - Configure build-dependencies <span class="k">for </span><span class="nb">source </span>packages
+               dist-upgrade - Distribution upgrade, see apt-get<span class="o">(</span>8<span class="o">)</span>
+               dselect-upgrade - Follow dselect selections
+               clean - Erase downloaded archive files
+               autoclean - Erase old downloaded archive files
+               check - Verify that there are no broken dependencies
+               changelog - Download and display the changelog <span class="k">for </span>the given package
+               download - Download the binary package into the current directory
+
+            Options:
+              <span class="nt">-h</span>  This <span class="nb">help </span>text.
+              <span class="nt">-q</span>  Loggable output - no progress indicator
+              <span class="nt">-qq</span> No output except <span class="k">for </span>errors
+              <span class="nt">-d</span>  Download only - <span class="k">do </span>NOT <span class="nb">install </span>or unpack archives
+              <span class="nt">-s</span>  No-act. Perform ordering simulation
+              <span class="nt">-y</span>  Assume Yes to all queries and <span class="k">do </span>not prompt
+              <span class="nt">-f</span>  Attempt to correct a system with broken dependencies <span class="k">in </span>place
+              <span class="nt">-m</span>  Attempt to <span class="k">continue if </span>archives are unlocatable
+              <span class="nt">-u</span>  Show a list of upgraded packages as well
+              <span class="nt">-b</span>  Build the <span class="nb">source </span>package after fetching it
+              <span class="nt">-V</span>  Show verbose version numbers
+              <span class="nt">-c</span><span class="o">=</span>? Read this configuration file
+              <span class="nt">-o</span><span class="o">=</span>? Set an arbitrary configuration option, eg <span class="nt">-o</span> <span class="nb">dir</span>::cache<span class="o">=</span>/tmp
+            See the apt-get<span class="o">(</span>8<span class="o">)</span>, sources.list<span class="o">(</span>5<span class="o">)</span> and apt.conf<span class="o">(</span>5<span class="o">)</span> manual
+            pages <span class="k">for </span>more information and options.
+                                   This APT has Super Cow Powers.
+    <span class="nt">---</span> PASS: TestAll/Command_Test:_apt-config <span class="o">(</span>1.98s<span class="o">)</span>
+        docker_driver.go:74: stdout: APT <span class="s2">""</span><span class="p">;</span>
+            APT::Architecture <span class="s2">"amd64"</span><span class="p">;</span>
+            APT::Build-Essential <span class="s2">""</span><span class="p">;</span>
+            APT::Build-Essential:: <span class="s2">"build-essential"</span><span class="p">;</span>
+            APT::Install-Recommends <span class="s2">"1"</span><span class="p">;</span>
+            APT::Install-Suggests <span class="s2">"0"</span><span class="p">;</span>
+            APT::NeverAutoRemove <span class="s2">""</span><span class="p">;</span>
+            APT::NeverAutoRemove:: <span class="s2">"^firmware-linux.*"</span><span class="p">;</span>
+            APT::NeverAutoRemove:: <span class="s2">"^linux-firmware$"</span><span class="p">;</span>
+            APT::VersionedKernelPackages <span class="s2">""</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"linux-image"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"linux-headers"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"linux-image-extra"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"linux-signed-image"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"kfreebsd-image"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"kfreebsd-headers"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"gnumach-image"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">".*-modules"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">".*-kernel"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"linux-backports-modules-.*"</span><span class="p">;</span>
+            APT::VersionedKernelPackages:: <span class="s2">"linux-tools"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections <span class="s2">""</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"metapackages"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"restricted/metapackages"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"universe/metapackages"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"multiverse/metapackages"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"oldlibs"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"restricted/oldlibs"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"universe/oldlibs"</span><span class="p">;</span>
+            APT::Never-MarkAuto-Sections:: <span class="s2">"multiverse/oldlibs"</span><span class="p">;</span>
+            APT::AutoRemove <span class="s2">""</span><span class="p">;</span>
+            APT::AutoRemove::SuggestsImportant <span class="s2">"false"</span><span class="p">;</span>
+            APT::Update <span class="s2">""</span><span class="p">;</span>
+            APT::Update::Post-Invoke <span class="s2">""</span><span class="p">;</span>
+            APT::Update::Post-Invoke:: <span class="s2">"rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true"</span><span class="p">;</span>
+            APT::Architectures <span class="s2">""</span><span class="p">;</span>
+            APT::Architectures:: <span class="s2">"amd64"</span><span class="p">;</span>
+            APT::Compressor <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::. <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::.::Name <span class="s2">"."</span><span class="p">;</span>
+            APT::Compressor::.::Extension <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::.::Binary <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::.::Cost <span class="s2">"1"</span><span class="p">;</span>
+            APT::Compressor::gzip <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::gzip::Name <span class="s2">"gzip"</span><span class="p">;</span>
+            APT::Compressor::gzip::Extension <span class="s2">".gz"</span><span class="p">;</span>
+            APT::Compressor::gzip::Binary <span class="s2">"gzip"</span><span class="p">;</span>
+            APT::Compressor::gzip::Cost <span class="s2">"2"</span><span class="p">;</span>
+            APT::Compressor::gzip::CompressArg <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::gzip::CompressArg:: <span class="s2">"-9n"</span><span class="p">;</span>
+            APT::Compressor::gzip::UncompressArg <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::gzip::UncompressArg:: <span class="s2">"-d"</span><span class="p">;</span>
+            APT::Compressor::bzip2 <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::bzip2::Name <span class="s2">"bzip2"</span><span class="p">;</span>
+            APT::Compressor::bzip2::Extension <span class="s2">".bz2"</span><span class="p">;</span>
+            APT::Compressor::bzip2::Binary <span class="s2">"false"</span><span class="p">;</span>
+            APT::Compressor::bzip2::Cost <span class="s2">"3"</span><span class="p">;</span>
+            APT::Compressor::xz <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::xz::Name <span class="s2">"xz"</span><span class="p">;</span>
+            APT::Compressor::xz::Extension <span class="s2">".xz"</span><span class="p">;</span>
+            APT::Compressor::xz::Binary <span class="s2">"false"</span><span class="p">;</span>
+            APT::Compressor::xz::Cost <span class="s2">"4"</span><span class="p">;</span>
+            APT::Compressor::lzma <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::lzma::Name <span class="s2">"lzma"</span><span class="p">;</span>
+            APT::Compressor::lzma::Extension <span class="s2">".lzma"</span><span class="p">;</span>
+            APT::Compressor::lzma::Binary <span class="s2">"false"</span><span class="p">;</span>
+            APT::Compressor::lzma::Cost <span class="s2">"5"</span><span class="p">;</span>
+            APT::Compressor::lzma::CompressArg <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::lzma::CompressArg:: <span class="s2">"--suffix="</span><span class="p">;</span>
+            APT::Compressor::lzma::CompressArg:: <span class="s2">"-9"</span><span class="p">;</span>
+            APT::Compressor::lzma::UncompressArg <span class="s2">""</span><span class="p">;</span>
+            APT::Compressor::lzma::UncompressArg:: <span class="s2">"--suffix="</span><span class="p">;</span>
+            APT::Compressor::lzma::UncompressArg:: <span class="s2">"-d"</span><span class="p">;</span>
+            Dir <span class="s2">"/"</span><span class="p">;</span>
+            Dir::State <span class="s2">"var/lib/apt/"</span><span class="p">;</span>
+            Dir::State::lists <span class="s2">"lists/"</span><span class="p">;</span>
+            Dir::State::cdroms <span class="s2">"cdroms.list"</span><span class="p">;</span>
+            Dir::State::mirrors <span class="s2">"mirrors/"</span><span class="p">;</span>
+            Dir::State::extended_states <span class="s2">"extended_states"</span><span class="p">;</span>
+            Dir::State::status <span class="s2">"/var/lib/dpkg/status"</span><span class="p">;</span>
+            Dir::Cache <span class="s2">"var/cache/apt/"</span><span class="p">;</span>
+            Dir::Cache::archives <span class="s2">"archives/"</span><span class="p">;</span>
+            Dir::Cache::srcpkgcache <span class="s2">""</span><span class="p">;</span>
+            Dir::Cache::pkgcache <span class="s2">""</span><span class="p">;</span>
+            Dir::Etc <span class="s2">"etc/apt/"</span><span class="p">;</span>
+            Dir::Etc::sourcelist <span class="s2">"sources.list"</span><span class="p">;</span>
+            Dir::Etc::sourceparts <span class="s2">"sources.list.d"</span><span class="p">;</span>
+            Dir::Etc::vendorlist <span class="s2">"vendors.list"</span><span class="p">;</span>
+            Dir::Etc::vendorparts <span class="s2">"vendors.list.d"</span><span class="p">;</span>
+            Dir::Etc::main <span class="s2">"apt.conf"</span><span class="p">;</span>
+            Dir::Etc::netrc <span class="s2">"auth.conf"</span><span class="p">;</span>
+            Dir::Etc::parts <span class="s2">"apt.conf.d"</span><span class="p">;</span>
+            Dir::Etc::preferences <span class="s2">"preferences"</span><span class="p">;</span>
+            Dir::Etc::preferencesparts <span class="s2">"preferences.d"</span><span class="p">;</span>
+            Dir::Etc::trusted <span class="s2">"trusted.gpg"</span><span class="p">;</span>
+            Dir::Etc::trustedparts <span class="s2">"trusted.gpg.d"</span><span class="p">;</span>
+            Dir::Bin <span class="s2">""</span><span class="p">;</span>
+            Dir::Bin::methods <span class="s2">"/usr/lib/apt/methods"</span><span class="p">;</span>
+            Dir::Bin::solvers <span class="s2">""</span><span class="p">;</span>
+            Dir::Bin::solvers:: <span class="s2">"/usr/lib/apt/solvers"</span><span class="p">;</span>
+            Dir::Bin::dpkg <span class="s2">"/usr/bin/dpkg"</span><span class="p">;</span>
+            Dir::Bin::bzip2 <span class="s2">"/bin/bzip2"</span><span class="p">;</span>
+            Dir::Bin::xz <span class="s2">"/usr/bin/xz"</span><span class="p">;</span>
+            Dir::Bin::lzma <span class="s2">"/usr/bin/lzma"</span><span class="p">;</span>
+            Dir::Media <span class="s2">""</span><span class="p">;</span>
+            Dir::Media::MountPath <span class="s2">"/media/apt"</span><span class="p">;</span>
+            Dir::Log <span class="s2">"var/log/apt"</span><span class="p">;</span>
+            Dir::Log::Terminal <span class="s2">"term.log"</span><span class="p">;</span>
+            Dir::Log::History <span class="s2">"history.log"</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently <span class="s2">""</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently:: <span class="s2">"~$"</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently:: <span class="s2">"</span><span class="se">\.</span><span class="s2">disabled$"</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently:: <span class="s2">"</span><span class="se">\.</span><span class="s2">bak$"</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently:: <span class="s2">"</span><span class="se">\.</span><span class="s2">dpkg-[a-z]+$"</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently:: <span class="s2">"</span><span class="se">\.</span><span class="s2">save$"</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently:: <span class="s2">"</span><span class="se">\.</span><span class="s2">orig$"</span><span class="p">;</span>
+            Dir::Ignore-Files-Silently:: <span class="s2">"</span><span class="se">\.</span><span class="s2">distUpgrade$"</span><span class="p">;</span>
+            Acquire <span class="s2">""</span><span class="p">;</span>
+            Acquire::cdrom <span class="s2">""</span><span class="p">;</span>
+            Acquire::cdrom::mount <span class="s2">"/media/cdrom/"</span><span class="p">;</span>
+            Acquire::Retries <span class="s2">"3"</span><span class="p">;</span>
+            Acquire::GzipIndexes <span class="s2">"true"</span><span class="p">;</span>
+            Acquire::CompressionTypes <span class="s2">""</span><span class="p">;</span>
+            Acquire::CompressionTypes::Order <span class="s2">""</span><span class="p">;</span>
+            Acquire::CompressionTypes::Order:: <span class="s2">"gz"</span><span class="p">;</span>
+            Acquire::Languages <span class="s2">""</span><span class="p">;</span>
+            Acquire::Languages:: <span class="s2">"none"</span><span class="p">;</span>
+            DPkg <span class="s2">""</span><span class="p">;</span>
+            DPkg::Pre-Install-Pkgs <span class="s2">""</span><span class="p">;</span>
+            DPkg::Pre-Install-Pkgs:: <span class="s2">"/usr/sbin/dpkg-preconfigure --apt || true"</span><span class="p">;</span>
+            DPkg::Post-Invoke <span class="s2">""</span><span class="p">;</span>
+            DPkg::Post-Invoke:: <span class="s2">"rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true"</span><span class="p">;</span>
+            CommandLine <span class="s2">""</span><span class="p">;</span>
+            CommandLine::AsString <span class="s2">"apt-config dump"</span><span class="p">;</span>
+    <span class="nt">---</span> PASS: TestAll/Command_Test:_path <span class="o">(</span>1.54s<span class="o">)</span>
+        docker_driver.go:74: stdout: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    <span class="nt">---</span> PASS: TestAll/File_Existence_Test:_Root <span class="o">(</span>0.67s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/File_Existence_Test:_Netbase <span class="o">(</span>0.16s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/File_Existence_Test:_Machine_ID <span class="o">(</span>0.16s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/File_Content_Test:_Debian_Sources <span class="o">(</span>0.14s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/File_Content_Test:_Retry_Policy <span class="o">(</span>0.18s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/Metadata_Test <span class="o">(</span>0.00s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/License_Test_#0 <span class="o">(</span>30.90s<span class="o">)</span>
+        licenses.go:70: acl
+        licenses.go:70: adduser
+        licenses.go:70: apt
+        licenses.go:70: base-files
+        licenses.go:70: base-passwd
+        licenses.go:70: bash
+        licenses.go:70: bsdutils
+        licenses.go:70: ca-certificates
+        licenses.go:70: coreutils
+        licenses.go:70: dash
+        licenses.go:70: debconf
+        licenses.go:70: debian-archive-keyring
+        licenses.go:70: debianutils
+        licenses.go:70: diffutils
+        licenses.go:70: dmsetup
+        licenses.go:70: dpkg
+        licenses.go:70: e2fslibs
+        licenses.go:70: e2fsprogs
+        licenses.go:70: findutils
+        licenses.go:70: gcc-4.8-base
+        licenses.go:70: gcc-4.9-base
+        licenses.go:70: gnupg
+        licenses.go:70: gpgv
+        licenses.go:70: <span class="nb">grep
+        </span>licenses.go:70: <span class="nb">gzip
+        </span>licenses.go:70: <span class="nb">hostname
+        </span>licenses.go:70: init
+        licenses.go:70: initscripts
+        licenses.go:70: insserv
+        licenses.go:70: libacl1
+        licenses.go:70: libapt-pkg4.12
+        licenses.go:70: libattr1
+        licenses.go:70: libaudit-common
+        licenses.go:70: libaudit1
+        licenses.go:70: libblkid1
+        licenses.go:70: libbz2-1.0
+        licenses.go:70: libc-bin
+        licenses.go:70: libc6
+        licenses.go:70: libcap2
+        licenses.go:70: libcap2-bin
+        licenses.go:70: libcomerr2
+        licenses.go:70: libcryptsetup4
+        licenses.go:70: libdb5.3
+        licenses.go:70: libdebconfclient0
+        licenses.go:70: libdevmapper1.02.1
+        licenses.go:70: libgcrypt20
+        licenses.go:70: libgpg-error0
+        licenses.go:70: libkmod2
+        licenses.go:70: liblocale-gettext-perl
+        licenses.go:70: liblzma5
+        licenses.go:70: libmount1
+        licenses.go:70: libpam-modules
+        licenses.go:70: libpam-modules-bin
+        licenses.go:70: libpam-runtime
+        licenses.go:70: libpam0g
+        licenses.go:70: libpcre3
+        licenses.go:70: libprocps3
+        licenses.go:70: libreadline6
+        licenses.go:70: libselinux1
+        licenses.go:70: libsemanage-common
+        licenses.go:70: libsemanage1
+        licenses.go:70: libsepol1
+        licenses.go:70: libslang2
+        licenses.go:70: libsmartcols1
+        licenses.go:70: libss2
+        licenses.go:70: libssl1.0.0
+        licenses.go:70: libsystemd0
+        licenses.go:70: libtext-charwidth-perl
+        licenses.go:70: libtext-iconv-perl
+        licenses.go:70: libtext-wrapi18n-perl
+        licenses.go:70: libtinfo5
+        licenses.go:70: libudev1
+        licenses.go:70: libusb-0.1-4
+        licenses.go:70: libustr-1.0-1
+        licenses.go:70: libuuid1
+        licenses.go:70: login
+        licenses.go:70: lsb-base
+        licenses.go:70: mawk
+        licenses.go:70: mount
+        licenses.go:70: multiarch-support
+        licenses.go:70: ncurses-base
+        licenses.go:70: ncurses-bin
+        licenses.go:70: netbase
+        licenses.go:70: openssl
+        licenses.go:70: passwd
+        licenses.go:70: perl
+        licenses.go:70: procps
+        licenses.go:70: readline-common
+        licenses.go:70: <span class="nb">sed
+        </span>licenses.go:70: sensible-utils
+        licenses.go:70: startpar
+        licenses.go:70: systemd
+        licenses.go:70: systemd-sysv
+        licenses.go:70: sysv-rc
+        licenses.go:70: sysvinit-utils
+        licenses.go:70: <span class="nb">tar
+        </span>licenses.go:70: tzdata
+        licenses.go:70: util-linux
+        licenses.go:70: zlib1g
+    structure_test.go:47: Total tests run: 10
+PASS
+</pre></div></div>
+
+<p>最後に<code>PASS</code>でおわればOKです。<code>-test.v</code>をつけない場合は<code>PASS</code>だけでます。FAIL時はexit_codeもちゃんと0以外で終わるので安心。</p>
+
+<h3>
+<span id="metadatatestもやってみよう" class="fragment"></span><a href="#metadatatest%E3%82%82%E3%82%84%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%88%E3%81%86"><i class="fa fa-link"></i></a>metadataTestもやってみよう</h3>
+
+<p>サンプルにはmetadataTestが入ってませんでした。imageをinspectして、定義をちょろっと書いてみます。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">metatest.yaml</span></div>
+<div class="highlight"><pre><span class="na">schemaVersion</span><span class="pi">:</span> <span class="s1">'</span><span class="s">2.0.0'</span>
+<span class="na">metadataTest</span><span class="pi">:</span>
+  <span class="na">env</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">key</span><span class="pi">:</span> <span class="s2">"</span><span class="s">PORT"</span>
+      <span class="na">value</span><span class="pi">:</span> <span class="s2">"</span><span class="s">8080"</span>
+  <span class="na">entrypoint</span><span class="pi">:</span> <span class="pi">[]</span>
+  <span class="na">cmd</span><span class="pi">:</span> <span class="pi">[</span><span class="s2">"</span><span class="s">/bin/sh"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">-c"</span><span class="pi">,</span> <span class="s2">"</span><span class="s">/bin/bash"</span><span class="pi">]</span>
+</pre></div>
+</div>
+
+<p>ファイル指定を変更し、実行します。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">-v</span> /var/run/docker.sock:/var/run/docker.sock <span class="se">\</span>
+  <span class="nt">-v</span> <span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>/metatest.yaml:/metatest.yaml <span class="se">\</span>
+  gcr.io/gcp-runtimes/container-structure-test:v0.1.3 <span class="se">\</span>
+  <span class="nt">-pull</span> <span class="se">\</span>
+  <span class="nt">-test</span>.v <span class="se">\</span>
+  <span class="nt">--image</span> gcr.io/google-appengine/debian8:latest <span class="se">\</span>
+  metatest.yaml
+
+latest: Pulling from google-appengine/debian8
+Digest: sha256:412ef4d53215ff4a95d275ad48fe5196cb51f4f96b99c05058054b3bdf9443c1
+Status: Image is up to <span class="nb">date </span><span class="k">for </span>gcr.io/google-appengine/debian8:latest
+Using driver docker
+<span class="o">===</span> RUN   TestAll
+<span class="o">===</span> RUN   TestAll/Metadata_Test
+2018/01/11 06:54:58 Running tests <span class="k">for </span>file metatest.yaml
+<span class="nt">---</span> PASS: TestAll <span class="o">(</span>0.01s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/Metadata_Test <span class="o">(</span>0.00s<span class="o">)</span>
+    structure_test.go:47: Total tests run: 1
+PASS
+</pre></div></div>
+
+<p>無事にテストできたようですね。</p>
+
+<h2>
+<span id="driverにtarを指定-dockerdなしでのチェック" class="fragment"></span><a href="#driver%E3%81%ABtar%E3%82%92%E6%8C%87%E5%AE%9A-dockerd%E3%81%AA%E3%81%97%E3%81%A7%E3%81%AE%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>driverにtarを指定、 dockerdなしでのチェック</h2>
+
+<p>さて、冒頭にもリンクをおいた<a href="https://opensource.googleblog.com/2018/01/container-structure-tests-unit-tests.html" rel="nofollow noopener" target="_blank">Googleの記事</a>では、dockerdがいなくてもテストできるぞ！と書いてあったので<code>-driver tar</code>を指定、dockerのソケットを外してみます。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">-v</span> <span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>/debian_test.yaml:/debian_test.yaml <span class="se">\</span>
+  gcr.io/gcp-runtimes/container-structure-test:v0.1.3 <span class="se">\</span>
+  <span class="nt">-driver</span> <span class="nb">tar</span> <span class="se">\</span>
+  <span class="nt">-test</span>.v <span class="se">\</span>
+  <span class="nt">--image</span> gcr.io/google-appengine/debian8:latest <span class="se">\</span>
+  debian_test.yaml
+
+
+Using driver <span class="nb">tar</span>
+<span class="o">===</span> RUN   TestAll
+2018/01/11 06:44:51 Running tests <span class="k">for </span>file debian_test.yaml
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+
+<span class="nt">--</span> 省略
+<span class="nt">---</span> FAIL: TestAll <span class="o">(</span>19.89s<span class="o">)</span>
+    <span class="nt">---</span> FAIL: TestAll/Command_Test:_apt-get <span class="o">(</span>10.03s<span class="o">)</span>
+        tar_driver.go:66: Tar driver is unable to process commands, please use a different driver
+    <span class="nt">---</span> PASS: TestAll/Metadata_Test <span class="o">(</span>9.86s<span class="o">)</span>
+    structure_test.go:47: Total tests run: 1
+</pre></div></div>
+
+<p>commandTestsは流石にダメっぽいです。commandTestsのセクションをコメントアウトして、もう一度実行。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre>Using driver <span class="nb">tar</span>
+<span class="o">===</span> RUN   TestAll
+2018/01/11 07:18:55 Running tests <span class="k">for </span>file debian_test.yaml
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+<span class="o">===</span> RUN   TestAll/File_Existence_Test:_Root
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:04Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Finished prepping image gcr.io/google-appengine/debian8:latest"</span>
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:04Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Removing image filesystem directory /tmp/gcr.iogoogle-appenginedebian8latest743647843 from system"</span>
+<span class="o">===</span> RUN   TestAll/File_Existence_Test:_Netbase
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:14Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Finished prepping image gcr.io/google-appengine/debian8:latest"</span>
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:14Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Removing image filesystem directory /tmp/gcr.iogoogle-appenginedebian8latest188699238 from system"</span>
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+<span class="o">===</span> RUN   TestAll/File_Existence_Test:_Machine_ID
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:24Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Finished prepping image gcr.io/google-appengine/debian8:latest"</span>
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:24Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Removing image filesystem directory /tmp/gcr.iogoogle-appenginedebian8latest359712397 from system"</span>
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+<span class="o">===</span> RUN   TestAll/File_Content_Test:_Debian_Sources
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:34Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Finished prepping image gcr.io/google-appengine/debian8:latest"</span>
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:34Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Removing image filesystem directory /tmp/gcr.iogoogle-appenginedebian8latest785687176 from system"</span>
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+<span class="o">===</span> RUN   TestAll/File_Content_Test:_Retry_Policy
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:44Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Finished prepping image gcr.io/google-appengine/debian8:latest"</span>
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T07:19:44Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Removing image filesystem directory /tmp/gcr.iogoogle-appenginedebian8latest267774023 from system"</span>
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+
+... 省略
+
+        licenses.go:70: startpar
+        licenses.go:70: systemd
+        licenses.go:70: systemd-sysv
+        licenses.go:70: sysv-rc
+        licenses.go:70: sysvinit-utils
+        licenses.go:70: <span class="nb">tar
+        </span>licenses.go:70: tzdata
+        licenses.go:70: util-linux
+        licenses.go:70: zlib1g
+    structure_test.go:47: Total tests run: 7
+PASS
+</pre></div></div>
+
+<p>PASSしました。テストごとにファイルを展開削除しているようで、これはとても時間がかかる。</p>
+
+<p>metadataTestはどうなるんだろう。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>docker run <span class="nt">--rm</span> <span class="se">\</span>
+  <span class="nt">-v</span> <span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>/metatest.yaml:/metatest.yaml <span class="se">\</span>
+  gcr.io/gcp-runtimes/container-structure-test:v0.1.3 <span class="se">\</span>
+  <span class="nt">-driver</span> <span class="nb">tar</span> <span class="se">\</span>
+  <span class="nt">-test</span>.v <span class="se">\</span>
+  <span class="nt">--image</span> gcr.io/google-appengine/debian8:latest <span class="se">\</span>
+  metatest.yaml
+
+
+Using driver <span class="nb">tar</span>
+<span class="o">===</span> RUN   TestAll
+<span class="o">===</span> RUN   TestAll/Metadata_Test
+2018/01/11 06:56:09 Running tests <span class="k">for </span>file metatest.yaml
+Retrieving image gcr.io/google-appengine/debian8:latest from <span class="nb">source </span>Cloud Registry
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T06:56:19Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Finished prepping image gcr.io/google-appengine/debian8:latest"</span>
+<span class="nb">time</span><span class="o">=</span><span class="s2">"2018-01-11T06:56:19Z"</span> <span class="nv">level</span><span class="o">=</span>info <span class="nv">msg</span><span class="o">=</span><span class="s2">"Removing image filesystem directory /tmp/gcr.iogoogle-appenginedebian8latest068032231 from system"</span>
+<span class="nt">---</span> PASS: TestAll <span class="o">(</span>10.13s<span class="o">)</span>
+    <span class="nt">---</span> PASS: TestAll/Metadata_Test <span class="o">(</span>10.13s<span class="o">)</span>
+    structure_test.go:47: Total tests run: 1
+PASS
+</pre></div></div>
+
+<p>お、ちゃんとできるね。commandTestsは邪道感があるので、これでよいとするのが理想ではありますね。普通にCIを動かすLinux環境ならファイルの展開削除も早かろうし。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>コンテナ特化で、いつものコマンド+簡潔な結果期待の形式で読みやすいYamlでかけてチェックできるので良いとおもいます。</p>

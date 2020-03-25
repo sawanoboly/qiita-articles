@@ -1,0 +1,45 @@
+
+
+<p><a href="http://qiita.com/sawanoboly/items/1d776006ed24513e1b55" title="Settingslogicを使ってconfig.yml, config.local.yml運用してみる - Qiita" id="reference-cf2b79e0fcf94378246f">Settingslogicを使ってconfig.yml, config.local.yml運用してみる - Qiita</a> の続編で、<a href="https://github.com/binarylogic/settingslogic" title="binarylogic/settingslogic" rel="nofollow noopener" target="_blank">binarylogic/settingslogic</a>から<a href="https://github.com/m5rk/chamber" title="m5rk/chamber" rel="nofollow noopener" target="_blank">m5rk/chamber</a>に乗り換え。</p>
+
+<h2>
+<span id="こうしたかった" class="fragment"></span><a href="#%E3%81%93%E3%81%86%E3%81%97%E3%81%9F%E3%81%8B%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a>こうしたかった</h2>
+
+<ul>
+<li>設定はYamlに書きたかった</li>
+<li>CIやPaaS(Heroku)にフィットさせるため、環境変数と併用したかった
+
+<ul>
+<li>ChamberはSettingsLogicと同じように、Yamlを一度ERbで処理する</li>
+</ul>
+</li>
+<li>hoge.yml, hoge.local.ymlとあったら、hoge.local.ymlを優先するようにマージしたかった
+
+<ul>
+<li>ローカル作業時はわざわざ環境変数を変更するのが面倒なことが多い</li>
+<li>test-kitchenの設定の持ち方を参考にした</li>
+<li>hoge.ymlは基本的にERbのENVから取るので、センシティブな値を除去してリポジトリにADDできるのが嬉しい。</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="このように書いた" class="fragment"></span><a href="#%E3%81%93%E3%81%AE%E3%82%88%E3%81%86%E3%81%AB%E6%9B%B8%E3%81%84%E3%81%9F"><i class="fa fa-link"></i></a>このように書いた</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>require 'chamber'
+
+env_confs = [
+  File.expand_path('../../config/environment.yml', __FILE__),
+  File.expand_path('../../config/environment.local.yml', __FILE__)
+]
+EnvSettings = Chamber.load files: env_confs
+
+
+app_confs = [
+  File.expand_path('../../config/app.yml', __FILE__),
+  File.expand_path('../../config/app.local.yml', __FILE__)
+]
+AppSettings = Chamber.load files: app_confs
+</pre></div></div>
+
+<p>まあまあスッキリした。</p>

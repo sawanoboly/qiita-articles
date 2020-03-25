@@ -1,0 +1,105 @@
+<p>Chefのクライアントバージョン11から<code>chef-apply</code>とコマンドラインツールが追加されていた。</p>
+
+<p>ヘルプを見るとレシピのDSLを渡して実行してくれるものらしい。</p>
+
+<blockquote>
+<p>追記： Chef12.1.0からnode.json的なファイルを渡せるようになったよ。<br>
+    -j JSON_ATTRIBS,                 Load attributes from a JSON file or URL<br>
+       --json-attributes</p>
+</blockquote>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply <span class="nt">--help</span>
+Usage: chef-apply <span class="o">[</span>RECIPE_FILE] <span class="o">[</span><span class="nt">-e</span> RECIPE_TEXT] <span class="o">[</span><span class="nt">-s</span><span class="o">]</span>
+        <span class="nt">--</span><span class="o">[</span>no-]color                 Use colored output, defaults to enabled
+    <span class="nt">-e</span>, <span class="nt">--execute</span> RECIPE_TEXT        Execute resources supplied <span class="k">in </span>a string
+    <span class="nt">-j</span> JSON_ATTRIBS,                 Load attributes from a JSON file or URL
+        <span class="nt">--json-attributes</span>
+    <span class="nt">-l</span>, <span class="nt">--log_level</span> LEVEL            Set the log level <span class="o">(</span>debug, info, warn, error, fatal<span class="o">)</span>
+    <span class="nt">-s</span>, <span class="nt">--stdin</span>                      Execute resources <span class="nb">read </span>from STDIN
+    <span class="nt">-v</span>, <span class="nt">--version</span>                    Show chef version
+    <span class="nt">-W</span>, <span class="nt">--why-run</span>                    Enable whyrun mode
+    <span class="nt">-h</span>, <span class="nt">--help</span>                       Show this message
+</pre></div>
+</div>
+
+<p>レシピDSLを渡してみた。単体のレシピファイルでも使えるので、solo用に<code>chef-repo</code>を用意するのが面倒、などの時に使うのかな。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply <span class="nt">-e</span> <span class="s1">'service "cron" do action :enable end'</span>         
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> service[cron] action <span class="nb">enable</span> <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+</pre></div>
+</div>
+
+<p>ちなみにレシピ用DSLということで、普通にRubyも実行出来る。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply <span class="nt">-e</span> <span class="s1">'10.times { |x| puts [x.to_s, node.platform ].join("-") }'</span>
+0-smartos
+1-smartos
+2-smartos
+3-smartos
+4-smartos
+5-smartos
+6-smartos
+7-smartos
+8-smartos
+9-smartos
+</pre></div>
+</div>
+
+<p>Ohaiも効いているね。</p>
+
+<hr>
+
+<p>追記：</p>
+
+<p>シェルからattributesを使いたいとき、Ohaiを直接叩くより地味に便利？</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply <span class="nt">-e</span> <span class="s1">'puts  node[:ipaddress]'</span>
+210.152.xxx.xxx
+</pre></div>
+</div>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">Shell-Out</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply <span class="nt">-e</span> <span class="s1">'node.keys.map {|x| puts x }'</span>      
+tags
+languages
+kernel
+os
+os_version
+<span class="nb">hostname
+</span>fqdn
+domain
+virtualization
+etc
+current_user
+chef_packages
+network
+counters
+ipaddress
+macaddress
+ip6address
+ohai_time
+keys
+platform_version
+platform_build
+platform
+platform_family
+dmi
+<span class="nb">command
+</span>zpools
+uptime_seconds
+<span class="nb">uptime
+</span>filesystem
+recipes
+roles
+</pre></div>
+</div>

@@ -1,0 +1,128 @@
+<p>Amazon CloudFrontのLambda@Edgeは、HTTPリクエスト/レスポンスに対して任意のタイミングでLambdaをカマす機能です。</p>
+
+<p>さて、今回はレスポンスのHTMLをちょっと加工したいなと思って調べました。</p>
+
+<p>実装例のドキュメントはこちら。</p>
+
+<ul>
+<li><a href="https://docs.aws.amazon.com/ja_jp/AmazonCloudFront/latest/DeveloperGuide/lambda-generating-http-responses.html" rel="nofollow noopener" target="_blank">リクエストトリガーでの HTTP レスポンスの生成 - Amazon CloudFront</a></li>
+<li><a href="https://docs.aws.amazon.com/ja_jp/AmazonCloudFront/latest/DeveloperGuide/lambda-updating-http-responses.html" rel="nofollow noopener" target="_blank">origin-response トリガーでの HTTP レスポンスの更新 - Amazon CloudFront</a></li>
+</ul>
+
+<blockquote>
+<p>追記: bodyさわれるようになりましたね。以下はもうoutdated</p>
+</blockquote>
+
+<hr>
+
+<p>これらによると、以下の制限があるとのこと。</p>
+
+<blockquote>
+<p>HTTP レスポンスを使用する場合、Lambda@Edge は、オリジンサーバーから返された HTML 本文を origin-response トリガーに公開しません。</p>
+</blockquote>
+
+<p>bodyに手を出せないのかよ！ オリジンからのレスポンスに対する通常の利用範囲内では、bodyはまるごと上書きのみ可能、とのこと。<br>
+ちょっと内容変更して配信したい、というケースに対応するには。。？</p>
+
+<p>そこでヒントにしたのがこちら。</p>
+
+<ul>
+<li><a href="https://aws.amazon.com/jp/blogs/news/resizing-images-with-amazon-cloudfront-lambdaedge-aws-cdn-blog/" rel="nofollow noopener" target="_blank">Amazon CloudFront &amp; Lambda@Edge で画像をリサイズする | Amazon Web Services ブログ</a></li>
+</ul>
+
+<p>わりとそのまんまの解決策だった。これをすこし方針変更してテキスト処理にすればよさそう。</p>
+
+<h2>
+<span id="方針" class="fragment"></span><a href="#%E6%96%B9%E9%87%9D"><i class="fa fa-link"></i></a>方針</h2>
+
+<ul>
+<li>改変したいのはHTMLだけ</li>
+<li>オリジンはAmazon S3</li>
+</ul>
+
+<h2>
+<span id="how-to" class="fragment"></span><a href="#how-to"><i class="fa fa-link"></i></a>How to</h2>
+
+<ul>
+<li>origin-responseの時点でLambdaコール
+
+<ul>
+<li>ここで書き換えればキャッシュにのるので</li>
+</ul>
+</li>
+<li>STATUS=200かつ<code>.html</code>のリクエストを判定
+
+<ul>
+<li>ヘッダは使い回す</li>
+<li>bodyには、S3からオブジェクトを直接取得してから改変したコンテンツを突っ込む</li>
+</ul>
+</li>
+<li>IAM Roleに割り当てるPolicyではgetObjectを許可</li>
+</ul>
+
+<h2>
+<span id="コード" class="fragment"></span><a href="#%E3%82%B3%E3%83%BC%E3%83%89"><i class="fa fa-link"></i></a>コード</h2>
+
+<p>で、origin-responseイベントのところで動作するLambdaスクリプトをこのようにしました。<br>
+content-lengthの再計算いるかなと思ったけど、このイベントの時点ではcontent-lengthヘッダはついてなかったので、レスポンス最終段階で付与されるんだろうと。</p>
+
+<p>サンプルではBody中の<code>WordPress</code>という単語を<code>getShifter</code>に置換してます。</p>
+
+<div class="code-frame" data-lang="javascript">
+<div class="code-lang"><span class="bold">origin_response.js</span></div>
+<div class="highlight"><pre><span class="dl">'</span><span class="s1">use strict</span><span class="dl">'</span><span class="p">;</span>
+<span class="kd">const</span> <span class="nx">util</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="dl">'</span><span class="s1">util</span><span class="dl">'</span><span class="p">);</span>
+<span class="kd">const</span> <span class="nx">AWS</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="dl">'</span><span class="s1">aws-sdk</span><span class="dl">'</span><span class="p">);</span>
+<span class="kd">const</span> <span class="nx">S3</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">AWS</span><span class="p">.</span><span class="nx">S3</span><span class="p">({</span>
+  <span class="na">signatureVersion</span><span class="p">:</span> <span class="dl">'</span><span class="s1">v4</span><span class="dl">'</span><span class="p">,</span>
+<span class="p">});</span>
+
+<span class="nx">exports</span><span class="p">.</span><span class="nx">handler</span> <span class="o">=</span> <span class="p">(</span><span class="nx">event</span><span class="p">,</span> <span class="nx">context</span><span class="p">,</span> <span class="nx">callback</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span>
+  <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">util</span><span class="p">.</span><span class="nx">inspect</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">Records</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">cf</span><span class="p">));</span>
+  <span class="kd">let</span> <span class="nx">response</span> <span class="o">=</span> <span class="nx">event</span><span class="p">.</span><span class="nx">Records</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">cf</span><span class="p">.</span><span class="nx">response</span><span class="p">;</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span> <span class="o">==</span> <span class="mi">200</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">let</span> <span class="nx">request</span> <span class="o">=</span> <span class="nx">event</span><span class="p">.</span><span class="nx">Records</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">cf</span><span class="p">.</span><span class="nx">request</span><span class="p">;</span>
+    <span class="kd">let</span> <span class="nx">bucket</span> <span class="o">=</span> <span class="nx">request</span><span class="p">.</span><span class="nx">origin</span><span class="p">.</span><span class="nx">s3</span><span class="p">.</span><span class="nx">domainName</span><span class="p">.</span><span class="nx">split</span><span class="p">(</span><span class="dl">'</span><span class="s1">.</span><span class="dl">'</span><span class="p">)[</span><span class="mi">0</span><span class="p">];</span>
+    <span class="kd">let</span> <span class="nx">path</span> <span class="o">=</span> <span class="nx">request</span><span class="p">.</span><span class="nx">uri</span><span class="p">;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nx">path</span><span class="p">.</span><span class="nx">endsWith</span><span class="p">(</span><span class="dl">'</span><span class="se">\</span><span class="s1">.html</span><span class="dl">'</span><span class="p">))</span> <span class="p">{</span>
+      <span class="kd">let</span> <span class="nx">key</span> <span class="o">=</span> <span class="nx">path</span><span class="p">.</span><span class="nx">substring</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+      <span class="nx">S3</span><span class="p">.</span><span class="nx">getObject</span><span class="p">({</span> <span class="na">Bucket</span><span class="p">:</span> <span class="nx">bucket</span><span class="p">,</span> <span class="na">Key</span><span class="p">:</span> <span class="nx">key</span> <span class="p">}).</span><span class="nx">promise</span><span class="p">()</span>
+        <span class="c1">// perform the replace operation</span>
+        <span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="nx">data</span> <span class="o">=&gt;</span> <span class="nx">data</span><span class="p">.</span><span class="nx">Body</span><span class="p">.</span><span class="nx">toString</span><span class="p">()</span>
+          <span class="p">.</span><span class="nx">replace</span><span class="p">(</span><span class="sr">/WordPress/g</span><span class="p">,</span> <span class="dl">'</span><span class="s1">getShifter</span><span class="dl">'</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="nx">buffer</span> <span class="o">=&gt;</span> <span class="p">{</span>
+          <span class="c1">// console.log(buffer);</span>
+          <span class="nx">response</span><span class="p">.</span><span class="nx">body</span> <span class="o">=</span> <span class="nx">buffer</span><span class="p">;</span>
+          <span class="nx">callback</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span> <span class="nx">response</span><span class="p">);</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">})</span>
+        <span class="p">.</span><span class="k">catch</span><span class="p">(</span> <span class="nx">err</span> <span class="o">=&gt;</span> <span class="p">{</span>
+          <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="dl">"</span><span class="s2">Exception while reading source :%j</span><span class="dl">"</span><span class="p">,</span><span class="nx">err</span><span class="p">);</span>
+        <span class="p">});</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+      <span class="nx">callback</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span> <span class="nx">response</span><span class="p">);</span>
+    <span class="p">}</span>
+  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+    <span class="nx">callback</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span> <span class="nx">response</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+
+<p>一応Edgeの厳し目なタイムアウト制限(5s)の範囲には収まっているっぽく、置換されたコンテンツを取得できました。</p>
+
+<p>パススルー用のcallbackをelseの外に置いてたらうまくいかなかったのはなんでやろうなあ。。</p>
+
+<h2>
+<span id="使用前使用後" class="fragment"></span><a href="#%E4%BD%BF%E7%94%A8%E5%89%8D%E4%BD%BF%E7%94%A8%E5%BE%8C"><i class="fa fa-link"></i></a>使用前/使用後</h2>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F36ec7843-8bc6-7fae-5838-a4ff64c97a57.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fe37a03331eb538de087f7f47b02a41e" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F36ec7843-8bc6-7fae-5838-a4ff64c97a57.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=fe37a03331eb538de087f7f47b02a41e" alt="before.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/36ec7843-8bc6-7fae-5838-a4ff64c97a57.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F36ec7843-8bc6-7fae-5838-a4ff64c97a57.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=d57d44e5f730141b40e5158a351cdab4 1x" loading="lazy"></a></p>
+
+<p>↓↓↓変わった。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F15cd1d9d-0b7c-b7fe-aacd-ea31a2168a23.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7e1ef957f2d7a689dbe775da0ec97f0f" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F15cd1d9d-0b7c-b7fe-aacd-ea31a2168a23.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7e1ef957f2d7a689dbe775da0ec97f0f" alt="after.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/15cd1d9d-0b7c-b7fe-aacd-ea31a2168a23.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F15cd1d9d-0b7c-b7fe-aacd-ea31a2168a23.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=c41f55ee1241e3aa8fb23fc6fc6ede2e 1x" loading="lazy"></a></p>
+
+<p>初回ちょっと遅いけど、キャッシュには改変後が乗るのでよいかな。</p>

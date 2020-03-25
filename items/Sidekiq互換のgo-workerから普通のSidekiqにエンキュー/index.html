@@ -1,0 +1,90 @@
+<p>非同期ジョブをSidekiqのようなものでやりたいなあ、でもgolangで受け付けたいなあ。とか考えていたら、互換実装があったので試してみた。</p>
+
+<p><a href="https://github.com/jrallison/go-workers" rel="nofollow noopener" target="_blank">jrallison/go-workers: Sidekiq compatible background workers in golang</a></p>
+
+<h2>
+<span id="rubyでsidekiqのジョブを書く" class="fragment"></span><a href="#ruby%E3%81%A7sidekiq%E3%81%AE%E3%82%B8%E3%83%A7%E3%83%96%E3%82%92%E6%9B%B8%E3%81%8F"><i class="fa fa-link"></i></a>RubyでSidekiqのジョブを書く</h2>
+
+<p>とりあえず引数をputsするだけのジョブ。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">sample.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'sidekiq'</span>
+
+<span class="k">class</span> <span class="nc">SampleWorker</span>
+  <span class="kp">include</span> <span class="no">Sidekiq</span><span class="o">::</span><span class="no">Worker</span>
+  <span class="k">def</span> <span class="nf">perform</span><span class="p">(</span><span class="o">*</span><span class="n">opts</span><span class="p">)</span>
+    <span class="nb">puts</span> <span class="s2">"Kicked with options: </span><span class="si">#{</span><span class="n">opts</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2">"</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>んで、Sidekiqを起動しておきます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">console-sidekiq</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>sidekiq <span class="nt">-r</span> ./sample.rb <span class="nt">-q</span> myqueue 
+
+
+         m,
+         <span class="sb">`</span><span class="nv">$b</span>
+    .ss,  <span class="nv">$$</span>:         .,d<span class="err">$</span>
+    <span class="sb">`</span><span class="nv">$$</span>P,d<span class="nv">$P</span><span class="s1">'    .,md$P"'</span>
+     ,<span class="nv">$$$$$bmmd$$$P</span>^<span class="s1">'
+   .d$$$$$$$$$$P'</span>
+   <span class="nv">$$</span>^<span class="s1">' `"^$$$'</span>       ____  _     _      _    _
+   <span class="nv">$:</span>     ,<span class="nv">$$</span>:       / ___|<span class="o">(</span>_<span class="o">)</span> __| | ___| | _<span class="o">(</span>_<span class="o">)</span> __ _
+   <span class="sb">`</span>b     :<span class="nv">$$</span>        <span class="se">\_</span>__ <span class="se">\|</span> |/ _<span class="sb">`</span> |/ _ <span class="se">\ </span>|/ / |/ _<span class="sb">`</span> |
+
+...
+</pre></div>
+</div>
+
+<p>OK。</p>
+
+<h2>
+<span id="goでエンキューの処理を書く" class="fragment"></span><a href="#go%E3%81%A7%E3%82%A8%E3%83%B3%E3%82%AD%E3%83%A5%E3%83%BC%E3%81%AE%E5%87%A6%E7%90%86%E3%82%92%E6%9B%B8%E3%81%8F"><i class="fa fa-link"></i></a>Goでエンキューの処理を書く</h2>
+
+<p><a href="https://github.com/jrallison/go-workers" rel="nofollow noopener" target="_blank">go-workers</a>の<code>Enqueue</code>を使ってみる。Configureは最低限これらのオプションが必要だった。</p>
+
+<div class="code-frame" data-lang="golang">
+<div class="code-lang"><span class="bold">main.go</span></div>
+<div class="highlight"><pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="s">"github.com/jrallison/go-workers"</span>
+
+<span class="k">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">workers</span><span class="o">.</span><span class="n">Configure</span><span class="p">(</span><span class="k">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+        <span class="s">"server"</span><span class="o">:</span>   <span class="s">"127.0.0.1:6379"</span><span class="p">,</span>
+        <span class="s">"process"</span><span class="o">:</span>  <span class="s">"1"</span><span class="p">,</span>
+    <span class="p">})</span>
+
+    <span class="c">// デフォルトオプションでエンキュー</span>
+    <span class="n">workers</span><span class="o">.</span><span class="n">Enqueue</span><span class="p">(</span><span class="s">"myqueue"</span><span class="p">,</span> <span class="s">"SampleWorker"</span><span class="p">,</span> <span class="p">[]</span><span class="kt">int</span><span class="p">{</span><span class="m">1</span><span class="p">,</span> <span class="m">2</span><span class="p">})</span>
+
+    <span class="c">// リトライオプション指定でエンキュー</span>
+    <span class="n">workers</span><span class="o">.</span><span class="n">EnqueueWithOptions</span><span class="p">(</span><span class="s">"myqueue"</span><span class="p">,</span> <span class="s">"SampleWorker"</span><span class="p">,</span> <span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">"job"</span><span class="p">,</span> <span class="s">"jober"</span><span class="p">},</span> <span class="n">workers</span><span class="o">.</span><span class="n">EnqueueOptions</span><span class="p">{</span><span class="n">Retry</span><span class="o">:</span> <span class="no">true</span><span class="p">,</span> <span class="n">RetryCount</span><span class="o">:</span> <span class="m">10</span><span class="p">})</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+
+<p><code>go run main.go</code>とすると、sidekiqのワーカーが動いた。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">console-sidekiq</span></div>
+<div class="highlight"><pre>SampleWorker JID-a25fa4a81126e990406bb30e INFO: start
+Kicked with options: <span class="o">[</span>1, 2]
+
+SampleWorker JID-8bc1738220cf1e2303279054 INFO: start
+Kicked with options: <span class="o">[</span><span class="s2">"job"</span>, <span class="s2">"jober"</span><span class="o">]</span>
+
+SampleWorker JID-8bc1738220cf1e2303279054 INFO: <span class="k">done</span>: 0.0 sec
+SampleWorker JID-a25fa4a81126e990406bb30e INFO: <span class="k">done</span>: 0.001 sec
+</pre></div>
+</div>
+
+<p>ただ、ざっくりみた感じではSentinel/Clusterでredisクライアントを作るようなオプション指定はサポートしてないように見えた。</p>
+
+<p><a href="https://github.com/jrallison/go-workers" rel="nofollow noopener" target="_blank">go-workers</a>はREADMEにあるとおりServer側の機能も実装してあるので、逆に既存のSidekiqプロセスの代わり(※sidekiq-webは本家の使い回し)をすることもできるようだけど、その場合はSidekiq互換にこだわる必要もない気はした。<br>
+極端な話、redisにsaddとrpushすりゃあSidekiqは動くので、他にも色々やり方は考えられそう。</p>

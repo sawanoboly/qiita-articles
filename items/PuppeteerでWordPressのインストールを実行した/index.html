@@ -1,0 +1,54 @@
+<p>WordPressの環境作成をCIする場合に、一応セットアップまで見ておくかというときに。</p>
+
+<h2>
+<span id="puppeteerをインストール" class="fragment"></span><a href="#puppeteer%E3%82%92%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>Puppeteerをインストール</h2>
+
+<ul>
+<li><a href="https://github.com/GoogleChrome/puppeteer" rel="nofollow noopener" target="_blank">GoogleChrome/puppeteer: Headless Chrome Node API</a></li>
+</ul>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ yarn install puppeteer
+</pre></div></div>
+
+<h2>
+<span id="puppeteerスクリプト" class="fragment"></span><a href="#puppeteer%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88"><i class="fa fa-link"></i></a>Puppeteerスクリプト</h2>
+
+<p>Passwordの入力周りがJavascriptなので、waitをしておくのが無難だった。</p>
+
+<div class="code-frame" data-lang="javascript">
+<div class="code-lang"><span class="bold">wpsetup.js</span></div>
+<div class="highlight"><pre><span class="kd">const</span> <span class="nx">puppeteer</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="dl">'</span><span class="s1">puppeteer</span><span class="dl">'</span><span class="p">);</span>
+
+<span class="p">(</span><span class="k">async</span> <span class="p">()</span> <span class="o">=&gt;</span> <span class="p">{</span>
+  <span class="k">try</span> <span class="p">{</span>
+    <span class="kd">const</span> <span class="nx">browser</span> <span class="o">=</span> <span class="k">await</span> <span class="nx">puppeteer</span><span class="p">.</span><span class="nx">launch</span><span class="p">({</span>
+      <span class="c1">// headless: false, // デバッグ用</span>
+      <span class="na">ignoreHTTPSErrors</span><span class="p">:</span> <span class="kc">true</span>
+    <span class="p">});</span>
+    <span class="kd">const</span> <span class="nx">page</span> <span class="o">=</span> <span class="k">await</span> <span class="nx">browser</span><span class="p">.</span><span class="nx">newPage</span><span class="p">();</span>
+    <span class="c1">// 言語選択がデフォルトのenでよければ、いきなりstep=1に飛んでOK</span>
+    <span class="k">await</span> <span class="nx">page</span><span class="p">.</span><span class="nx">goto</span><span class="p">(</span>
+      <span class="nx">process</span><span class="p">.</span><span class="nx">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="dl">'</span><span class="s1">/wp-admin/install.php?step=1</span><span class="dl">'</span><span class="p">,</span>
+      <span class="p">{</span><span class="na">waitUntil</span><span class="p">:</span> <span class="dl">'</span><span class="s1">networkidle0</span><span class="dl">'</span><span class="p">}</span>
+    <span class="p">);</span>
+    <span class="k">await</span> <span class="nx">page</span><span class="p">.</span><span class="nx">type</span><span class="p">(</span><span class="dl">'</span><span class="s1">#weblog_title</span><span class="dl">'</span><span class="p">,</span> <span class="dl">'</span><span class="s1">PUPPETEER</span><span class="dl">'</span><span class="p">)</span>
+    <span class="k">await</span> <span class="nx">page</span><span class="p">.</span><span class="nx">type</span><span class="p">(</span><span class="dl">'</span><span class="s1">#user_login</span><span class="dl">'</span><span class="p">,</span> <span class="dl">'</span><span class="s1">admin</span><span class="dl">'</span><span class="p">)</span>
+    <span class="c1">// それなりに複雑なパスワード</span>
+    <span class="k">await</span> <span class="nx">page</span><span class="p">.</span><span class="nx">type</span><span class="p">(</span><span class="dl">'</span><span class="s1">#pass1-text</span><span class="dl">'</span><span class="p">,</span> <span class="dl">'</span><span class="s1">Pass00+345+Word</span><span class="dl">'</span><span class="p">)</span>
+    <span class="k">await</span> <span class="nx">page</span><span class="p">.</span><span class="nx">type</span><span class="p">(</span><span class="dl">'</span><span class="s1">#admin_email</span><span class="dl">'</span><span class="p">,</span> <span class="dl">'</span><span class="s1">test@example.com</span><span class="dl">'</span><span class="p">)</span>
+    <span class="k">await</span> <span class="nx">page</span><span class="p">.</span><span class="nx">click</span><span class="p">(</span><span class="dl">'</span><span class="s1">#blog_public</span><span class="dl">'</span><span class="p">)</span>
+    <span class="k">await</span> <span class="nx">page</span><span class="p">.</span><span class="nx">click</span><span class="p">(</span><span class="dl">'</span><span class="s1">#submit</span><span class="dl">'</span><span class="p">)</span>
+
+    <span class="nx">browser</span><span class="p">.</span><span class="nx">close</span><span class="p">()</span>
+  <span class="p">}</span> <span class="k">catch</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span>
+    <span class="nx">process</span><span class="p">.</span><span class="nx">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">})();</span>
+</pre></div>
+</div>
+
+<p><code>node wpsetup.js https://127.0.0.1:8443</code>のように実行する。</p>
+
+<p>実行はCircleCIでやってるので、Fromイメージには<code>circleci/node:8-browsers</code>を使いました。<br>
+なんか動かないなーというときは<code>DEBUG=puppeteer:session</code>環境変数をつかいます。</p>

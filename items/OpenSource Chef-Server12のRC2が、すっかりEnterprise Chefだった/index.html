@@ -1,0 +1,176 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Chef-Server12(RC2)の配布がはじまったので内容をチェックしてみた。 <a href="http://www.getchef.com/blog/2014/09/08/chef-releases-chef-12-to-power-devops-practices-in-the-enterprise/" title="Chef Releases Chef 12 to Power DevOps Practices in the Enterprise | Chef Blog" rel="nofollow noopener" target="_blank">Chef Releases Chef 12 to Power DevOps Practices in the Enterprise | Chef Blog</a></p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F96e06620-a56c-69a0-66bd-3440fba27996.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e03f75e544e7cc49180b5ce0f038161e" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F96e06620-a56c-69a0-66bd-3440fba27996.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e03f75e544e7cc49180b5ce0f038161e" alt="Chef_Server_12___Chef_Downloads___Chef.png" title="Chef_Server_12___Chef_Downloads___Chef.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/96e06620-a56c-69a0-66bd-3440fba27996.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F96e06620-a56c-69a0-66bd-3440fba27996.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=368db7a71e0c5b9e1f20dff4c9d1bc7d 1x" loading="lazy"></a></p>
+
+<p>今までEnterprise Chefとして提供されていたものが、ほぼそのままOSS版12になりました。<br>
+OrgnaizationやUserもそのままなので、1台あれば対象システムの管理区分けもできる。</p>
+
+<h2>
+<span id="構築環境" class="fragment"></span><a href="#%E6%A7%8B%E7%AF%89%E7%92%B0%E5%A2%83"><i class="fa fa-link"></i></a>構築環境</h2>
+
+<ul>
+<li>Amazon EC2のUbuntu14.04
+
+<ul>
+<li>↑Ubuntu12用のパッケージで問題なく動く</li>
+</ul>
+</li>
+</ul>
+
+<h2>
+<span id="web管理の大幅変更" class="fragment"></span><a href="#web%E7%AE%A1%E7%90%86%E3%81%AE%E5%A4%A7%E5%B9%85%E5%A4%89%E6%9B%B4"><i class="fa fa-link"></i></a>Web管理の大幅変更</h2>
+
+<h3>
+<span id="management-consolewebのuiはアドオンに" class="fragment"></span><a href="#management-consoleweb%E3%81%AEui%E3%81%AF%E3%82%A2%E3%83%89%E3%82%AA%E3%83%B3%E3%81%AB"><i class="fa fa-link"></i></a>Management Console(WebのUI)はアドオンに。</h3>
+
+<p><a href="http://downloads.getchef.com/chef-manage/" rel="nofollow noopener" target="_blank"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F535a6d4d-7d36-b311-7e01-35c6418b347b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=e3637578a1a3d768e7b0d4a85357af91" alt="Chef_Manage___Chef_Downloads___Chef.png" title="Chef_Manage___Chef_Downloads___Chef.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/535a6d4d-7d36-b311-7e01-35c6418b347b.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F535a6d4d-7d36-b311-7e01-35c6418b347b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=539bc62280aea05fc22fb51515d78b4d 1x" loading="lazy"></a></p>
+
+<p>従来のWeb-UIは廃止になり、アドオンパッケージのインストールになる。Chef-Serverのコアと切り離して使いやすい。</p>
+
+<p>パッケージは上図のリンクからダウンロードして、あとは次のリンクに従って導入。</p>
+
+<ul>
+<li><a href="http://docs.getchef.com/manager.html" title="Chef Manage — Chef Docs" rel="nofollow noopener" target="_blank">Chef Manage — Chef Docs</a></li>
+<li><a href="http://docs.getchef.com/install_manager.html" title="Install Chef Manage — Chef Docs" rel="nofollow noopener" target="_blank">Install Chef Manage — Chef Docs</a></li>
+</ul>
+
+<p>操作コマンドが<code>opscode-manage-ctl</code>のままなのは置いておこう。</p>
+
+<h3>
+<span id="reporting" class="fragment"></span><a href="#reporting"><i class="fa fa-link"></i></a>Reporting</h3>
+
+<p><a href="http://downloads.getchef.com/reporting/" rel="nofollow noopener" target="_blank"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F39fcd446-808f-33f1-8b3a-3ae6b280b383.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=52ac7a8233b8d865af3c2eb8457ee43d" alt="Reporting___Chef_Downloads___Chef.png" title="Reporting___Chef_Downloads___Chef.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/39fcd446-808f-33f1-8b3a-3ae6b280b383.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F39fcd446-808f-33f1-8b3a-3ae6b280b383.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=2208290520519154733b4615979f50ea 1x" loading="lazy"></a></p>
+
+<p>パッケージは上の図リンクから、インストールなどは次を参照。</p>
+
+<ul>
+<li><a href="http://docs.getchef.com/reporting.html" title="Reporting — Chef Docs" rel="nofollow noopener" target="_blank">Reporting — Chef Docs</a></li>
+<li><a href="http://docs.getchef.com/install_reporting.html" title="Install Reporting — Chef Docs" rel="nofollow noopener" target="_blank">Install Reporting — Chef Docs</a></li>
+</ul>
+
+<p>レポーティングが有効になったManagement Consoleを確認するため、ちょこちょことChef-Clientを実行してみる。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe5c660d3-f83b-f77f-ac6b-2f5753eb0b2b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=885ecf1ebb6908e6988b346ba5236b72" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe5c660d3-f83b-f77f-ac6b-2f5753eb0b2b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=885ecf1ebb6908e6988b346ba5236b72" alt="Chef_Manage_と_lw1-chef-server_—_bash_—_120×30.png" title="Chef_Manage_と_lw1-chef-server_—_bash_—_120×30.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/e5c660d3-f83b-f77f-ac6b-2f5753eb0b2b.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe5c660d3-f83b-f77f-ac6b-2f5753eb0b2b.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=e48c90c59f5b1a6c8c8858fbcdec2743 1x" loading="lazy"></a></p>
+
+<p>ナイスレポート、ヒストリーも悪くない。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F30b89316-9610-1a24-9ce7-afd949347f51.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=cd715b3e2b12b6be911b713fec49f8f3" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F30b89316-9610-1a24-9ce7-afd949347f51.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=cd715b3e2b12b6be911b713fec49f8f3" alt="Chef_Manage.png" title="Chef_Manage.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/30b89316-9610-1a24-9ce7-afd949347f51.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F30b89316-9610-1a24-9ce7-afd949347f51.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=b14f37b1c89a508f6d4e5aec7c82deb5 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="cli拡張と非同期のpush型job" class="fragment"></span><a href="#cli%E6%8B%A1%E5%BC%B5%E3%81%A8%E9%9D%9E%E5%90%8C%E6%9C%9F%E3%81%AEpush%E5%9E%8Bjob"><i class="fa fa-link"></i></a>CLI拡張と非同期のPush型Job</h2>
+
+<p>とりあえずジョブキューみたいなことができる(サーバいるけど)Push jobsも解禁になった。<br>
+これも適当に分散してしまって大丈夫なコンポーネントだ。</p>
+
+<p><a href="http://downloads.getchef.com/push-jobs-server/" rel="nofollow noopener" target="_blank"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F86c11408-108e-d407-07c5-6938dd88ee1d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=17b5226da8d15a4ae20c73ba3e9d5f94" alt="Push_Jobs_Server___Chef_Downloads___Chef.png" title="Push_Jobs_Server___Chef_Downloads___Chef.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/86c11408-108e-d407-07c5-6938dd88ee1d.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F86c11408-108e-d407-07c5-6938dd88ee1d.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=3322d717efc521926524ec7d98852dba 1x" loading="lazy"></a></p>
+
+<p>パッケージは上の図リンクから、インストールなどは次を参照。</p>
+
+<ul>
+<li><a href="http://docs.getchef.com/push_jobs.html" title="Push Jobs — Chef Docs" rel="nofollow noopener" target="_blank">Push Jobs — Chef Docs</a></li>
+<li><a href="http://docs.getchef.com/install_push_jobs.html" title="Install Push Jobs — Chef Docs" rel="nofollow noopener" target="_blank">Install Push Jobs — Chef Docs</a></li>
+</ul>
+
+<p>ただ、RC2の現状インストールにはコツがいる。</p>
+
+<ul>
+<li><p>リンクからダウンロードできる<code>opscode-push-jobs-server_1.1.1-1_amd64.deb</code>は、<code>private-chef</code>パッケージに依存しているので<code>--force</code>がいる。</p></li>
+<li>
+<p>管理用の<code>opscode-push-jobs-server-ctl</code>にもパスが通らないので、ダイレクトに叩く。</p>
+
+<ul>
+<li><code>/opt/opscode-push-jobs-server/bin/opscode-push-jobs-server-ctl reconfigure</code></li>
+</ul>
+</li>
+<li>
+<p>クライアント(ジョブを購読して実行する側)のパッケージは案内が無い</p>
+
+<ul>
+<li>ただ推測可能になっているので探す</li>
+</ul>
+</li>
+<li><p>knifeコマンドの拡張は<code>knife-push</code>gemを入れる</p></li>
+</ul>
+
+<p>以上のことを踏まえれば、強引に使える状態にできる。</p>
+
+<h3>
+<span id="ジョブを登録" class="fragment"></span><a href="#%E3%82%B8%E3%83%A7%E3%83%96%E3%82%92%E7%99%BB%E9%8C%B2"><i class="fa fa-link"></i></a>ジョブを登録</h3>
+
+<p>knifeから、ノードに実行してもらいたいジョブをpush-serverに登録する。<br>
+ジョブの名前はコマンドを直接でなく、事前登録済みのキーバリュー。設定に記載されていないジョブ名は<code>quorum_failed</code>となり実行されない。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="c"># knife job start chef-client ip-10-172-xxx-xxx.ap-northeast-1.compute.internal</span>
+Started.  Job ID: 6b4dcd19a746b97aecbb30a0906b7778
+Running <span class="o">(</span>1/1 <span class="k">in </span>progress<span class="o">)</span> ...
+Complete.
+
+<span class="nb">command</span>:     chef-client
+created_at:  Tue, 09 Sep 2014 08:37:04 GMT
+<span class="nb">id</span>:          6b4dcd19a746b97aecbb30a0906b7778
+nodes:
+  succeeded: ip-10-172-xxx-xxx.ap-northeast-1.compute.internal
+run_timeout: 3600
+status:      <span class="nb">complete
+</span>updated_at:  Tue, 09 Sep 2014 08:37:12 GMT
+
+</pre></div></div>
+
+<p>ジョブIDから実行状況を確認したり、</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># knife job status 6b4dcd19a746b97aecbb30a0906b7778
+command:     chef-client
+created_at:  Tue, 09 Sep 2014 08:37:04 GMT
+id:          6b4dcd19a746b97aecbb30a0906b7778
+nodes:
+  succeeded: ip-10-172-xxx-xxx.ap-northeast-1.compute.internal
+run_timeout: 3600
+status:      complete
+updated_at:  Tue, 09 Sep 2014 08:37:12 GMT
+</pre></div></div>
+
+<p>全体のジョブ一覧を確認したり。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="c"># knife job list</span>
+<span class="nb">command</span>:     <span class="nb">date
+</span>created_at:  Tue, 09 Sep 2014 08:35:21 GMT
+<span class="nb">id</span>:          6b4dcd19a7466b04fbe530a83bebd0c2
+run_timeout: 3600
+status:      quorum_failed
+updated_at:  Tue, 09 Sep 2014 08:35:21 GMT
+
+<span class="nb">command</span>:     chef-client
+created_at:  Tue, 09 Sep 2014 08:37:04 GMT
+<span class="nb">id</span>:          6b4dcd19a746b97aecbb30a0906b7778
+run_timeout: 3600
+status:      <span class="nb">complete
+</span>updated_at:  Tue, 09 Sep 2014 08:37:12 GMT
+</pre></div></div>
+
+<h2>
+<span id="追記-analytics-platform" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98-analytics-platform"><i class="fa fa-link"></i></a>追記： Analytics Platform</h2>
+
+<p>忘れていたので追記。</p>
+
+<p><a href="http://downloads.getchef.com/analytics/ubuntu/#/" rel="nofollow noopener" target="_blank"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fea780abc-f539-77b1-8fc5-f04e67e1b897.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=920ac2120223e6f95ceed029fc43dd1c" alt="Analytics___Chef_Downloads___Chef.png" title="Analytics___Chef_Downloads___Chef.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/ea780abc-f539-77b1-8fc5-f04e67e1b897.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fea780abc-f539-77b1-8fc5-f04e67e1b897.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=3a00605e5a7001ffc06ddf999436bb6c 1x" loading="lazy"></a></p>
+
+<p>パッケージは上の図リンクから、インストールなどは次を参照。</p>
+
+<p><a href="http://docs.getchef.com/install_analytics.html" title="Install Chef Analytics — Chef Docs" rel="nofollow noopener" target="_blank">Install Chef Analytics — Chef Docs</a></p>
+
+<p>何が表示されるかはこちらが詳しい。<br>
+<a href="http://docs.getchef.com/actions.html" title="Chef Actions — Chef Docs" rel="nofollow noopener" target="_blank">Chef Actions — Chef Docs</a></p>
+
+<p>これはできれば別のサーバに入れましょう、通常のWebUIと競合しがち。</p>
+
+<h2>
+<span id="まとめ" class="fragment"></span><a href="#%E3%81%BE%E3%81%A8%E3%82%81"><i class="fa fa-link"></i></a>まとめ</h2>
+
+<p>OSS版はもはや結構しょぼかったので、これらの機能に対する敷居を下げて無償にすることでClient/Server構成の価値が少し回復しました。<br>
+個人的にはもう一年くらい早かったらよかったのにと思いました。</p>

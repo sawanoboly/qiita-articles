@@ -1,0 +1,174 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><code>Infrastructure as Code</code>に感化されていざChefを使うとなった時、ちょっと既存のファイルを弄りたいだけなのに<code>cookbook</code>に<code>file</code>とか<code>template</code>とかメンドクセって思うじゃないですか。</p>
+
+<p>『ほな<code>execute</code>リソースでちょっとsedコマンドしたら…』と思う前にちょっと<code>Chef::Util</code>を検討しませんか。</p>
+
+<h2>
+<span id="対象ファイルとレシピ" class="fragment"></span><a href="#%E5%AF%BE%E8%B1%A1%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%A8%E3%83%AC%E3%82%B7%E3%83%94"><i class="fa fa-link"></i></a>対象ファイルとレシピ</h2>
+
+<p>サンプルとしてこんな2行で出来たファイルを2つ用意しました。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">tmp1,tmp2</span></div>
+<div class="highlight"><pre>hogehoge
+mogemoge
+</pre></div>
+</div>
+
+<p>では 'tmp1'に一致した行の置換、'tmp2'では文字列の置換を実施してみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">apply.rb</span></div>
+<div class="highlight"><pre><span class="n">file</span> <span class="s1">'./tmp1'</span> <span class="k">do</span>
+  <span class="n">_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">FileEdit</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+  <span class="n">_file</span><span class="p">.</span><span class="nf">search_file_replace_line</span><span class="p">(</span><span class="s1">'^hoge'</span><span class="p">,</span> <span class="s2">"piyopiyo</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+  <span class="n">content</span> <span class="n">_file</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:contents</span><span class="p">).</span><span class="nf">join</span>
+<span class="k">end</span>
+
+<span class="n">file</span> <span class="s1">'./tmp2'</span> <span class="k">do</span>
+  <span class="n">_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">FileEdit</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+  <span class="n">_file</span><span class="p">.</span><span class="nf">search_file_replace</span><span class="p">(</span><span class="s1">'ge'</span><span class="p">,</span> <span class="s2">"ga"</span><span class="p">)</span>
+  <span class="n">content</span> <span class="n">_file</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:contents</span><span class="p">).</span><span class="nf">join</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<blockquote>
+<p>追記中：Chef-Clientが11.12以降では FileEditの@contentsがなくなり、@editor.linesに変更。</p>
+</blockquote>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">apply2.rb</span></div>
+<div class="highlight"><pre><span class="c1">## 11.12.0以降のクライアント</span>
+<span class="n">file</span> <span class="s1">'./tmp1'</span> <span class="k">do</span>
+  <span class="n">_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">FileEdit</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+  <span class="n">_file</span><span class="p">.</span><span class="nf">search_file_replace_line</span><span class="p">(</span><span class="s1">'^hoge'</span><span class="p">,</span> <span class="s2">"piyopiyo</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+  <span class="n">content</span> <span class="n">_file</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:editor</span><span class="p">).</span><span class="nf">lines</span><span class="p">.</span><span class="nf">join</span>
+<span class="k">end</span>
+
+<span class="n">file</span> <span class="s1">'./tmp2'</span> <span class="k">do</span>
+  <span class="n">_file</span> <span class="o">=</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Util</span><span class="o">::</span><span class="no">FileEdit</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+  <span class="n">_file</span><span class="p">.</span><span class="nf">search_file_replace</span><span class="p">(</span><span class="s1">'ge'</span><span class="p">,</span> <span class="s2">"ga"</span><span class="p">)</span>
+  <span class="n">content</span> <span class="n">_file</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="ss">:editor</span><span class="p">).</span><span class="nf">lines</span><span class="p">.</span><span class="nf">join</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p><code>Chef::Util::FileEdit.new(path)</code>の<code>path</code>について。<br>
+レシピのリソース定義内では自分(self)の<code>attributes</code>を利用することができるので、path(※省略時はnameと同じ)を使いまわして<code>Chef::Util::FileEdit</code>読み込み対象にしてるんですね。</p>
+
+<p>参考：<a href="http://docs.opscode.com/resource_file.html" rel="nofollow noopener" target="_blank">file — Chef Docs</a></p>
+
+<p><code>#contents</code>がprivate_methodなのでちょっと<code>:send</code>しましたがまあいいっしょ。</p>
+
+<h2>
+<span id="result" class="fragment"></span><a href="#result"><i class="fa fa-link"></i></a>Result</h2>
+
+<p><code>:dry_run</code>です、きっと目論見通りですね。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">chef-apply(dry_run)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply appry.rb <span class="nt">-w</span>
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> file[./tmp1] action create
+    - Would update content <span class="k">in </span>file ./tmp1 from 639ed8 to 55d5ca
+        <span class="nt">---</span> ./tmp1  2013-08-20 00:45:11.000000000 +0900
+        +++ /var/folders/s9/kwcs_8ln0d32v_n4hdfb7td00000gn/T/.tmp120130820-24879-gemfn5 2013-08-20 00:45:19.000000000 +0900
+        @@ <span class="nt">-1</span>,2 +1,2 @@
+        <span class="nt">-hogehoge</span>
+        +piyopiyo
+         mogemoge
+  <span class="k">*</span> file[./tmp2] action create
+    - Would update content <span class="k">in </span>file ./tmp2 from 639ed8 to 93260c
+        <span class="nt">---</span> ./tmp2  2013-08-20 00:45:03.000000000 +0900
+        +++ /var/folders/s9/kwcs_8ln0d32v_n4hdfb7td00000gn/T/.tmp220130820-24879-ieq0kc 2013-08-20 00:45:19.000000000 +0900
+        @@ <span class="nt">-1</span>,2 +1,2 @@
+        <span class="nt">-hogehoge</span>
+        <span class="nt">-mogemoge</span>
+        +hogahoga
+        +mogamoga
+</pre></div>
+</div>
+
+<p>実施します、まあ<code>:dry_run</code>と変わらず。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">chef-apply(conversion)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply appry.rb 
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> file[./tmp1] action create
+    - update content <span class="k">in </span>file ./tmp1 from 639ed8 to 55d5ca
+        <span class="nt">---</span> ./tmp1  2013-08-20 00:45:11.000000000 +0900
+        +++ /var/folders/s9/kwcs_8ln0d32v_n4hdfb7td00000gn/T/.tmp120130820-24938-1bwvf6g    2013-08-20 00:45:41.000000000 +0900
+        @@ <span class="nt">-1</span>,2 +1,2 @@
+        <span class="nt">-hogehoge</span>
+        +piyopiyo
+         mogemoge
+  <span class="k">*</span> file[./tmp2] action create
+    - update content <span class="k">in </span>file ./tmp2 from 639ed8 to 93260c
+        <span class="nt">---</span> ./tmp2  2013-08-20 00:45:03.000000000 +0900
+        +++ /var/folders/s9/kwcs_8ln0d32v_n4hdfb7td00000gn/T/.tmp220130820-24938-h5bq4k 2013-08-20 00:45:41.000000000 +0900
+        @@ <span class="nt">-1</span>,2 +1,2 @@
+        <span class="nt">-hogehoge</span>
+        <span class="nt">-mogemoge</span>
+        +hogahoga
+        +mogamoga
+</pre></div>
+</div>
+
+<p>続いて<code>chef-apply</code>実施、もうファイルに対して残す変更はありません。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">chef-apply(up_to_date)</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>chef-apply appry.rb 
+Recipe: <span class="o">(</span>chef-apply cookbook<span class="o">)</span>::<span class="o">(</span>chef-apply recipe<span class="o">)</span>
+  <span class="k">*</span> file[./tmp1] action create <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+  <span class="k">*</span> file[./tmp2] action create <span class="o">(</span>up to <span class="nb">date</span><span class="o">)</span>
+</pre></div>
+</div>
+
+<p>よし、本日も冪等である。</p>
+
+<h2>
+<span id="その他fileeditのメソッド" class="fragment"></span><a href="#%E3%81%9D%E3%81%AE%E4%BB%96fileedit%E3%81%AE%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89"><i class="fa fa-link"></i></a>その他FileEditのメソッド</h2>
+
+<p>その他sedでよく使うマッチ行の次に挿入や、sedでやるのは多分面倒くさい'無かったら追記'がメソッドとして用意されています。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">Chef</span></div>
+<div class="highlight"><pre>pry<span class="o">(</span>main<span class="o">)&gt;</span> Chef::Util::FileEdit.instance_methods<span class="o">(</span><span class="nb">false</span><span class="o">)</span>
+<span class="o">=&gt;</span> <span class="o">[</span>:search_file_replace_line,
+ :search_file_replace,
+ :search_file_delete_line,
+ :search_file_delete,
+ :insert_line_after_match,
+ :insert_line_if_no_match,
+ :write_file]
+</pre></div>
+</div>
+
+<p><code>Chef::Util</code>のあたりChefの中でもかなり古いコードです、初期はファイルをちょろっといじるようなツールだったのでしょうかね。</p>
+
+<hr>
+
+<p>追記：<br>
+念のため書いておくと<code>Chef::Util::FileEdit</code>本来の使い方は<code>#write_file</code>で、<code>Chef::Util::Backup</code>などと組み合わせて主にLibraryやLWRP方面で利用します。<br>
+ただレシピ内でやるのは芸が無いと思うのです。</p>
+
+<p>追記2：</p>
+
+<p>普通の使い方のサンプルも引用しておきます。</p>
+
+<p>timezone cookbook(fork版)より。</p>
+
+<p><a href="https://github.com/pearj/cookbooks/blob/master/timezone/recipes/default.rb" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/pearj/cookbooks/blob/master/timezone/recipes/default.rb</a></p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>  clock = Chef::Util::FileEdit.new("/etc/sysconfig/clock")
+  clock.search_file_replace_line(/^ZONE=.*$/, "ZONE=\"#{node[:tz]}\"")
+  clock.write_file
+</pre></div></div>

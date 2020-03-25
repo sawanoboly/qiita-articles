@@ -1,0 +1,42 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://ascii.asciimw.jp/books/books/detail/978-4-04-891659-2.shtml" rel="nofollow noopener" target="_blank">実践Vim</a> を読んでいます、基本機能の習得・おさらいにはとても良い本だと思います。</p>
+
+<p>さて、</p>
+
+<blockquote>
+<p>コラム：矢印キーに指を伸ばすクセをやめる</p>
+</blockquote>
+
+<p>によると、 <strong>矯正期間に限り</strong> vimrcで矢印キーを無効にしてしまうという例があった。</p>
+
+<p>まだまだhjklでの移動をしない軟弱者なので、切り替えできるようにしてみた。</p>
+
+<div class="code-frame" data-lang="vim">
+<div class="code-lang"><span class="bold">.vimrc</span></div>
+<div class="highlight"><pre><span class="k">function</span><span class="p">!</span> HardMode <span class="p">()</span>
+  noremap <span class="p">&lt;</span>Up<span class="p">&gt;</span> <span class="p">&lt;</span>Nop<span class="p">&gt;</span>
+  noremap <span class="p">&lt;</span>Down<span class="p">&gt;</span> <span class="p">&lt;</span>Nop<span class="p">&gt;</span>
+  noremap <span class="p">&lt;</span>Left<span class="p">&gt;</span> <span class="p">&lt;</span>Nop<span class="p">&gt;</span>
+  noremap <span class="p">&lt;</span>Right<span class="p">&gt;</span> <span class="p">&lt;</span>Nop<span class="p">&gt;</span>
+<span class="k">endfunction</span>
+
+<span class="k">function</span><span class="p">!</span> EasyMode <span class="p">()</span>
+  noremap <span class="p">&lt;</span>Up<span class="p">&gt;</span> <span class="p">&lt;</span>Up<span class="p">&gt;</span>
+  noremap <span class="p">&lt;</span>Down<span class="p">&gt;</span> <span class="p">&lt;</span>Down<span class="p">&gt;</span>
+  noremap <span class="p">&lt;</span>Left<span class="p">&gt;</span> <span class="p">&lt;</span>Left<span class="p">&gt;</span>
+  noremap <span class="p">&lt;</span>Right<span class="p">&gt;</span> <span class="p">&lt;</span>Right<span class="p">&gt;</span>
+<span class="k">endfunction</span>
+
+command<span class="p">!</span> HardMode <span class="k">call</span> HardMode<span class="p">()</span>
+command<span class="p">!</span> EasyMode <span class="k">call</span> EasyMode<span class="p">()</span>
+</pre></div>
+</div>
+
+<p>これで<code>:HardMode</code>と打てば矢印キーが無効になり、<code>:EasyMode</code>でまた有効にできた。集中して作業できる時にHardModeにしてみよう。</p>
+
+<p>なお、<code>EasyMode</code>が<code>Explore</code>と出だしがかぶっているので、<code>E</code>をよく使う人は別名にしましょう。</p>

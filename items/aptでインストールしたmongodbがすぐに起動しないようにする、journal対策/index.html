@@ -1,0 +1,39 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>10genが配布しているmongodb、<a href="http://docs.mongodb.org/manual/tutorial/install-mongodb-on-debian-or-ubuntu-linux/" rel="nofollow noopener" target="_blank">aptなどで導入</a>できて楽なんだが<code>Ver.2.0</code>以降ではjournalがデフォルトで有効になっている。</p>
+
+<p>journal有効『= aptで入れた瞬間<strong>3GBのDisk確保</strong>に走る』ため(<code>/var/lib/mongodb</code>以下)、導入対象によっては結構な地雷となるのでこれを防ぐ。</p>
+
+<h2>
+<span id="起動スクリプトを確認する" class="fragment"></span><a href="#%E8%B5%B7%E5%8B%95%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88%E3%82%92%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>起動スクリプトを確認する</h2>
+
+<p>Upstart用の起動スクリプトを見ると、<code>ENABLE_MONGODB</code>が文字列"yes"ならば起動するとあり、直後に<code>default</code>から設定を取得しようとしている。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">shell"/etc/init/mongodb.conf</span></div>
+<div class="highlight"><pre>-- snip --
+script
+  ENABLE_MONGODB="yes"
+  if [ -f /etc/default/mongodb ]; then . /etc/default/mongodb; fi
+  if [ "x$ENABLE_MONGODB" = "xyes" ]; then exec start-stop-daemon --start --quiet --chuid mongodb --exec  /usr/bin/mongod -- --config /etc/mongodb.conf; fi
+end script
+-- snip --
+</pre></div>
+</div>
+
+<h2>
+<span id="導入直後の起動を制限する" class="fragment"></span><a href="#%E5%B0%8E%E5%85%A5%E7%9B%B4%E5%BE%8C%E3%81%AE%E8%B5%B7%E5%8B%95%E3%82%92%E5%88%B6%E9%99%90%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>導入直後の起動を制限する</h2>
+
+<p>読むふりをしつつも<code>/etc/default/mongodb</code>はインストールパッケージに含まれていないので、なんでも良いので用意する。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">/etc/default/mongodb</span></div>
+<div class="highlight"><pre><span class="nv">ENABLE_MONGODB</span><span class="o">=</span>断る
+</pre></div>
+</div>
+
+<p>上記ファイル設置の後、<code>apt-get install mongodb-10gen</code>としてインストールすれば勝手には起動してこない。</p>

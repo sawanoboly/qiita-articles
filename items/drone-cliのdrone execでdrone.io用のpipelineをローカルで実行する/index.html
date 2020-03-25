@@ -1,0 +1,124 @@
+<p><a href="http://drone.io" rel="nofollow noopener" target="_blank">drone.io</a>というCI/CDのサービスがあって、自前で運用できるOSS版が存在します。</p>
+
+<p>さてOSS版、こちらhookを受けるserverと、タスクを実行するagentと分かれている感じで、案内通りのセットアップをしようとするとなにかしら専用のサーバが必要です。</p>
+
+<p>ついでに、認証必須でどこかとOAuthの連携、ビルド基本的にwebhook(CLIでも一応可)なので、ちょっと感触を確かめたい程度の時にはserver/agentの構成はちょっと大げさでした。</p>
+
+<p>ドキュメントを見ていたら<code>drone exec</code>ってのがあったので試してみます。</p>
+
+<h2>
+<span id="drone-cliのインストール" class="fragment"></span><a href="#drone-cli%E3%81%AE%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB"><i class="fa fa-link"></i></a>drone-cliのインストール</h2>
+
+<p><a href="http://docs.drone.io/cli-installation/" rel="nofollow noopener" target="_blank">CLI Installation | docs.drone.io</a> </p>
+
+<p>手元はmacOSなので、HomeBrewで。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>brew tap drone/drone
+brew install drone
+</pre></div></div>
+
+<p><code>drone-cli</code>が使えるようになりました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ drone --version
+drone version 0.7.0
+</pre></div></div>
+
+<p>一応付け加えておくと、Docker for Mac を動かしておきましょうね。</p>
+
+<h2>
+<span id="drone-execでローカル実行" class="fragment"></span><a href="#drone-exec%E3%81%A7%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E5%AE%9F%E8%A1%8C"><i class="fa fa-link"></i></a>drone execでローカル実行</h2>
+
+<p>ちょうど良さげなのでバックエンドにredisを使うコードのサンプルを実行してみます。</p>
+
+<p><a href="http://docs.drone.io/redis-example/" rel="nofollow noopener" target="_blank">Example using Redis | docs.drone.io</a></p>
+
+<p><code>.drone.yml</code>と適当にファイルを設置。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>tree ./ <span class="nt">-a</span>
+./
+├── .drone.yml
+└── hello.text
+
+0 directories, 2 files
+</pre></div></div>
+
+<p>Example から<code>.drone.yml</code>の中身をこのようにします。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">drone.yml</span></div>
+<div class="highlight"><pre><span class="na">workspace</span><span class="pi">:</span>
+  <span class="na">base</span><span class="pi">:</span> <span class="s">/pipeline</span>
+  <span class="na">path</span><span class="pi">:</span> <span class="s">src</span>
+
+<span class="na">pipeline</span><span class="pi">:</span>
+  <span class="na">build</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">redis</span>
+    <span class="na">commands</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">pwd</span>
+      <span class="pi">-</span> <span class="s">find ./</span>
+      <span class="pi">-</span> <span class="s">redis-cli -h redis ping</span>
+      <span class="pi">-</span> <span class="s">redis-cli -h redis set FOO bar</span>
+      <span class="pi">-</span> <span class="s">redis-cli -h redis get FOO</span>
+
+<span class="na">services</span><span class="pi">:</span>
+  <span class="na">redis</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">redis</span>
+</pre></div>
+</div>
+
+<p><code>workspace</code>設定はデフォルトですが、記述できるのかと思い足してみました。。</p>
+
+<h2>
+<span id="drone-execでローカル実行-1" class="fragment"></span><a href="#drone-exec%E3%81%A7%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E5%AE%9F%E8%A1%8C-1"><i class="fa fa-link"></i></a>drone execでローカル実行</h2>
+
+<p>あとは実行してみるだけ。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">drone-exec</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>drone <span class="nb">exec 
+</span>1:C 07 Jun 07:52:31.302 <span class="c"># Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf</span>
+                _._                                                  
+           _.-<span class="sb">``</span>__ <span class="s1">''</span>-._                                             
+      _.-<span class="sb">``</span>    <span class="sb">`</span><span class="nb">.</span>  <span class="sb">`</span>_.  <span class="s1">''</span>-._           Redis 3.2.8 <span class="o">(</span>00000000/0<span class="o">)</span> 64 bit
+  .-<span class="sb">``</span> .-<span class="sb">```</span><span class="nb">.</span>  <span class="sb">```</span><span class="se">\/</span>    _.,_ <span class="s1">''</span>-._                                   
+ <span class="o">(</span>    <span class="s1">'      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'</span><span class="sb">`</span> _.-<span class="s1">'|     Port: 6379
+ |    `-._   `._    /     _.-'</span>    |     PID: 1
+  <span class="sb">`</span>-._    <span class="sb">`</span>-._  <span class="sb">`</span>-./  _.-<span class="s1">'    _.-'</span>                                   
+ |<span class="sb">`</span>-._<span class="sb">`</span>-._    <span class="sb">`</span>-.__.-<span class="s1">'    _.-'</span>_.-<span class="s1">'|                                  
+ |    `-._`-._        _.-'</span>_.-<span class="s1">'    |           http://redis.io        
+  `-._    `-._`-.__.-'</span>_.-<span class="s1">'    _.-'</span>                                   
+ |<span class="sb">`</span>-._<span class="sb">`</span>-._    <span class="sb">`</span>-.__.-<span class="s1">'    _.-'</span>_.-<span class="s1">'|                                  
+ |    `-._`-._        _.-'</span>_.-<span class="s1">'    |                                  
+  `-._    `-._`-.__.-'</span>_.-<span class="s1">'    _.-'</span>                                   
+      <span class="sb">`</span>-._    <span class="sb">`</span>-.__.-<span class="s1">'    _.-'</span>                                       
+          <span class="sb">`</span>-._        _.-<span class="s1">'                                           
+              `-.__.-'</span>                                               
+
+1:M 07 Jun 07:52:31.304 <span class="c"># WARNING: The TCP backlog setting of 511 cannot be enforced because /proc/sys/net/core/somaxconn is set to the lower value of 128.</span>
+1:M 07 Jun 07:52:31.304 <span class="c"># Server started, Redis version 3.2.8</span>
+1:M 07 Jun 07:52:31.304 <span class="c"># WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo never &gt; /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled.</span>
+1:M 07 Jun 07:52:31.304 <span class="k">*</span> The server is now ready to accept connections on port 6379
++ <span class="nb">pwd</span>
+/pipeline/src
++ find ./
+./
+./.drone.yml
+./hello.text
++ redis-cli <span class="nt">-h</span> redis ping
+PONG
++ redis-cli <span class="nt">-h</span> redis <span class="nb">set </span>FOO bar
+OK
++ redis-cli <span class="nt">-h</span> redis get FOO
+bar
+
+<span class="nv">$ </span><span class="nb">echo</span> <span class="nv">$?</span>
+0
+</pre></div>
+</div>
+
+<p>できましたね。</p>
+
+<p><code>drone exec --help</code>をみると<code>--local</code>というオプションがあるけども、<code>DRONE_SERVER/DRONE_TOKEN</code>を指定しても無視されているので、<code>drone exec</code>自体はローカル専用とみて良さそう。</p>
+
+<p>drone.io自体、docker-engineだよりなので、ローカルでもagent相当のことはできるでしょうと。ちゃんと機能があってよかった。</p>

@@ -1,0 +1,45 @@
+<p>OpsWorksのAppsに定義した環境変数をシェルや他の処理からも使いやすくしておきたい。</p>
+
+<p>仕様まわりはこちらに解説があるので割愛。 &gt; <a href="http://interu.hatenablog.com/entry/2014/10/27/223954" title="OpsWorksで機能追加された環境変数を試してみて気づいた注意すべきこと - よかろうもん！" rel="nofollow noopener" target="_blank">OpsWorksで機能追加された環境変数を試してみて気づいた注意すべきこと - よかろうもん！</a></p>
+
+<p>Elastic Beanstalkみたいに(※)楽には取れないので、フィードバックから要望を送信しつつ、レシピで対応。</p>
+
+<blockquote>
+<p>※コンテナタイプにもよるが、<code>/opt/elasticbeanstalk/support/export_envvars</code>でEnvironment Configurationの環境変数を取れる。</p>
+</blockquote>
+
+<h2>
+<span id="カスタムクックブック" class="fragment"></span><a href="#%E3%82%AB%E3%82%B9%E3%82%BF%E3%83%A0%E3%82%AF%E3%83%83%E3%82%AF%E3%83%96%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>カスタムクックブック</h2>
+
+<p><a href="https://github.com/OpsRockin/opsworks-export-envs" rel="nofollow noopener" target="_blank">OpsRockin/opsworks-export-envs | GitHub</a></p>
+
+<p>幸いデプロイイベントには必要な情報が揃っているので、deployのランリストに追加すればよし。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">opsworks-export-envs/recipes/default.rb</span></div>
+<div class="highlight"><pre><span class="n">node</span><span class="p">.</span><span class="nf">deploy</span><span class="p">.</span><span class="nf">each_pair</span> <span class="k">do</span> <span class="o">|</span><span class="n">app_name</span><span class="p">,</span><span class="n">vals</span><span class="o">|</span>
+  <span class="n">file</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">vals</span><span class="p">[</span><span class="ss">:home</span><span class="p">],</span> <span class="s2">"shellinit-</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">.sh"</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">envs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">vals</span><span class="p">.</span><span class="nf">environment_variables</span><span class="p">.</span><span class="nf">each_pair</span> <span class="p">{</span><span class="o">|</span><span class="n">key</span><span class="p">,</span> <span class="n">val</span><span class="o">|</span> <span class="n">envs</span> <span class="o">&lt;&lt;</span> <span class="s2">"export </span><span class="si">#{</span><span class="n">key</span><span class="si">}</span><span class="s2">=</span><span class="se">\"</span><span class="si">#{</span><span class="n">val</span><span class="si">}</span><span class="se">\"</span><span class="s2">"</span><span class="p">}</span> <span class="k">if</span> <span class="n">vals</span><span class="p">.</span><span class="nf">environment_variables</span>
+    <span class="n">owner</span> <span class="n">vals</span><span class="p">[</span><span class="ss">:user</span><span class="p">]</span>
+    <span class="n">group</span> <span class="n">vals</span><span class="p">[</span><span class="ss">:group</span><span class="p">]</span>
+    <span class="n">content</span> <span class="n">envs</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="export用ファイルのサンプル" class="fragment"></span><a href="#export%E7%94%A8%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AE%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB"><i class="fa fa-link"></i></a>export用ファイルのサンプル</h2>
+
+<p>こんな感じで各アプリケーションに設定された環境変数を、読めるように書き出します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">/home/deploy/shellinit-your_app_name.sh</span></div>
+<div class="highlight"><pre><span class="nb">export </span><span class="nv">HOGE1</span><span class="o">=</span><span class="s2">"piyopiyo1"</span>
+<span class="nb">export </span><span class="nv">HOGE2</span><span class="o">=</span><span class="s2">"piyopiyo2"</span>
+</pre></div>
+</div>
+
+<p>使うときは<code>. /home/deploy/shellinit-your_app_name.sh</code> や <code>source /home/deploy/shellinit-your_app_name.sh</code> で読めばOK。<br>
+ファイル自体を置く場所は<code>/etc/profile.d/</code>や.bashrcで自動で読ませるとか、各自使いやすいように調整してもいいですね。</p>

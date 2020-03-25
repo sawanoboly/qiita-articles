@@ -1,0 +1,466 @@
+<p>Azure WebAppのまとまったドキュメントが見当たらなくて、CLIの通信をベースに調べることにした。</p>
+
+<p>調査には <a href="http://portswigger.net/burp/proxy.html" rel="nofollow noopener" target="_blank">Burp Proxy</a> を使い、<code>export HTTP_PROXY=http://127.0.0.1:8080</code>した後地道に取得。</p>
+
+<h2>
+<span id="共通項" class="fragment"></span><a href="#%E5%85%B1%E9%80%9A%E9%A0%85"><i class="fa fa-link"></i></a>共通項</h2>
+
+<p>リソースの共通部分を次のようにして記述を省略します。</p>
+
+<p>エンドポイント: <a href="https://management.core.windows.net/%24%7B%E3%82%B5%E3%83%96%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%82%B7%E3%83%A7%E3%83%B3ID%7D" class="autolink" rel="nofollow noopener" target="_blank">https://management.core.windows.net/${サブスクリプションID}</a></p>
+
+<p>データセンタの場所にあたるwebSpaceNameがURIに含まれるので、適宜次の中から埋めます。</p>
+
+<p>ロケーション(webSpaceName)一覧: </p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>[
+  {
+    "name": "North Central US",
+    "webSpace": "northcentraluswebspace"
+  },
+  {
+    "name": "North Europe",
+    "webSpace": "northeuropewebspace"
+  },
+  {
+    "name": "West Europe",
+    "webSpace": "westeuropewebspace"
+  },
+  {
+    "name": "South Central US",
+    "webSpace": "southcentraluswebspace"
+  },
+  {
+    "name": "East US",
+    "webSpace": "eastuswebspace"
+  },
+  {
+    "name": "East Asia",
+    "webSpace": "eastasiawebspace"
+  },
+  {
+    "name": "Southeast Asia",
+    "webSpace": "southeastasiawebspace"
+  },
+  {
+    "name": "West US",
+    "webSpace": "westuswebspace"
+  },
+  {
+    "name": "Central US",
+    "webSpace": "centraluswebspace"
+  },
+  {
+    "name": "Japan West",
+    "webSpace": "japanwestwebspace"
+  },
+  {
+    "name": "Japan East",
+    "webSpace": "japaneastwebspace"
+  },
+  {
+    "name": "East US 2",
+    "webSpace": "eastus2webspace"
+  },
+  {
+    "name": "Brazil South",
+    "webSpace": "brazilsouthwebspace"
+  }
+]
+</pre></div></div>
+
+<h2>
+<span id="cliとuriの対応表" class="fragment"></span><a href="#cli%E3%81%A8uri%E3%81%AE%E5%AF%BE%E5%BF%9C%E8%A1%A8"><i class="fa fa-link"></i></a>CLIとURIの対応表</h2>
+
+<p>とりえあず自分が使用すると思うリソースと、CLIでだいたいまともに動いてる感じのリクエストをまとめました。全部じゃないけど。</p>
+
+<table>
+<thead>
+<tr>
+<th>azure cli</th>
+<th>method/rescode</th>
+<th>対応するURI</th>
+<th>一言</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>site location list</td>
+<td>GET(200)</td>
+<td>/services/WebSpaces</td>
+<td>-</td>
+</tr>
+<tr>
+<td>site list</td>
+<td>GET(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites</td>
+<td>-</td>
+</tr>
+<tr>
+<td>site create [name]</td>
+<td>POST(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites</td>
+<td>Body例あり。</td>
+</tr>
+<tr>
+<td>site show [name]</td>
+<td>*GET(200)</td>
+<td>-</td>
+<td>config,instanceidsなどの複合リクエストでした。</td>
+</tr>
+<tr>
+<td>site showの途中で呼ばれているinstance_id</td>
+<td>GET(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/instanceids</td>
+<td>CLIでは直接これだけ叩くコマンドはない。</td>
+</tr>
+<tr>
+<td>site stop [name]</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}</td>
+<td>Body例あり。</td>
+</tr>
+<tr>
+<td>site domain list [name]</td>
+<td>GET(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}</td>
+<td>-</td>
+</tr>
+<tr>
+<td>site domain add [dn] [name]</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}</td>
+<td>Body例あり、事前にCNAME登録必須。</td>
+</tr>
+<tr>
+<td>site domain delete [dn] {name}</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}</td>
+<td>Body例あり。</td>
+</tr>
+<tr>
+<td>site appsetting list [name]</td>
+<td>GET(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/config</td>
+<td>JSONで返ってくる。</td>
+</tr>
+<tr>
+<td>site appsetting show  [name]</td>
+<td>GET(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/config</td>
+<td>すべてとってCLI側でパースしていた。リクエストとしてはlistと同じ。</td>
+</tr>
+<tr>
+<td>site appsetting add  [name]</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/config</td>
+<td>Body例あり、JSONだ。</td>
+</tr>
+<tr>
+<td>site appsetting delete  [name]</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/config</td>
+<td>Body例あり、JSON。リクエストとしてはaddと同じ。</td>
+</tr>
+<tr>
+<td>site config *</td>
+<td>-</td>
+<td>-</td>
+<td>古い、appsetting推奨なのでカット。</td>
+</tr>
+<tr>
+<td>site scale mode  [name]</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/ServerFarms/{ServerFarmId}</td>
+<td>Body例あり、ServerFarmIdはsiteをGETした際の情報に含まれている。 (<code>Default4</code>など)</td>
+</tr>
+<tr>
+<td>site scale instances  [name]</td>
+<td>-</td>
+<td>-</td>
+<td>成功してない。</td>
+</tr>
+<tr>
+<td>site defaultdocument list [name]</td>
+<td>GET(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/config</td>
+<td>JSONで返ってくる。リクエストとしてはappsetting listと同じ。</td>
+</tr>
+<tr>
+<td>site defaultdocument add  [name]</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/config</td>
+<td>Body例あり、JSON。</td>
+</tr>
+<tr>
+<td>site defaultdocument delete  [name]</td>
+<td>PUT(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/config</td>
+<td>Body例あり、JSON。リクエストとしてはaddと同じ。</td>
+</tr>
+</tbody>
+</table>
+
+<h3>
+<span id="scm関連のエンドポイントとcli対応" class="fragment"></span><a href="#scm%E9%96%A2%E9%80%A3%E3%81%AE%E3%82%A8%E3%83%B3%E3%83%89%E3%83%9D%E3%82%A4%E3%83%B3%E3%83%88%E3%81%A8cli%E5%AF%BE%E5%BF%9C"><i class="fa fa-link"></i></a>SCM関連のエンドポイントとCLI対応</h3>
+
+<p>SCM関連は普通のAPIエンドポイントに送るリクエストとサイト専用のSCMエンドポイントにリクエストが分かれます。</p>
+
+<table>
+<thead>
+<tr>
+<th>azure cli</th>
+<th>method/rescode</th>
+<th>対応するURI</th>
+<th>一言</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>site deployment github [name]</td>
+<td>POST(200)</td>
+<td>/services/WebSpaces/{webSpaceName}/sites/{SiteName}/repository</td>
+<td>POSTのBODYが空で投げられて、サイト側にベアリポジトリを作成する。。いわゆる<code>ローカルGitリポジトリ</code>で作られる設定。コマンド名となんか違う。</td>
+</tr>
+<tr>
+<td>site deployment user set [username] [pass]</td>
+<td>PUT(??)</td>
+<td>/services/WebSpaces?properties=publishingCredentials</td>
+<td>検証していたアカウントがco-adminsだったので400で蹴られた。あまりAPIからつつくものでは無いかも。</td>
+</tr>
+</tbody>
+</table>
+
+<p>一部のリクエストでサイトごとに割り振られたSCMエンドポイント(<code>{SiteName}.scm.azurewebsites.net</code> )が使用される。<br>
+hogehoge31なら<code>hogehoge31.scm.azurewebsites.net</code>だった。</p>
+
+<p>次のリクエストはSCMエンドポイントに送る。</p>
+
+<table>
+<thead>
+<tr>
+<th>azure cli</th>
+<th>method/rescode</th>
+<th>対応するURI</th>
+<th>一言</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>site deployment list [name]</td>
+<td>GET(200)</td>
+<td>/api/deployments/</td>
+<td>JSONのアレイで返ってくる。コミットIDを含む。</td>
+</tr>
+<tr>
+<td>site deployment redeploy [options]  [name]</td>
+<td>PUT(204)</td>
+<td>/api/deployments/{commit_id(sha1)}</td>
+<td>BODYは空。任意のコミットIDをデプロイできる。これ204。</td>
+</tr>
+<tr>
+<td>site log tail [name]</td>
+<td>GET(200)</td>
+<td>/logstream</td>
+<td>ログがストリーミングで渡ってくる。</td>
+</tr>
+<tr>
+<td>site log download [name]</td>
+<td>GET(200)</td>
+<td>/dump</td>
+<td>CLIではdiagnostics.zip一式としてダウンロード。</td>
+</tr>
+</tbody>
+</table>
+
+<h2>
+<span id="postput時のリクエスト集" class="fragment"></span><a href="#postput%E6%99%82%E3%81%AE%E3%83%AA%E3%82%AF%E3%82%A8%E3%82%B9%E3%83%88%E9%9B%86"><i class="fa fa-link"></i></a>POST/PUT時のリクエスト集</h2>
+
+<p>以下、Bodyのサンプル。</p>
+
+<h3>
+<span id="site-create" class="fragment"></span><a href="#site-create"><i class="fa fa-link"></i></a>site create</h3>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&lt;?xml version="1.0" encoding="utf-8" standalone="yes"?&gt;
+&lt;Site xmlns="http://schemas.microsoft.com/windowsazure"&gt;
+  &lt;Name&gt;hogehoge31&lt;/Name&gt;
+  &lt;ServerFarm/&gt;
+  &lt;WebSpaceToCreate&gt;
+    &lt;GeoRegion&gt;Japan East&lt;/GeoRegion&gt;
+    &lt;Name&gt;japaneastwebspace&lt;/Name&gt;
+    &lt;Plan&gt;VirtualDedicatedPlan&lt;/Plan&gt;
+  &lt;/WebSpaceToCreate&gt;
+&lt;/Site&gt;
+</pre></div></div>
+
+<h3>
+<span id="site-stopstart" class="fragment"></span><a href="#site-stopstart"><i class="fa fa-link"></i></a>site stop/start</h3>
+
+<p>サイト<code>hogehoge31</code>をstopした時のリクエスト。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&lt;?xml version="1.0" encoding="utf-8" standalone="yes"?&gt;
+&lt;Site xmlns="http://schemas.microsoft.com/windowsazure"&gt;
+  &lt;State&gt;Stopped&lt;/State&gt;
+&lt;/Site&gt;
+</pre></div></div>
+
+<p>Startの場合は<code>Running</code>。CLIのrestartはStoppedとRunningを続けて送信する。</p>
+
+<h3>
+<span id="site-domain-add" class="fragment"></span><a href="#site-domain-add"><i class="fa fa-link"></i></a>site domain add</h3>
+
+<p>hogehoge31に<code>hogehoge31.higan.works</code>を付与した時。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&lt;?xml version="1.0" encoding="utf-8" standalone="yes"?&gt;
+&lt;Site xmlns="http://schemas.microsoft.com/windowsazure" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays"&gt;
+  &lt;HostNames&gt;
+    &lt;a:string&gt;hogehoge31.azurewebsites.net&lt;/a:string&gt;
+    &lt;a:string&gt;hogehoge31.higan.works&lt;/a:string&gt;
+  &lt;/HostNames&gt;
+&lt;/Site&gt;
+</pre></div></div>
+
+<h3>
+<span id="site-domain-delete" class="fragment"></span><a href="#site-domain-delete"><i class="fa fa-link"></i></a>site domain delete</h3>
+
+<p>hogehoge31から<code>hogehoge31.higan.works</code>を削除した時。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&lt;?xml version="1.0" encoding="utf-8" standalone="yes"?&gt;
+&lt;Site xmlns="http://schemas.microsoft.com/windowsazure" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays"&gt;
+  &lt;HostNames&gt;
+    &lt;a:string&gt;hogehoge31.azurewebsites.net&lt;/a:string&gt;
+  &lt;/HostNames&gt;
+&lt;/Site&gt;
+</pre></div></div>
+
+<h3>
+<span id="site-appsetting-adddelete" class="fragment"></span><a href="#site-appsetting-adddelete"><i class="fa fa-link"></i></a>site appsetting add/delete</h3>
+
+<p><code>setting add MYCONF="HOGEHOGE" hogehoge31</code> とした時のリクエスト。delete時は該当のキーバリューを削除して送る。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{
+   "DefaultDocuments" : [
+      "Default.htm",
+      "Default.html",
+      "Default.asp",
+      "index.htm",
+      "index.html",
+      "iisstart.htm",
+      "default.aspx",
+      "index.php",
+      "hostingstart.html"
+   ],
+   "RoutingRules" : [],
+   "LogsDirectorySizeLimit" : 35,
+   "DetailedErrorLoggingEnabled" : false,
+   "ConnectionStrings" : [],
+   "AlwaysOn" : false,
+   "WebSocketsEnabled" : false,
+   "NumberOfWorkers" : 1,
+   "PhpVersion" : "5.4",
+   "NetFrameworkVersion" : "v4.0",
+   "HttpLoggingEnabled" : false,
+   "HandlerMappings" : [],
+   "AppSettings" : [
+      {
+         "Name" : "WEBSITE_NODE_DEFAULT_VERSION",
+         "Value" : "0.10.32"
+      },
+      {
+         "Value" : "HOGEHOGE",
+         "Name" : "MYCONF"
+      }
+   ],
+   "RemoteDebuggingEnabled" : false,
+   "SiteAuthEnabled" : false,
+   "RequestTracingEnabled" : false,
+   "Metadata" : [],
+   "ScmType" : "None",
+   "ManagedPipelineMode" : 0,
+   "Use32BitWorkerProcess" : true
+}
+</pre></div></div>
+
+<h3>
+<span id="site-scale-mode" class="fragment"></span><a href="#site-scale-mode"><i class="fa fa-link"></i></a>site scale mode</h3>
+
+<p>site <code>hogehoge31</code>をbasicにした時のリクエスト。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&lt;?xml version="1.0" encoding="utf-8" standalone="yes"?&gt;
+&lt;ServerFarm xmlns="http://schemas.microsoft.com/windowsazure"&gt;
+  &lt;SKU&gt;basic&lt;/SKU&gt;
+&lt;/ServerFarm&gt;
+</pre></div></div>
+
+<h3>
+<span id="site-defaultdocument-deleteadd" class="fragment"></span><a href="#site-defaultdocument-deleteadd"><i class="fa fa-link"></i></a>site defaultdocument delete/add</h3>
+
+<p>hogehoge31からdefault.aspxを取り除いたリクエスト例。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{
+   "DetailedErrorLoggingEnabled" : false,
+   "WebSocketsEnabled" : false,
+   "HandlerMappings" : [],
+   "SiteAuthEnabled" : false,
+   "DefaultDocuments" : [
+      "Default.htm",
+      "Default.html",
+      "Default.asp",
+      "index.htm",
+      "index.html",
+      "iisstart.htm",
+      "index.php",
+      "hostingstart.html"
+   ],
+   "NumberOfWorkers" : 1,
+   "LogsDirectorySizeLimit" : 35,
+   "HttpLoggingEnabled" : false,
+   "RoutingRules" : [],
+   "RemoteDebuggingEnabled" : false,
+   "Use32BitWorkerProcess" : true,
+   "ManagedPipelineMode" : 0,
+   "RequestTracingEnabled" : false,
+   "AppSettings" : [
+      {
+         "Name" : "WEBSITE_NODE_DEFAULT_VERSION",
+         "Value" : "0.10.32"
+      }
+   ],
+   "PhpVersion" : "5.4",
+   "ConnectionStrings" : [],
+   "RemoteDebuggingVersion" : "VS2012",
+   "NetFrameworkVersion" : "v4.0",
+   "Metadata" : [],
+   "ScmType" : "None",
+   "AlwaysOn" : false
+}
+</pre></div></div>
+
+<h3>
+<span id="site-deployment-user-set" class="fragment"></span><a href="#site-deployment-user-set"><i class="fa fa-link"></i></a>site deployment user set</h3>
+
+<p><code>user: sawaploy</code>, <code>pass: yourpassword</code>で共通デプロイユーザを作るときのXML。<br>
+これは管理者でしか作れないのと、全サイトにまたがる設定になるので最初にポータルから作れば十分。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&lt;?xml version="1.0" encoding="utf-8" standalone="yes"?&gt;
+&lt;User xmlns="http://schemas.microsoft.com/windowsazure"&gt;
+  &lt;PublishingPassword&gt;yourpassword&lt;/PublishingPassword&gt;
+  &lt;PublishingUserName&gt;sawaploy&lt;/PublishingUserName&gt;
+&lt;/User&gt;
+</pre></div></div>
+
+<h2>
+<span id="cli単独では直接取れないリソースのレスポンス" class="fragment"></span><a href="#cli%E5%8D%98%E7%8B%AC%E3%81%A7%E3%81%AF%E7%9B%B4%E6%8E%A5%E5%8F%96%E3%82%8C%E3%81%AA%E3%81%84%E3%83%AA%E3%82%BD%E3%83%BC%E3%82%B9%E3%81%AE%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9"><i class="fa fa-link"></i></a>CLI単独では直接取れないリソースのレスポンス</h2>
+
+<p>CLIには対応するサブコマンドが無いんだけども、<code>site config</code>などの複合出力が読んでいるのを見つけた。とりあえず１つ。</p>
+
+<h3>
+<span id="sitenameinstanceids" class="fragment"></span><a href="#sitenameinstanceids"><i class="fa fa-link"></i></a>...{SiteName}/instanceids</h3>
+
+<p>Appのホスティングに割り当てられているインスタンスのIDが取れた。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>&lt;ArrayOfstring xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"&gt;
+  &lt;string&gt;c316b60c7926f2ebXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&lt;/string&gt;
+  &lt;string&gt;1da71d92d8f9da7dXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXc&lt;/string&gt;
+&lt;/ArrayOfstring&gt;
+</pre></div></div>

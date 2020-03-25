@@ -1,0 +1,104 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Dokkuをインストールした環境ではNginxチームが保守するNginx1.6.x(stable)のリポジトリが導入される。<br>
+このリポジトリを含め、debian系が提供する<code>nginx-extras</code>はちょっといいモジュールが追加してビルドしたNginxのパッケージだ。</p>
+
+<p>特に注目は<code>Embedded Lua</code>。Spdyも目立つがこちらは標準でも含まれているので。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># apt-cache show nginx-extras
+Package: nginx-extras
+Source: nginx
+Priority: extra
+Section: httpd
+Installed-Size: 1465
+Maintainer: Kartik Mistry &lt;kartik@debian.org&gt;
+Architecture: amd64
+Version: 1.6.0-1+trusty0
+
+-- snip --
+
+Description: nginx web/proxy server (extended version)
+ Nginx ("engine X") is a high-performance web and reverse proxy server
+ created by Igor Sysoev. It can be used both as a standalone web server
+ and as a proxy to reduce the load on back-end HTTP or mail servers.
+ .
+ This package provides a version of nginx with the standard modules, plus
+ extra features and modules such as the Perl module, which allows the
+ addition of Perl in configuration files.
+ .
+ STANDARD HTTP MODULES: Core, Access, Auth Basic, Auto Index, Browser,
+ Charset, Empty GIF, FastCGI, Geo, Gzip, Headers, Index, Limit Requests,
+ Limit Zone, Log, Map, Memcached, Proxy, Referer, Rewrite, SCGI,
+ Split Clients, SSI, Upstream, User ID, UWSGI.
+ .
+ OPTIONAL HTTP MODULES: Addition, Auth Request, Debug, Embedded Perl, FLV,
+ GeoIP, Gzip Precompression, Image Filter, IPv6, MP4, Random Index, Real IP,
+ Secure Link, Spdy, SSL, Stub Status, Substitution, WebDAV, XSLT.
+ .
+ MAIL MODULES: Mail Core, IMAP, POP3, SMTP, SSL.
+ .
+ THIRD PARTY MODULES: Auth PAM, Chunkin, DAV Ext, Echo, Embedded Lua,
+ Fancy Index, HttpHeadersMore, HTTP Substitution Filter, http push,
+ Nginx Development Kit, Upload Progress, Upstream Fair Queue.
+Description-md5: a1852af8d0ef61a51df8e6cb9581d6a6
+</pre></div></div>
+
+<p>ちなみにアプリケーションファイアーウォールが使いたい場合、nginx-naxsi(WAF for NGINX)というのもある。</p>
+
+<h2>
+<span id="nginx-extras-16xの導入" class="fragment"></span><a href="#nginx-extras-16x%E3%81%AE%E5%B0%8E%E5%85%A5"><i class="fa fa-link"></i></a>nginx-extras 1.6.xの導入</h2>
+
+<p><code>apt-get</code>で入れよう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># apt-get install nginx-extras
+Reading package lists... Done
+Building dependency tree       
+Reading state information... Done
+The following extra packages will be installed:
+  liblua5.1-0 libperl5.18
+Suggested packages:
+  nginx-doc
+The following packages will be REMOVED:
+  nginx-full
+The following NEW packages will be installed:
+  liblua5.1-0 libperl5.18 nginx-extras
+0 upgraded, 3 newly installed, 1 to remove and 0 not upgraded.
+Need to get 699 kB of archives.
+After this operation, 922 kB of additional disk space will be used.
+</pre></div></div>
+
+<p>これだけでOK。</p>
+
+<h2>
+<span id="サンプル" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB"><i class="fa fa-link"></i></a>サンプル</h2>
+
+<p>で、前回の<a href="http://qiita.com/sawanoboly/items/614f81c13ceadb9a3cff" title="Dokkuでアプリ別のカスタムNginx設定 - Qiita" id="reference-53da5687954529bc42fe">Dokkuでアプリ別のカスタムNginx設定 - Qiita</a> と組み合わせて。</p>
+
+<p><code>nginx.inc.conf</code>を次のようにluaでコンテンツを返すように書いてみます。</p>
+
+<div class="code-frame" data-lang="text">
+<div class="code-lang"><span class="bold">nginx.inc.conf</span></div>
+<div class="highlight"><pre>location = /lua {
+    default_type 'text/plain';
+
+    content_by_lua "ngx.say('Hello,lua module!')";
+}
+</pre></div>
+</div>
+
+<p>Dokkuにアプリをデプロイして、<code>/lua</code>にアクセス。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ curl -k https://sinatra-test.example.com/lua
+Hello,lua module!
+</pre></div></div>
+
+<p>できた。</p>
+
+<p><code>$APP/ENV</code>から値を取るようにnginx内で仕込めればフロントエンドとして使いやすくなりそう。</p>
+
+<p>追記：<br>
+とりあえずのお勧めは、<code>nginx.conf</code>に<code>env DOKKU_ROOT=/home/dokku;</code>あたりを書いておくとよさそう。</p>

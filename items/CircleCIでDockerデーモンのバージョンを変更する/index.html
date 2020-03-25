@@ -1,0 +1,44 @@
+<p>この記事時点でCircleCIのDockerは1.6.2のcircleciエディション(Docker version 1.6.2-circleci, build 2f3236d)が標準で動きます。<br>
+ただ、諸事情でもうすこし新しいDocker使いたいので差し替えの方法。</p>
+
+<p>CircleCIがフォークしているDockerはこちらにありました。 <a href="https://github.com/circleci/docker" rel="nofollow noopener" target="_blank">circleci/docker</a></p>
+
+<h2>
+<span id="バージョン差し替えのcircleyml" class="fragment"></span><a href="#%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E5%B7%AE%E3%81%97%E6%9B%BF%E3%81%88%E3%81%AEcircleyml"><i class="fa fa-link"></i></a>バージョン差し替えのcircle.yml</h2>
+
+<p>じゃあこれをビルドすればイイのかなーとgit cloneしてきた所、<code>circle.yml</code>を発見。</p>
+
+<p><a href="https://github.com/circleci/docker/blob/docker-1.8.2/circle.yml" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/circleci/docker/blob/docker-1.8.2/circle.yml</a></p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">circle.yml</span></div>
+<div class="highlight"><pre><span class="na">machine</span><span class="pi">:</span>
+  <span class="na">pre</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">echo 'DOCKER_OPTS="-s btrfs -e lxc -D --userland-proxy=false"' | sudo tee -a /etc/default/docker</span>
+    <span class="pi">-</span> <span class="s">sudo curl -L -o /usr/bin/docker 'https://s3-external-1.amazonaws.com/circle-downloads/docker-1.8.2-circleci'</span>
+    <span class="pi">-</span> <span class="s">sudo chmod 0755 /usr/bin/docker</span>
+  <span class="na">services</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">docker</span>
+</pre></div>
+</div>
+
+<p>おお、結合テスト用に差し替えの手順が。</p>
+
+<p>ありがとう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>ubuntu@box124:~$ docker -v
+Docker version 1.8.2-circleci, build a8b52f5
+</pre></div></div>
+
+<hr>
+
+<p>追記：</p>
+
+<p>CicleCIの中の人に『(さっきの問い合わせの件は)フォークで動いたッス。Thanks』 などと伝えた所、それはテスト中なんでお客さん向けにはお知らせはしてないのですわと。</p>
+
+<blockquote>
+<p>Glad it worked!<br>
+We haven't notified docker1.8.2 to customers because we are still testing but it should work for you. </p>
+</blockquote>
+
+<p>言うまでもないけど、正式にリリースされないうちは自己責任でどーぞ。</p>

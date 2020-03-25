@@ -1,0 +1,68 @@
+<p>AWS KMSを経由した暗号をRuby/Railsからしれっと使いたいので、Gemでも作るかと思ったら<a href="https://github.com/Fullscreen/kms-env" rel="nofollow noopener" target="_blank">kms-env</a>というのがあった。<br>
+これがなかなか利用シーンを想定した工夫がなされていたので紹介。</p>
+
+<h2>
+<span id="準備-末尾に_kmsをつけた環境変数をセットする" class="fragment"></span><a href="#%E6%BA%96%E5%82%99-%E6%9C%AB%E5%B0%BE%E3%81%AB_kms%E3%82%92%E3%81%A4%E3%81%91%E3%81%9F%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0%E3%82%92%E3%82%BB%E3%83%83%E3%83%88%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>準備: 末尾に<code>_KMS</code>をつけた環境変数をセットする</h2>
+
+<p>たとえば<code>MY_TEXT1</code>という環境変数に目的の文字列を入れたい場合、<code>MY_TEXT1_KMS</code>という環境変数にCiphertextを入れておく。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nb">export </span><span class="nv">MY_TEXT1_KMS</span><span class="o">=</span><span class="s2">"CiCIvMyU68+VaZSTfI3932heQDZdvp+5+HrByuWVyEcTRRKZAQEBAgB4iLzMlOvPlWmUk3yN/d9oXkA2Xb6fufh6wcrllchHE0UAAABwMG4GCSqGSIb3DQEHBqBhMF8CAQAwWgYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAxbSecwaBUfYce/0MQCARCALftL6ZVE9fAMgpohPz0A8hfylDx3wGg64M4J47GK2CTrI11pIylpKHnklMcIag=="</span>
+<span class="nb">export </span><span class="nv">MY_TEXT2_KMS</span><span class="o">=</span><span class="s2">"CiCIvMyU68+VaZSTfI3932heQDZdvp+5+HrByuWVyEcTRRKcAQEBAgB4iLzMlOvPlWmUk3yN/d9oXkA2Xb6fufh6wcrllchHE0UAAABzMHEGCSqGSIb3DQEHBqBkMGICAQAwXQYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAwgFJzQeMJU3a7NF5YCARCAMDE2ngCZllnIKUq9S5qdS9FuxWmlEW8OlmjSoE3chqmLgTuoXvwzwX7AltZg7jecmQ=="</span>
+</pre></div></div>
+
+<h2>
+<span id="使用-kmsenvloadを実行すると_kmsが取り除かれたキーでenvにセットされる" class="fragment"></span><a href="#%E4%BD%BF%E7%94%A8-kmsenvload%E3%82%92%E5%AE%9F%E8%A1%8C%E3%81%99%E3%82%8B%E3%81%A8_kms%E3%81%8C%E5%8F%96%E3%82%8A%E9%99%A4%E3%81%8B%E3%82%8C%E3%81%9F%E3%82%AD%E3%83%BC%E3%81%A7env%E3%81%AB%E3%82%BB%E3%83%83%E3%83%88%E3%81%95%E3%82%8C%E3%82%8B"><i class="fa fa-link"></i></a>使用: <code>KmsEnv::load</code>を実行すると、<code>_KMS</code>が取り除かれたキーでENVにセットされる</h2>
+
+<p>手元でやるならprofile、その他ならアクセスキーをつかう。もちろんEC2などAWS上ならロール/STSでいい。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>export AWS_PROFILE=myprofile
+export AWS_REGION=ap-northeast-1
+</pre></div></div>
+
+<p>動作の様子をPryで。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">pry-console</span></div>
+<div class="highlight"><pre><span class="o">&gt;</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'MY_TEXT1'</span><span class="p">]</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>  <span class="c1">## まだカラッポ</span>
+
+<span class="o">&gt;</span> <span class="nb">require</span> <span class="s1">'kms-env'</span>
+<span class="o">=&gt;</span> <span class="kp">true</span>
+
+
+<span class="o">&gt;</span> <span class="no">KmsEnv</span><span class="p">.</span><span class="nf">load</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"MY_TEXT2_KMS"</span><span class="p">,</span> <span class="s2">"MY_TEXT1_KMS"</span><span class="p">]</span>  <span class="c1"># 処理対象が返される。</span>
+
+
+<span class="o">&gt;</span> <span class="nb">puts</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'MY_TEXT1'</span><span class="p">]</span>          <span class="c1"># MY_TEXT1に復号されたデータがセットされた</span>
+<span class="no">Is</span> <span class="n">this</span> <span class="n">your</span> <span class="n">pen?</span>
+<span class="o">=&gt;</span> <span class="kp">nil</span>
+
+<span class="o">&gt;</span> <span class="nb">puts</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'MY_TEXT2'</span><span class="p">]</span>          <span class="c1"># MY_TEXT2に復号されたデータがセットされた</span>
+<span class="no">Yes</span><span class="p">,</span> <span class="n">this</span> <span class="n">is</span> <span class="n">my</span> <span class="n">pen</span><span class="p">.</span>
+<span class="nf">=</span><span class="o">&gt;</span> <span class="kp">nil</span>
+
+<span class="c1">## === ついでに既存の値は？</span>
+
+<span class="o">&gt;</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'MY_TEXT2'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'hoge'</span>
+
+<span class="o">&gt;</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'MY_TEXT2'</span><span class="p">]</span>          <span class="c1"># MY_TEXT2を上書きしてからの...</span>
+<span class="o">=&gt;</span> <span class="n">hoge</span>
+
+
+<span class="p">(</span><span class="n">pry</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">KmsEnv</span><span class="p">.</span><span class="nf">load</span>
+<span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"MY_TEXT2_KMS"</span><span class="p">,</span> <span class="s2">"MY_TEXT1_KMS"</span><span class="p">]</span>  <span class="c1"># もう一度ロードしてみる</span>
+
+<span class="p">(</span><span class="n">pry</span><span class="p">)</span><span class="o">&gt;</span> <span class="nb">puts</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'MY_TEXT2'</span><span class="p">]</span>          <span class="c1"># またMY_TEXT2に復号されたデータがセットされた</span>
+<span class="no">Yes</span><span class="p">,</span> <span class="n">this</span> <span class="n">is</span> <span class="n">my</span> <span class="n">pen</span><span class="o">.</span>
+</pre></div>
+</div>
+
+<p>こいつはよい。initializeで<code>KmsEnv.load</code>した後は通常のENVとして使い放題だ。<br>
+対象(*_KMS)がなければ特に何もせず、既存の値を上書きしないのでローカルは平文、デプロイ先ではCiphertextという運用が可能なのも素敵。</p>
+
+<h2>
+<span id="まとめ" class="fragment"></span><a href="#%E3%81%BE%E3%81%A8%E3%82%81"><i class="fa fa-link"></i></a>まとめ</h2>
+
+<p>サフィックスから自動でやるってのは考えつかなかった、副作用もすくなかろうし応用が効きそうだ。<br>
+自前でライブラリつくろうかなっと思った時はCLIで暗号化もできたらいいかもと思ったが、KMSでデータを変換するインターフェースはlamvery(encrypt/decrypt)があるからいいや。</p>

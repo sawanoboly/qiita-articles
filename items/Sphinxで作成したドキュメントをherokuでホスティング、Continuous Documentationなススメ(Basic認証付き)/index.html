@@ -1,0 +1,150 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>ドキュメント作成に色々とよいSphinx、さてhtmlを作ったら何処でホスティングしましょうかね。</p>
+
+<p>Sphinx詳細は<a href="http://sphinx-doc.org" rel="nofollow noopener" target="_blank">公式:http://sphinx-doc.org</a></p>
+
+<p>適当なレンタルサーバやs3やら、Giithub Pages等ありますが、heroku上でsinatraを使って配信する方法を紹介。</p>
+
+<h2>
+<span id="sinatraの準備" class="fragment"></span><a href="#sinatra%E3%81%AE%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>sinatraの準備</h2>
+
+<p><code>Gemfile</code>にsinatraを入れましょう、rackupにはthinを使ってみます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">Gemfile</span></div>
+<div class="highlight"><pre><span class="n">source</span> <span class="s2">"https://rubygems.org"</span>
+
+<span class="n">gem</span> <span class="s2">"sinatra"</span>
+<span class="n">gem</span> <span class="s2">"rake"</span>
+<span class="n">gem</span> <span class="s2">"thin"</span>
+</pre></div>
+</div>
+
+<p>で、<code>config.ru</code>に全部かいちゃいました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">config.ru</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'sinatra'</span>
+<span class="n">set</span> <span class="ss">:public_folder</span><span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'/build/html'</span>
+
+<span class="n">get</span> <span class="s1">'/'</span> <span class="k">do</span>
+  <span class="n">redirect</span> <span class="s2">"/index.html"</span><span class="p">,</span> <span class="mi">301</span>
+<span class="k">end</span>
+
+<span class="n">run</span> <span class="no">Sinatra</span><span class="o">::</span><span class="no">Application</span>
+</pre></div>
+</div>
+
+<p><code>:public_folder</code>をSphinxがhtmlを生成するディレクトリにすれば大体OKです、<code>:public_folder</code>に実ファイルがあればそれを配信するsinatraの機能に丸投げです。</p>
+
+<p>ついでに<code>/</code>へのリクエストは<code>/index.html</code>に放り投げます。<code>DirctoryIndex</code>みたいな挙動にしようと。</p>
+
+<h3>
+<span id="heroku上のrackup用" class="fragment"></span><a href="#heroku%E4%B8%8A%E3%81%AErackup%E7%94%A8"><i class="fa fa-link"></i></a>heroku上のrackup用</h3>
+
+<p>無くても良かったような気がしつつ、Foreman用の<code>Procfile</code>も設置。</p>
+
+<div class="code-frame" data-lang="Procfile"><div class="highlight"><pre>web: bundle exec rackup -p $PORT
+</pre></div></div>
+
+<p>これで準備OKです。</p>
+
+<h3>
+<span id="ローカルで動作確認" class="fragment"></span><a href="#%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%A7%E5%8B%95%E4%BD%9C%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>ローカルで動作確認</h3>
+
+<p>一旦ローカルで動作を確認してみます。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">execute-rackup</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>bundle <span class="nb">exec </span>rackup
+<span class="o">&gt;&gt;</span> Thin web server <span class="o">(</span>v1.5.1 codename Straight Razor<span class="o">)</span>
+<span class="o">&gt;&gt;</span> Maximum connections <span class="nb">set </span>to 1024
+<span class="o">&gt;&gt;</span> Listening on 0.0.0.0:9292, CTRL+C to stop
+</pre></div>
+</div>
+
+<p><code>http://localhost:9292</code>を開けばSpinxが作成したindexを表示できていると思います、スタイルもリンクもOK。</p>
+
+<h2>
+<span id="basic認証をかけてみる" class="fragment"></span><a href="#basic%E8%AA%8D%E8%A8%BC%E3%82%92%E3%81%8B%E3%81%91%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>Basic認証をかけてみる</h2>
+
+<p>herokuでホストするのはいいけど、一応軽く認証を掛けたいこともあるでしょう。<br>
+Basic認証を追加してみました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">config.ru(basic_auth)</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'sinatra'</span>
+<span class="n">set</span> <span class="ss">:public_folder</span><span class="p">,</span> <span class="no">File</span><span class="p">.</span><span class="nf">dirname</span><span class="p">(</span><span class="kp">__FILE__</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'/build/html'</span>
+
+
+<span class="c1">## &gt;&gt;&gt;追記部分</span>
+<span class="n">use</span> <span class="no">Rack</span><span class="o">::</span><span class="no">Auth</span><span class="o">::</span><span class="no">Basic</span> <span class="k">do</span> <span class="o">|</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="o">|</span>
+  <span class="n">username</span> <span class="o">==</span> <span class="s1">'hogehoge'</span> <span class="o">&amp;&amp;</span> <span class="n">password</span> <span class="o">==</span> <span class="s1">'mogemoge'</span>
+<span class="k">end</span>
+
+<span class="n">before</span> <span class="s1">'*'</span> <span class="k">do</span>
+  <span class="c1"># authenticate!</span>
+<span class="k">end</span>
+<span class="c1">## &lt;&lt;&lt;&lt;追記部分</span>
+
+<span class="n">get</span> <span class="s1">'/'</span> <span class="k">do</span>
+  <span class="n">redirect</span> <span class="s2">"/index.html"</span><span class="p">,</span> <span class="mi">301</span>
+<span class="k">end</span>
+
+<span class="n">get</span> <span class="s1">'/:dir'</span> <span class="k">do</span>  <span class="c1">## 修正２,3</span>
+  <span class="k">unless</span> <span class="n">request</span><span class="p">.</span><span class="nf">path_info</span><span class="p">.</span><span class="nf">end_with?</span><span class="p">(</span><span class="s1">'.ico'</span><span class="p">)</span>
+    <span class="n">redirect</span> <span class="s2">"</span><span class="si">#{</span><span class="n">request</span><span class="p">.</span><span class="nf">path_info</span><span class="si">}</span><span class="s2">.html"</span><span class="p">,</span> <span class="mi">301</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">run</span> <span class="no">Sinatra</span><span class="o">::</span><span class="no">Application</span>
+</pre></div>
+</div>
+
+<hr>
+
+<blockquote>
+<p>修正： <code>authenticate!</code>部分は勘違い、不要でした。<br>
+修正2： 自動生成元によっては.htmlがついてないことがあるので付与してリダイレクト<br>
+修正3： <code>favicon.ico</code>の自動取得でリダイレクトループするので条件設定。</p>
+</blockquote>
+
+<hr>
+
+<p><code>before</code>で全てのリクエストに対して<code>authenticate!</code>を通すことにしました、これだけでOK。</p>
+
+<h2>
+<span id="herokuにpush" class="fragment"></span><a href="#heroku%E3%81%ABpush"><i class="fa fa-link"></i></a>herokuにPush</h2>
+
+<p>適当な手段でherokuにアプリケーションを登録します。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">execute-rackup</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>git push heroku
+Counting objects: 38, <span class="k">done</span><span class="nb">.</span>
+Delta compression using up to 4 threads.
+Compressing objects: 100% <span class="o">(</span>37/37<span class="o">)</span>, <span class="k">done</span><span class="nb">.</span>
+Writing objects: 100% <span class="o">(</span>37/37<span class="o">)</span>, 148.40 KiB, <span class="k">done</span><span class="nb">.</span>
+Total 37 <span class="o">(</span>delta 4<span class="o">)</span>, reused 0 <span class="o">(</span>delta 0<span class="o">)</span>
+
+<span class="nt">-----</span><span class="o">&gt;</span> Ruby/Rack app detected
+<span class="nt">-----</span><span class="o">&gt;</span> Using Ruby version: ruby-2.0.0
+
+<span class="nt">--</span> snip <span class="nt">--</span>
+
+<span class="nt">-----</span><span class="o">&gt;</span> Compiled slug size: 26.2MB
+<span class="nt">-----</span><span class="o">&gt;</span> Launching... <span class="k">done</span>, v4
+</pre></div>
+</div>
+
+<p>これで認証付きのドキュメントをホストできました。<br>
+あとはJenkinsとでも連携して、継続的ドキュメントアップロード提供をやるといいでしょう。</p>
+
+<hr>
+
+<p>認証をGithub連携にしてみたバージョン: <a href="http://qiita.com/sawanoboly@github/items/9646c4c53d442a7c6b46" id="reference-68d49c89718d4be6c873">ShpinxをShinatraでホストしつつGithubのOAuth経由でチーム認証をかけたが</a></p>

@@ -1,0 +1,56 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>FAQなので書いておく。ファイル系ってのはこのへん。</p>
+
+<ul>
+<li>cookbook_file</li>
+<li>template</li>
+</ul>
+
+<p>問題の詳細は<a href="https://tickets.opscode.com/browse/CHEF-3045" rel="nofollow noopener" target="_blank">CHEF-3045</a>のチケットで確認できます。</p>
+
+<p>要約すると。</p>
+
+<ol>
+<li>Chef-Clientが実行されたら、最初にChef-Server/Client間の認証が行われる</li>
+<li>↑の有効期限はデフォルトで15分</li>
+<li>ファイル系のリソースはCookbookロード時にはChef-Client実行NodeのCacheには落ちてこない</li>
+<li>Chef-Clientのリソース収束の段階で、必要なファイルがあったら1で作った認証情報を使ってChef-Server(Bookchelf API)に取りに行く</li>
+<li>15分超えてたら4の挙動が403でアウトー</li>
+</ol>
+
+<p>キャッシュがある場合はそもそも取りに行かないが、NodeでのChef-Client初回実行時、いっぺんに色々やっていると良くある。</p>
+
+<h2>
+<span id="1-chef-serverの認証期限デフォルト15分を伸ばす" class="fragment"></span><a href="#1-chef-server%E3%81%AE%E8%AA%8D%E8%A8%BC%E6%9C%9F%E9%99%90%E3%83%87%E3%83%95%E3%82%A9%E3%83%AB%E3%83%8815%E5%88%86%E3%82%92%E4%BC%B8%E3%81%B0%E3%81%99"><i class="fa fa-link"></i></a>1. Chef-Serverの認証期限デフォルト15分を伸ばす</h2>
+
+<p>Chef-Serverの設定ファイル<code>/etc/chef-server/chef-server.rb</code>で、有効期限を伸ばす。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">/etc/chef-server/chef-server.rb</span></div>
+<div class="highlight"><pre>
+<span class="n">erchef</span><span class="p">[</span><span class="s1">'s3_url_ttl'</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3600</span>  <span class="c1"># 例</span>
+</pre></div>
+</div>
+
+<p>で、設定の適用すればOK。</p>
+
+<p><code>chef-server-ctl reconfigure</code></p>
+
+<h2>
+<span id="2-chef-clientで遅延ダウンロードを無効にする" class="fragment"></span><a href="#2-chef-client%E3%81%A7%E9%81%85%E5%BB%B6%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E3%82%92%E7%84%A1%E5%8A%B9%E3%81%AB%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>2. Chef-Clientで遅延ダウンロードを無効にする</h2>
+
+<p>Chef-Clientが<code>10.28.0</code>以降、または<code>11.6.0</code>以降なら、<code>no_lazy_load</code>オプションが使える。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">/etc/chef/client.rb</span></div>
+<div class="highlight"><pre><span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:no_lazy_load</span><span class="p">]</span> <span class="o">=</span> <span class="kp">true</span>
+</pre></div>
+</div>
+
+<p>こちらはChef-ClientがCookbookをダウンロードする時に<code>files/</code>、<code>templates/</code>を除外しないオプション。<br>
+関係ないファイルも全部Nodeに落ちてくるので注意。</p>

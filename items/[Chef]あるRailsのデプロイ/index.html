@@ -1,0 +1,255 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://www.opscode.com/chef/" rel="nofollow noopener" target="_blank">Opscode Chef</a>であるrailsアプリをデプロイするレシピを書いたのでメモ。</p>
+
+<h2>
+<span id="本railsデプロイ概要" class="fragment"></span><a href="#%E6%9C%ACrails%E3%83%87%E3%83%97%E3%83%AD%E3%82%A4%E6%A6%82%E8%A6%81"><i class="fa fa-link"></i></a>本Railsデプロイ概要</h2>
+
+<ul>
+<li>前提: rubyが入っている、postgresqlサーバは既にある</li>
+<li>start, stopは専用スクリプトを用意、<code>monit</code>配下で管理する。</li>
+<li>デプロイのプラットフォームはとりあえず<code>Joyent SmartOS</code>、多分ほかでもあまり違いはない。</li>
+<li>Rackupはunicorn, socketでnginxからリバースプロキシ</li>
+<li>
+<code>asset_pipiline</code>を使い、<code>assets</code>以下は<code>nginx</code>でホスト。</li>
+</ul>
+
+<h2>
+<span id="レシピ" class="fragment"></span><a href="#%E3%83%AC%E3%82%B7%E3%83%94"><i class="fa fa-link"></i></a>レシピ</h2>
+
+<p>関連<code>Cookbooks</code>や<code>data_bags</code>のことは考えず、固有名称や複雑な箇所は説明用に改変してます。<br>
+<code>chef</code>の<code>deploy</code>リソースは基本的に<code>capistrano/deploy</code>のように決められたフェーズがあり、それぞれにフックが設定されています。<br>
+フック時に実行する内容は<strong>Railsアプリケーションの</strong>リポジトリ側に<code>deploy/#{hook_name}.rb</code>のように置いておくこともできます。</p>
+
+<p><code>## //</code>ではじまる行が書き下ろしの解説</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">rails_app/deploy.rb</span></div>
+<div class="highlight"><pre><span class="c1">#</span>
+<span class="c1"># Cookbook Name:: rails_app</span>
+<span class="c1"># Recipe:: deploy</span>
+<span class="c1">#</span>
+
+<span class="c1">## // デプロイする先のディレクトリを適当に設定</span>
+<span class="n">app_name</span> <span class="o">=</span> <span class="s1">'my_app'</span>
+<span class="n">dir_localsystem</span> <span class="o">=</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="n">app_name</span><span class="p">,</span> <span class="s1">'shared/localsystem'</span><span class="p">)</span>
+
+
+<span class="c1">## // nodeのenvironmentをキーにして、各種接続情報をdata_bagsから取ってくる</span>
+<span class="c1">## build settings</span>
+<span class="c1">## // ブランチ情報やdeploy or force_deployを選べる</span>
+<span class="n">deploy_settings</span> <span class="o">=</span> <span class="n">data_bag_item</span><span class="p">(</span><span class="ss">:deploy</span><span class="p">,</span><span class="ss">:items</span><span class="p">)[</span><span class="n">node</span><span class="p">.</span><span class="nf">environment</span><span class="p">]</span>
+<span class="c1">## // Postgresのrole, password</span>
+<span class="n">connection</span><span class="o">=</span> <span class="n">data_bag_item</span><span class="p">(</span><span class="ss">:postgresql</span><span class="p">,</span><span class="ss">:connections</span><span class="p">)[</span><span class="n">node</span><span class="p">.</span><span class="nf">environment</span><span class="p">]</span>
+<span class="c1">## // 色々URLを拾ってくる、ここではNginxの仮想ホストや、アプリケーションのコンフィグで使用</span>
+<span class="n">domains</span> <span class="o">=</span> <span class="n">data_bag_item</span><span class="p">(</span><span class="ss">:domains</span><span class="p">,</span><span class="ss">:items</span><span class="p">)[</span><span class="n">node</span><span class="p">.</span><span class="nf">environment</span><span class="p">]</span>
+<span class="c1">## // Postgresqlの構成次第で接続先を変えたい</span>
+<span class="n">pg_master</span> <span class="o">=</span> <span class="n">data_bag_item</span><span class="p">(</span><span class="ss">:postgresql</span><span class="p">,</span><span class="ss">:clusters</span><span class="p">)[</span><span class="n">node</span><span class="p">.</span><span class="nf">environment</span><span class="p">][</span><span class="s1">'master'</span><span class="p">]</span>
+
+
+<span class="c1">## // ここから`deploy`リソース</span>
+<span class="n">deploy_branch</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="n">app_name</span><span class="p">)</span>  <span class="k">do</span>
+
+  <span class="c1">## // デプロイ基本情報</span>
+  <span class="n">repo</span> <span class="s1">'https://github.com/higanworks/my_app.git'</span>
+  <span class="n">branch</span>  <span class="n">deploy_settings</span><span class="p">[</span><span class="n">app_name</span><span class="p">][</span><span class="s1">'ref'</span><span class="p">]</span> <span class="c1">## // 'master' が入ったりする</span>
+  <span class="n">action</span> <span class="n">deploy_settings</span><span class="p">[</span><span class="n">app_name</span><span class="p">][</span><span class="s1">'action'</span><span class="p">]</span> <span class="c1">## // 'deploy' または 'force_deploy'や 'roleback'とか</span>
+  <span class="n">migrate</span> <span class="n">deploy_settings</span><span class="p">[</span><span class="n">app_name</span><span class="p">][</span><span class="s1">'migrate'</span><span class="p">]</span> <span class="c1">## // true or false</span>
+
+
+  <span class="c1">## // 各種コマンド実行時の環境変数</span>
+  <span class="n">environment</span> <span class="s2">"RAILS_ENV"</span> <span class="o">=&gt;</span> <span class="n">node</span><span class="p">.</span><span class="nf">environment</span><span class="p">,</span>  <span class="s1">'BUNDLE_GEMFILE'</span> <span class="o">=&gt;</span> <span class="s1">'MyGemfile'</span>
+
+  <span class="c1">## // マイグレーションのフェーズで実行するコマンド。</span>
+  <span class="n">migration_command</span> <span class="s1">'bundle exec rake db:migrate'</span>
+
+  <span class="c1">## // デプロイ基本情報</span>
+  <span class="n">create_dirs_before_symlink</span> <span class="sx">%w{tmp}</span>
+
+  <span class="c1">## // 標準のsymlinkにassetsを追加している</span>
+  <span class="n">symlinks</span> <span class="s2">"system"</span><span class="o">=&gt;</span><span class="s2">"public/system"</span><span class="p">,</span>
+           <span class="s2">"assets"</span><span class="o">=&gt;</span><span class="s2">"public/assets"</span><span class="p">,</span>                                                                                               
+           <span class="s2">"pids"</span><span class="o">=&gt;</span><span class="s2">"tmp/pids"</span><span class="p">,</span>
+           <span class="s2">"log"</span><span class="o">=&gt;</span><span class="s2">"log"</span>
+
+  <span class="c1">## // マイグレーション前のフック、sharedの下に吐いたコンフィグをsymlinkにして`rails_root`の下に持ってくる</span>
+  <span class="c1">## // キー側は `shared_dir`からの相対パス、ターゲット側は`release_path`からの相対パスで指定</span>
+  <span class="n">symlink_before_migrate</span> <span class="s2">"config/database.yml"</span> <span class="o">=&gt;</span> <span class="s2">"config/database.yml"</span><span class="p">,</span>
+                         <span class="s2">"config/app_config.yml"</span> <span class="o">=&gt;</span> <span class="s2">"config/app_config.yml"</span>
+
+  <span class="c1">## // 以降`relase_path`は使えるけど、`shared_path`が使えたり使えなかったりする。。</span>
+  <span class="c1">## // Shared_Dirの下に必要なディレクトリを置く、Docによるつデフォルトで幾つか作りそうだけど作られなかったので明示。</span>
+  <span class="n">before_migrate</span> <span class="k">do</span>
+    <span class="sx">%w{config pids log assets system localsystem}</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">dir</span><span class="o">|</span>
+      <span class="n">directory</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">release_path</span><span class="p">,</span> <span class="s2">"../../shared"</span> <span class="p">,</span> <span class="n">dir</span><span class="p">)</span> <span class="k">do</span>
+        <span class="n">action</span> <span class="ss">:create</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // database.yml の生成</span>
+    <span class="c1">## // dbの名前は"#{app_name}_#(node.environment)"</span>
+    <span class="n">template</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">release_path</span><span class="p">,</span> <span class="s1">'../../shared/config/database.yml'</span><span class="p">))</span> <span class="k">do</span>
+      <span class="n">cookbook</span> <span class="s1">'my_app_common'</span>
+      <span class="n">source</span> <span class="s1">'database.yml.erb'</span>
+      <span class="n">variables</span><span class="p">({</span>
+        <span class="ss">:connection</span> <span class="o">=&gt;</span> <span class="n">connection</span><span class="p">,</span>
+        <span class="ss">:domains</span> <span class="o">=&gt;</span> <span class="n">domains</span><span class="p">,</span>
+        <span class="ss">:pg_master</span> <span class="o">=&gt;</span> <span class="n">pg_master</span><span class="p">,</span>
+        <span class="ss">:app_name</span> <span class="o">=&gt;</span> <span class="n">app_name</span>
+      <span class="p">})</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // アプリケーション固有のコンフィグを生成</span>
+    <span class="n">template</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">release_path</span><span class="p">,</span> <span class="s1">'../../shared/config/app_config.yml'</span><span class="p">))</span> <span class="k">do</span>
+      <span class="n">source</span> <span class="s1">'app_config.yml.erb'</span>
+      <span class="n">variables</span><span class="p">({</span>
+        <span class="ss">:domains</span> <span class="o">=&gt;</span> <span class="n">domains</span>
+      <span class="p">})</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // unicornの設定</span>
+    <span class="c1">## // ワーカープロセス数をdata_bagから</span>
+    <span class="c1">## // socketのパスに`app_name`を使用</span>
+    <span class="n">template</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">release_path</span><span class="p">,</span> <span class="s1">'../../shared/config/unicorn.rb'</span><span class="p">))</span> <span class="k">do</span>
+      <span class="n">cookbook</span> <span class="s1">'nginx_upstream'</span>
+      <span class="n">source</span> <span class="s1">'unicorn.rb.erb'</span>
+      <span class="n">variables</span><span class="p">({</span>
+        <span class="ss">:worker_processes</span> <span class="o">=&gt;</span> <span class="n">node</span><span class="p">[</span><span class="ss">:deploy</span><span class="p">][</span><span class="n">app_name</span><span class="p">][</span><span class="ss">:unicorn_wps</span><span class="p">],</span>
+        <span class="ss">:app_name</span> <span class="o">=&gt;</span> <span class="n">app_name</span>
+      <span class="p">})</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // bundlerを使っているのでマイグレーション実行前にbundle</span>
+    <span class="c1">## // Gemを似たようなrailsアプリと共有するため、一段階上のSharedに置く</span>
+    <span class="n">bash</span> <span class="s2">"bundle install </span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">"</span> <span class="k">do</span>
+      <span class="n">cwd</span> <span class="n">release_path</span>
+      <span class="n">flags</span> <span class="s1">'-ex'</span>
+      <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">BASHCODE</span><span class="sh">
+         bundle install --deployment --gemfile MyGemfile --without development test --path=</span><span class="si">#{</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="s1">'shared/bundle'</span><span class="p">)</span><span class="si">}</span><span class="sh">
+</span><span class="no">      BASHCODE</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+
+
+  <span class="c1">## // リスタート前のフック</span>
+  <span class="n">before_restart</span> <span class="k">do</span>
+
+    <span class="c1">## // data_bagに指定があったらassetsを生成する</span>
+    <span class="c1">## // RAILS_GROUPSの指定をするのでenviromentを設定</span>
+    <span class="c1">## asset pipeline</span>
+    <span class="k">if</span> <span class="n">deploy_settings</span><span class="p">[</span><span class="n">app_name</span><span class="p">][</span><span class="s1">'assets'</span><span class="p">]</span>
+      <span class="n">bash</span> <span class="s2">"assets precompile </span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">"</span> <span class="k">do</span>
+        <span class="n">cwd</span> <span class="n">release_path</span>
+        <span class="n">environment</span> <span class="s2">"RAILS_ENV"</span> <span class="o">=&gt;</span> <span class="n">node</span><span class="p">.</span><span class="nf">environment</span><span class="p">,</span>
+                    <span class="s1">'BUNDLE_GEMFILE'</span> <span class="o">=&gt;</span> <span class="s1">'MyGemfile'</span><span class="p">,</span>
+                    <span class="s1">'RAILS_GROUPS'</span> <span class="o">=&gt;</span> <span class="s1">'assets'</span>
+        <span class="n">flags</span> <span class="s1">'-ex'</span>
+        <span class="n">code</span> <span class="o">&lt;&lt;-</span><span class="no">BASHCODE</span><span class="sh">
+           bundle exec rake assets:precompile
+</span><span class="no">        BASHCODE</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // monitからコントロールするため、制御スクリプトを設置する</span>
+    <span class="c1">## // 中身にはPATHやらENVやら色々設定してある</span>
+    <span class="sx">%W(start_</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="sx">.sh stop_</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="sx">.sh)</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">cmd</span><span class="o">|</span>
+      <span class="n">template</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">dir_localsystem</span><span class="p">,</span> <span class="n">cmd</span><span class="p">)</span> <span class="k">do</span>
+        <span class="n">source</span> <span class="n">cmd</span> <span class="o">+</span> <span class="s1">'.erb'</span>
+        <span class="n">mode</span> <span class="s1">'0700'</span>
+        <span class="n">variables</span><span class="p">({</span>
+          <span class="ss">:app_name</span> <span class="o">=&gt;</span> <span class="n">app_name</span><span class="p">,</span>
+          <span class="ss">:pid_file</span> <span class="o">=&gt;</span> <span class="s1">'unicorn.pid'</span><span class="p">,</span>
+          <span class="ss">:bundle_command</span> <span class="o">=&gt;</span> <span class="s2">"bundle exec unicorn_rails -c </span><span class="si">#{</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">release_path</span><span class="p">,</span> <span class="s1">'../../shared/config/unicorn.rb'</span><span class="p">))</span><span class="si">}</span><span class="s2"> -D"</span>
+        <span class="p">})</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // monitのコンフィグ設置/更新を監視してリロードする </span>
+    <span class="c1">## // 初回や、現在プロセスが起動してない場合などはInitalizeに少々もたつくのでSleepでwait. </span>
+    <span class="c1">## // waitはだいたい5秒くらい</span>
+    <span class="n">execute</span> <span class="s1">'monit_reload_'</span> <span class="o">+</span> <span class="n">app_name</span> <span class="k">do</span>
+      <span class="n">action</span> <span class="ss">:nothing</span>
+      <span class="n">command</span> <span class="s2">"monit reload ; sleep </span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="ss">:deploy</span><span class="p">][</span><span class="ss">:monit</span><span class="p">][</span><span class="ss">:sleep</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+      <span class="n">subscribes</span> <span class="ss">:run</span><span class="p">,</span> <span class="s2">"template[/opt/local/etc/monit/conf.avail/</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">]"</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // monitのコンフィグファイルをincludeパスにリンクする</span>
+    <span class="n">execute</span> <span class="s1">'monit_ensite_'</span> <span class="o">+</span> <span class="n">app_name</span> <span class="k">do</span>
+      <span class="n">action</span> <span class="ss">:nothing</span>
+      <span class="n">command</span> <span class="s2">"monitensite </span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">"</span>
+      <span class="n">notifies</span> <span class="ss">:run</span><span class="p">,</span> <span class="s2">"execute[monit_reload_</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">]"</span>
+      <span class="n">not_if</span> <span class="s2">"test -f </span><span class="si">#{</span><span class="n">node</span><span class="p">[</span><span class="ss">:monit</span><span class="p">][</span><span class="ss">:dir</span><span class="p">]</span><span class="si">}</span><span class="s2">/conf.enable/</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">end</span>
+
+    <span class="c1">## // monit_binのLWRPを使ってコンフィグを生成する</span>
+    <span class="n">monit_bin_check_process</span> <span class="n">app_name</span> <span class="k">do</span>
+      <span class="n">action</span> <span class="ss">:create</span>
+      <span class="n">type</span> <span class="s2">"pid"</span>
+      <span class="n">pidfile</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="n">app_name</span> <span class="p">,</span> <span class="s1">'shared/pids/unicorn.pid'</span><span class="p">)</span>
+      <span class="n">start_program</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="n">app_name</span> <span class="p">,</span> <span class="s1">'shared/localsystem'</span><span class="p">,</span> <span class="s2">"start_</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">.sh"</span><span class="p">)</span>
+      <span class="n">stop_program</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="n">app_name</span> <span class="p">,</span><span class="s1">'shared/localsystem'</span><span class="p">,</span> <span class="s2">"stop_</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">.sh"</span><span class="p">)</span>
+      <span class="n">notifies</span> <span class="ss">:run</span><span class="p">,</span> <span class="s2">"execute[monit_ensite_</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">]"</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="c1">## // リスタートのコマンド。</span>
+  <span class="c1">## // 初回はrestartにならないが問題ない。</span>
+  <span class="n">restart_command</span> <span class="s2">"monit restart </span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">"</span>
+  <span class="n">after_restart</span> <span class="kp">nil</span>
+<span class="k">end</span>
+
+
+<span class="c1">## // アプリケーションログのローテーションを設定しておく</span>
+<span class="c1">## // mvは色々面倒なので copy &amp; truncate</span>
+<span class="n">logadm</span> <span class="s2">"app_</span><span class="si">#{</span><span class="n">app_name</span><span class="si">}</span><span class="s2">"</span> <span class="k">do</span>
+  <span class="n">path</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="n">app_name</span> <span class="p">,</span> <span class="s1">'shared/log/*.log'</span><span class="p">)</span>
+  <span class="n">copy</span> <span class="kp">true</span>
+  <span class="n">size</span> <span class="s1">'100m'</span>
+  <span class="n">period</span> <span class="s1">'7d'</span>
+  <span class="n">action</span> <span class="ss">:create</span>
+<span class="k">end</span>
+
+<span class="c1">### add nginx upstream</span>
+
+<span class="c1">## // nginxにホストさせる</span>
+<span class="c1">## // domainsのデータバックからSSLのヴァーチャルホスト名を拾ってきている</span>
+<span class="c1">## // 名前ベースのSSL(SNI)で複数のアプリケーションを実行</span>
+<span class="c1">## // NginxでのUpstream設定やassets pipelineまわりは RailsCastsの#341を参考にしている</span>
+<span class="n">template</span> <span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:nginx_upstream</span><span class="p">][</span><span class="ss">:conf_dir</span><span class="p">]</span> <span class="p">,</span> <span class="s2">"conf.d/</span><span class="si">#{</span><span class="n">domains</span><span class="p">[</span><span class="n">app_name</span><span class="p">]</span><span class="si">}</span><span class="s2">.conf"</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">cookbook</span> <span class="s1">'nginx_upstream'</span>
+  <span class="n">source</span> <span class="s1">'upstream_ssl.erb'</span>
+  <span class="n">variables</span><span class="p">({</span>
+    <span class="ss">:app_name</span> <span class="o">=&gt;</span> <span class="n">app_name</span><span class="p">,</span>
+    <span class="ss">:assets</span> <span class="o">=&gt;</span> <span class="n">deploy_settings</span><span class="p">[</span><span class="n">app_name</span><span class="p">][</span><span class="s1">'assets'</span><span class="p">],</span>
+    <span class="ss">:server_name</span> <span class="o">=&gt;</span> <span class="n">domains</span><span class="p">[</span><span class="n">app_name</span><span class="p">],</span>
+    <span class="ss">:upstreams</span> <span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"unix:</span><span class="si">#{</span><span class="o">::</span><span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">node</span><span class="p">[</span><span class="ss">:my_app_common</span><span class="p">][</span><span class="ss">:basedir</span><span class="p">],</span> <span class="n">app_name</span> <span class="p">,</span> <span class="s1">'shared/pids/unicorn.sock'</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+  <span class="p">})</span>
+  <span class="n">notifies</span> <span class="ss">:restart</span><span class="p">,</span> <span class="s1">'service[nginx]'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="所感" class="fragment"></span><a href="#%E6%89%80%E6%84%9F"><i class="fa fa-link"></i></a>所感</h2>
+
+<ul>
+<li>
+<code>capistrano</code>が使えれば、流れは同じなのでわかりやすい</li>
+<li>data_bagを使う所はCookbookにするほうが版の管理ができていいかもしれない。</li>
+<li>開発中のデプロイ定期実行はアリ</li>
+<li>本番更新には色々あるので、<code>node</code>のデフォルトランリストは環境周りの整備にしておきそれを定期実行、deploy, rollbackのランリスト(role)を指定して<code>knife</code>から流してあげるのがいいかもしれない。</li>
+</ul>
+
+<hr>
+
+<p>追記ログ</p>
+
+<ul>
+<li>
+<code>symlink_before_migrate</code>でassetsを作るとなぜか<code>assets/assets</code>が増えたので<code>symlink</code>に移動</li>
+</ul>

@@ -1,0 +1,143 @@
+<p>ちょっと嬉しい変更だったので記録。</p>
+
+<p><a href="https://aws.amazon.com/jp/about-aws/whats-new/2017/10/aws-batch-now-sends-job-state-changes-to-cloudwatch-events/" rel="nofollow noopener" target="_blank">AWS Batch now sends job state changes to CloudWatch Events</a></p>
+
+<p>いままでは次のようにしてjobの失敗を観測していました。</p>
+
+<ul>
+<li>ScheduleタイプのeventsでJobQueue内のJobを取得</li>
+<li>ステータス=<code>FAILED</code> が 前回取得より<code>+1以上</code>なら通知
+
+<ul>
+<li>※ JobQueueのステータス保持は24時間なので、そのうち減る</li>
+</ul>
+</li>
+</ul>
+
+<p>メトリクスはdatadogに送って、差分のグラフを用いたモニタリングを設定。んー、大変不安な作りでしたね。<br>
+Statusの遷移がCloudWatch Eventsに流れることによって、もうちょっと信頼性のおける通知を仕込んでおけそうです。</p>
+
+<h2>
+<span id="event-from-batch" class="fragment"></span><a href="#event-from-batch"><i class="fa fa-link"></i></a>event from Batch</h2>
+
+<p>イベントは流れていますが、単品用のイベントはコンソールの選択肢にはまだでてきません。<br>
+チュートリアルの通り、カスタムイベントとしてsourceに<code>aws.batch</code>を含んだらイベント発生、とします。</p>
+
+<p><a href="http://docs.aws.amazon.com/ja_jp/batch/latest/userguide/batch_cwet.html" rel="nofollow noopener" target="_blank">Tutorial: Listening for AWS Batch CloudWatch Events - AWS Batch</a></p>
+
+<p>こんなルール。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{
+  "source": [
+    "aws.batch"
+  ]
+}
+</pre></div></div>
+
+<p>特定のステータスのみをトリガーにしたい場合は、SNSのチュートリアルにあるように、<code>detail.status</code>をルールに追加すればOKですね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{
+  "detail-type": [
+    "Batch Job State Change"
+  ],
+  "source": [
+    "aws.batch"
+  ],
+  "detail": {
+    "status": [
+      "FAILED"
+    ]
+  }
+}
+</pre></div></div>
+
+<p>detailにはjobQueueのarnが含まれているので、振り分けが必要ならフィルタすればキュー別のイベントを作成することもできます。</p>
+
+<h2>
+<span id="sample-events" class="fragment"></span><a href="#sample-events"><i class="fa fa-link"></i></a>sample events</h2>
+
+<p>Jobが<code>SUCCEEDED</code>で終わったらこのように流れてきます。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{
+    "version": "0",
+    "id": "7266ead5-3f9e-aee4-6abd-7908713f9a16",
+    "detail-type": "Batch Job State Change",
+    "source": "aws.batch",
+    "account": "************",
+    "time": "2017-10-27T04:28:14Z",
+    "region": "us-west-2",
+    "resources": [
+        "arn:aws:batch:us-west-2:************:job/fddb88dd-33f0-478b-933e-27799c94d1b0"
+    ],
+    "detail": {
+        "jobName": "streamtest",
+        "jobId": "fddb88dd-33f0-478b-933e-27799c94d1b0",
+        "jobQueue": "arn:aws:batch:us-west-2:************:job-queue/mybatchjob",
+        "status": "SUCCEEDED",
+        "attempts": [
+            {
+                "container": {
+                    "containerInstanceArn": "arn:aws:ecs:us-west-2:************:container-instance/yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyy",
+                    "taskArn": "arn:aws:ecs:us-west-2:************:task/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx",
+                    "exitCode": 0,
+                    "logStreamName": "mybatchjob/default/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx"
+                },
+                "startedAt": 1509078455720,
+                "stoppedAt": 1509078493270,
+                "statusReason": "Essential container in task exited"
+            }
+        ],
+        "statusReason": "Essential container in task exited",
+        "createdAt": 1509078431202,
+        "retryStrategy": {
+            "attempts": 1
+        },
+        "startedAt": 1509078455720,
+        "stoppedAt": 1509078493270,
+        "dependsOn": [],
+        "jobDefinition": "arn:aws:batch:us-west-2:************:job-definition/mybatchjob:3",
+        "parameters": {},
+        "container": {
+            "image": "************.dkr.ecr.us-west-2.amazonaws.com/mybatchjob:latest",
+            "vcpus": 1,
+            "memory": 512,
+            "command": [
+                "args1",
+                "args2"
+            ],
+            "jobRoleArn": "arn:aws:iam::************:role/myBatchContainerRole",
+            "volumes": [
+                {
+                    "host": {
+                        "sourcePath": "/srv"
+                    },
+                    "name": "source"
+                }
+            ],
+            "environment": [],
+            "mountPoints": [
+                {
+                    "containerPath": "/srv",
+                    "readOnly": true,
+                    "sourceVolume": "source"
+                }
+            ],
+            "readonlyRootFilesystem": true,
+            "ulimits": [],
+            "exitCode": 0,
+            "containerInstanceArn": "arn:aws:ecs:us-west-2:************:container-instance/yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyy",
+            "taskArn": "arn:aws:ecs:us-west-2:************:task/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx",
+            "logStreamName": "mybatchjob/default/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxx"
+        }
+    }
+}
+</pre></div></div>
+
+<p>とりあえずSlack通知用のSNSに突っ込んでみます、無事に投稿されました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fde8734b7-804f-ee5a-d02b-c3ad09337e7c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=dce5c0e14fcafb619b4776eae2bb08e8" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fde8734b7-804f-ee5a-d02b-c3ad09337e7c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=dce5c0e14fcafb619b4776eae2bb08e8" alt="sns_slack.jpg" title="sns_slack.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/de8734b7-804f-ee5a-d02b-c3ad09337e7c.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fde8734b7-804f-ee5a-d02b-c3ad09337e7c.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=33045df45af0e5329d82bcfcb520e558 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>バッチの種別(朝まとめて確認すればOKとか)にもよりますが、<code>FAILED</code>をトリガーとして詳細を通知しやすくなったので使い勝手がよくなりました。</p>

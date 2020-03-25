@@ -1,0 +1,284 @@
+<p>Chef-Clientには<a href="https://docs.chef.io/attributes.html#whitelist-attributes" rel="nofollow noopener" target="_blank">Whitelist Attributes</a>という機能があって、Ohaiが収集した(Automatic)Attributesから、任意のAttributeのみ保存対象することができます。</p>
+
+<p>使い方は<code>client.rb</code>に書けばOK。</p>
+
+<h2>
+<span id="knife-zero-bootstrap-で普通にnodeオブジェクトを作成するとでかい" class="fragment"></span><a href="#knife-zero-bootstrap-%E3%81%A7%E6%99%AE%E9%80%9A%E3%81%ABnode%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%82%92%E4%BD%9C%E6%88%90%E3%81%99%E3%82%8B%E3%81%A8%E3%81%A7%E3%81%8B%E3%81%84"><i class="fa fa-link"></i></a>Knife Zero Bootstrap で普通にnodeオブジェクトを作成するとでかい</h2>
+
+<p>適当なAmazon EC2インスタンスにbootstrapを仕掛けてみます。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>knife zero bootstrap 52.69.40.215 <span class="nt">-x</span> ec2-user <span class="nt">-i</span> ~/.ssh/privatekey <span class="nt">--hint</span> ec2 <span class="nt">-N</span> test-server
+Doing old-style registration with the validation key at ...
+Delete your validation key <span class="k">in </span>order to use your user credentials instead
+
+Connecting to 52.69.40.215
+52.69.40.215 <span class="nt">-----</span><span class="o">&gt;</span> Installing Chef Omnibus <span class="o">(</span><span class="nt">-v</span> 12<span class="o">)</span>
+52.69.40.215 downloading https://www.opscode.com/chef/install.sh
+52.69.40.215   to file /tmp/install.sh.2281/install.sh
+52.69.40.215 trying wget...
+52.69.40.215 Downloading Chef 12 <span class="k">for </span>el...
+52.69.40.215 downloading https://www.opscode.com/chef/metadata?v<span class="o">=</span>12&amp;prerelease<span class="o">=</span><span class="nb">false</span>&amp;nightlies<span class="o">=</span><span class="nb">false</span>&amp;p<span class="o">=</span>el&amp;pv<span class="o">=</span>6&amp;m<span class="o">=</span>x86_64
+52.69.40.215   to file /tmp/install.sh.2286/metadata.txt
+52.69.40.215 trying wget...
+52.69.40.215 url    https://opscode-omnibus-packages.s3.amazonaws.com/el/6/x86_64/chef-12.3.0-1.el6.x86_64.rpm
+52.69.40.215 md5    c19fefcb3d033107e9fbdb3839312584
+52.69.40.215 sha256 4b7c846a9ad93564cc203a5ac99890431f7d6ad159c424aa89827fd772c9881d
+52.69.40.215 downloaded metadata file looks valid...
+52.69.40.215 downloading https://opscode-omnibus-packages.s3.amazonaws.com/el/6/x86_64/chef-12.3.0-1.el6.x86_64.rpm
+52.69.40.215   to file /tmp/install.sh.2286/chef-12.3.0-1.el6.x86_64.rpm
+52.69.40.215 trying wget...
+52.69.40.215 Comparing checksum with sha256sum...
+52.69.40.215 Installing Chef 12
+52.69.40.215 installing with rpm...
+52.69.40.215 warning: /tmp/install.sh.2286/chef-12.3.0-1.el6.x86_64.rpm: Header V4 DSA/SHA1 Signature, key ID 83ef826a: NOKEY
+52.69.40.215 Preparing...                          <span class="c">################################# [100%]</span>
+52.69.40.215 Updating / installing...
+52.69.40.215    1:chef-12.3.0-1.el6                <span class="c">################################# [100%]</span>
+52.69.40.215 Thank you <span class="k">for </span>installing Chef!
+52.69.40.215 Starting first Chef Client run...
+52.69.40.215 Starting Chef Client, version 12.3.0
+52.69.40.215 Creating a new client identity <span class="k">for </span>test-server using the validator key.
+52.69.40.215 resolving cookbooks <span class="k">for </span>run list: <span class="o">[]</span>
+52.69.40.215 Synchronizing Cookbooks:
+52.69.40.215 Compiling Cookbooks...
+52.69.40.215 <span class="o">[</span>2015-06-15T08:00:47+00:00] WARN: Node test-server has an empty run list.
+52.69.40.215 Converging 0 resources
+52.69.40.215 
+52.69.40.215 Running handlers:
+52.69.40.215 Running handlers <span class="nb">complete
+</span>52.69.40.215 Chef Client finished, 0/0 resources updated <span class="k">in </span>2.739626435 seconds
+</pre></div></div>
+
+<h3>
+<span id="whitelistなしで採集したnodeオブジェクトのキーを確認" class="fragment"></span><a href="#whitelist%E3%81%AA%E3%81%97%E3%81%A7%E6%8E%A1%E9%9B%86%E3%81%97%E3%81%9Fnode%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%81%AE%E3%82%AD%E3%83%BC%E3%82%92%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>Whitelistなしで採集したNodeオブジェクトのキーを確認</h3>
+
+<p>無策でやるとタップリとれました。固定的な値と状況による値が混在しているので、例えばnodeオブジェクトもgitの管理対象にしたいなーというケースで特に面倒です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife exec -E "puts nodes.all.first.keys"
+tags
+filesystem
+network
+counters
+ipaddress
+macaddress
+ip6address
+memory
+kernel
+lsb
+os
+os_version
+platform
+platform_version
+platform_family
+uptime_seconds
+uptime
+idletime_seconds
+idletime
+cpu
+virtualization
+root_group
+block_device
+ec2
+cloud
+ohai_time
+languages
+command
+chef_packages
+etc
+current_user
+init_package
+keys
+cloud_v2
+dmi
+hostname
+machinename
+domain
+recipes
+roles
+</pre></div></div>
+
+<h2>
+<span id="knife-zero-bootstrap-でwhitelistを指定する" class="fragment"></span><a href="#knife-zero-bootstrap-%E3%81%A7whitelist%E3%82%92%E6%8C%87%E5%AE%9A%E3%81%99%E3%82%8B"><i class="fa fa-link"></i></a>Knife Zero Bootstrap でWhitelistを指定する。</h2>
+
+<p>Chefに元々ある機能ということで、knife-zeroのv1.7でBootstrap時にWhitelistも使うように機能を追加しました。</p>
+
+<p>たとえばknife.rbにこの様に書いて、あらためてBootstrapしてみます。</p>
+
+<div class="code-frame" data-lang="Ruby">
+<div class="code-lang"><span class="bold">knife.rb</span></div>
+<div class="highlight"><pre><span class="n">knife</span><span class="p">[</span><span class="ss">:automatic_attribute_whitelist</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+  <span class="s2">"fqdn/"</span><span class="p">,</span>
+  <span class="s2">"os/"</span><span class="p">,</span>
+  <span class="s2">"os_version/"</span><span class="p">,</span>
+  <span class="s2">"hostname"</span><span class="p">,</span>
+  <span class="s2">"ipaddress/"</span><span class="p">,</span>
+  <span class="s2">"roles/"</span><span class="p">,</span>
+  <span class="s2">"recipes/"</span><span class="p">,</span>
+  <span class="s2">"ipaddress/"</span><span class="p">,</span>
+  <span class="s2">"platform/"</span><span class="p">,</span>
+  <span class="s2">"platform_version/"</span><span class="p">,</span>
+  <span class="s2">"platform_version/"</span><span class="p">,</span>
+  <span class="s2">"cloud/"</span><span class="p">,</span>
+  <span class="s2">"cloud_v2/"</span><span class="p">,</span>
+  <span class="s2">"ec2/ami_id/"</span><span class="p">,</span>
+  <span class="s2">"ec2/instance_id/"</span><span class="p">,</span>
+  <span class="s2">"ec2/instance_type/"</span><span class="p">,</span>
+  <span class="s2">"ec2/placement_availability_zone/"</span><span class="p">,</span>
+  <span class="s2">"chef_packages/"</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+
+<p>Bootstrapされたインスタンスの<code>/etc/chef/client.rb</code>には、<code>automatic_attribute_whitelist</code>が追加されました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">/etc/chef/client.rb</span></div>
+<div class="highlight"><pre><span class="n">log_location</span>     <span class="no">STDOUT</span>
+<span class="n">chef_server_url</span>  <span class="s2">"chefzero://localhost:8889"</span>
+<span class="n">validation_client_name</span> <span class="s2">"chef-validator"</span>
+<span class="n">node_name</span> <span class="s2">"test-server"</span>
+<span class="n">ssl_verify_mode</span> <span class="ss">:none</span>
+<span class="n">automatic_attribute_whitelist</span> <span class="p">[</span><span class="s2">"fqdn/"</span><span class="p">,</span> <span class="s2">"os/"</span><span class="p">,</span> <span class="s2">"os_version/"</span><span class="p">,</span> <span class="s2">"hostname"</span><span class="p">,</span> <span class="s2">"ipaddress/"</span><span class="p">,</span> <span class="s2">"roles/"</span><span class="p">,</span> <span class="s2">"recipes/"</span><span class="p">,</span> <span class="s2">"ipaddress/"</span><span class="p">,</span> <span class="s2">"platform/"</span><span class="p">,</span> <span class="s2">"platform_version/"</span><span class="p">,</span> <span class="s2">"platform_version/"</span><span class="p">,</span> <span class="s2">"cloud/"</span><span class="p">,</span> <span class="s2">"cloud_v2/"</span><span class="p">,</span> <span class="s2">"ec2/ami_id/"</span><span class="p">,</span> <span class="s2">"ec2/instance_id/"</span><span class="p">,</span> <span class="s2">"ec2/instance_type/"</span><span class="p">,</span> <span class="s2">"ec2/placement_availability_zone/"</span><span class="p">,</span> <span class="s2">"chef_packages/"</span><span class="p">]</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="whitelistを指定したnodeオブジェクトの様子" class="fragment"></span><a href="#whitelist%E3%82%92%E6%8C%87%E5%AE%9A%E3%81%97%E3%81%9Fnode%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E3%81%AE%E6%A7%98%E5%AD%90"><i class="fa fa-link"></i></a>Whitelistを指定したNodeオブジェクトの様子</h3>
+
+<p>ローカルのnode.json(<code>nodes/test-server.json</code>)にあるキーはこれだけになりました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife exec -E "puts nodes.all.first.keys"
+tags
+os
+os_version
+hostname
+ipaddress
+roles
+recipes
+platform
+platform_version
+cloud
+cloud_v2
+ec2
+chef_packages
+</pre></div></div>
+
+<p>Vimで直接開いても画面に収まるくらいですね。</p>
+
+<div class="code-frame" data-lang="json">
+<div class="code-lang"><span class="bold">nodes/test-server.json</span></div>
+<div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"test-server"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"normal"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"tags"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+
+    </span><span class="p">]</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="nl">"automatic"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"os"</span><span class="p">:</span><span class="w"> </span><span class="s2">"linux"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"os_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.14.35-28.38.amzn1.x86_64"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"hostname"</span><span class="p">:</span><span class="w"> </span><span class="s2">"test-server"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"ipaddress"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10.0.1.122"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"roles"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+
+    </span><span class="p">],</span><span class="w">
+    </span><span class="nl">"recipes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+
+    </span><span class="p">],</span><span class="w">
+    </span><span class="nl">"platform"</span><span class="p">:</span><span class="w"> </span><span class="s2">"amazon"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"platform_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2015.03"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"cloud"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"public_ips"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="s2">"52.69.40.215"</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"private_ips"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="s2">"10.0.1.122"</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"public_ipv4"</span><span class="p">:</span><span class="w"> </span><span class="s2">"52.69.40.215"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"public_hostname"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"local_ipv4"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10.0.1.122"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"local_hostname"</span><span class="p">:</span><span class="w"> </span><span class="s2">"test-server.ap-northeast-1.compute.internal"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"provider"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ec2"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"cloud_v2"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"public_ipv4_addrs"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="s2">"52.69.40.215"</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"local_ipv4_addrs"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+        </span><span class="s2">"10.0.1.122"</span><span class="w">
+      </span><span class="p">],</span><span class="w">
+      </span><span class="nl">"provider"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ec2"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"public_hostname"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"local_hostname"</span><span class="p">:</span><span class="w"> </span><span class="s2">"test-server.ap-northeast-1.compute.internal"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"public_ipv4"</span><span class="p">:</span><span class="w"> </span><span class="s2">"52.69.40.215"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"local_ipv4"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10.0.1.122"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"ec2"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"ami_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ami-cbf90ecb"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"instance_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"i-0ef561fb"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"instance_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"t2.micro"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"placement_availability_zone"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ap-northeast-1c"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="nl">"chef_packages"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"chef"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12.3.0"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"chef_root"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/opt/chef/embedded/apps/chef/lib"</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+      </span><span class="nl">"ohai"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"8.3.0"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"ohai_root"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/opt/chef/embedded/lib/ruby/gems/2.1.0/gems/ohai-8.3.0/lib/ohai"</span><span class="w">
+      </span><span class="p">}</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div>
+</div>
+
+<p>これならあまりじゃんじゃんと変更はされません。</p>
+
+<h2>
+<span id="もうbootstrapしちゃったホストのclientrbだけを更新してwhitelist対応したい" class="fragment"></span><a href="#%E3%82%82%E3%81%86bootstrap%E3%81%97%E3%81%A1%E3%82%83%E3%81%A3%E3%81%9F%E3%83%9B%E3%82%B9%E3%83%88%E3%81%AEclientrb%E3%81%A0%E3%81%91%E3%82%92%E6%9B%B4%E6%96%B0%E3%81%97%E3%81%A6whitelist%E5%AF%BE%E5%BF%9C%E3%81%97%E3%81%9F%E3%81%84"><i class="fa fa-link"></i></a>もうBootstrapしちゃったホストの<code>client.rb</code>だけを更新して、Whitelist対応したい？</h2>
+
+<p>あら古いknife-zeroでBootstrapしちゃったわよ。という環境は、<code>--no-converge</code>でbootstrapするやり方が用意されています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>--[no-]converge              Bootstrap without Chef-Client Run.(for only update client.rb)
+</pre></div></div>
+
+<p>通常のBootstrapは一度Chef-Clientが走るため、再度実行する際には気を使いましたが、<code>--no-converge</code>オプションで実行しないという選択肢を追加。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span>knife zero bootstrap 52.69.40.215 <span class="nt">-x</span> ec2-user <span class="nt">-i</span> ~/.ssh/private_key <span class="nt">--hint</span> ec2 <span class="nt">-N</span> test-server <span class="nt">--no-converge</span>
+Doing old-style registration with the validation key at ...
+Delete your validation key <span class="k">in </span>order to use your user credentials instead
+
+Connecting to 52.69.40.215
+52.69.40.215 <span class="nt">-----</span><span class="o">&gt;</span> Existing Chef installation detected
+52.69.40.215 Starting first Chef Client run...
+52.69.40.215 Execution of Chef-Client has been canceled due to bootstrap_converge is false. &lt;<span class="o">=</span> Chef-Client実行をとりやめて終了
+</pre></div></div>
+
+<p>client.rbが書き換わったので、zero converge(chef_client)を実行すればスッキリNodeになります。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ knife zero converge name:test-server -x ec2-user -i ~/.ssh/private_key -a cloud_v2.public_ipv4 
+52.69.40.215 Starting Chef Client, version 12.3.0
+52.69.40.215 resolving cookbooks for run list: []
+52.69.40.215 Synchronizing Cookbooks:
+52.69.40.215 Compiling Cookbooks...
+52.69.40.215 [2015-06-15T08:27:08+00:00] WARN: Node test-server has an empty run list.
+52.69.40.215 Converging 0 resources
+52.69.40.215 [2015-06-15T08:27:08+00:00] WARN: Could not find whitelist attribute fqdn/.
+52.69.40.215 
+52.69.40.215 Running handlers:
+52.69.40.215 Running handlers complete
+52.69.40.215 Chef Client finished, 0/0 resources updated in 1.669752105 seconds
+</pre></div></div>
+
+<p><code>--[no-]converge</code>のフラグは<code>knife[:bootstrap_converge]</code>としてknife.rbでも指定OK、CLIオプション優先です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>knife[:bootstrap_converge] = true/false
+</pre></div></div>
+
+<p>ちなみに初回のBootstrapで<code>--no-converge</code>しちゃうと、そもそもnodeオブジェクトができないため、その後convergeができません。やり直しです。</p>
+
+<hr>
+
+<p>Twitterで拾った意見と、Github Issueに突貫してきたどこか異国の兄さん達のフィードバックが反映されました。</p>

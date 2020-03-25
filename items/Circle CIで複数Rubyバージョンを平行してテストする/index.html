@@ -1,0 +1,77 @@
+<p>ちまたで話題のCircle CI <a href="https://circleci.com/" class="autolink" rel="nofollow noopener" target="_blank">https://circleci.com/</a> 。<br>
+やってみようと、あるRubyGemsのプロジエクトをCircle CIに突っ込みました。</p>
+
+<p>とりあえず回したところ、テスト用のRubyバージョンは<code>circle.yml</code>によって1つを指定するタイプだった。</p>
+
+<p>Travis CIはこんな感じで複数のRubyバージョンを指定できるんですよねー。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.travis.yml</span></div>
+<div class="highlight"><pre><span class="na">rvm</span><span class="pi">:</span>
+<span class="pi">-</span> <span class="s">2.0.0</span>
+<span class="pi">-</span> <span class="s">1.9.3</span> 
+</pre></div>
+</div>
+
+<p>早速サポートに聞いてみました。</p>
+
+<blockquote>
+<p>We don't have very good support for build matrices at the moment. If you set up a build with 2x parallelization, you might be able to do something like:<br>
+circle.yml</p>
+</blockquote>
+
+<p>と、すぐに案内してくれたワークアラウンドがこちら。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">circle.yml</span></div>
+<div class="highlight"><pre><span class="na">dependencies</span><span class="pi">:</span>
+  <span class="na">pre</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">case $CIRCLE_NODE_INDEX in 0) rvm use 2.0.0 --default ;; 1) rvm use 1.9.3 --default ;; esac</span>
+<span class="na">test</span><span class="pi">:</span>
+  <span class="na">override</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">ruby -v ; bundle exec rspec</span><span class="pi">:</span> <span class="pi">{</span><span class="nv">parallel</span><span class="pi">:</span> <span class="nv">true</span><span class="pi">}</span>
+</pre></div>
+</div>
+
+<p>うおお。。そうきたか。<br>
+ちなみに、ここで外部シェルを呼ぶのはアカン模様。<br>
+テストの<code>ruby -v</code>部分は私が確認のため追加しました。なくてもOK。</p>
+
+<blockquote>
+<p>(中略)<br>
+The {parallel: true} modifier at the end tells us to run the command on every node.<br>
+Let me know if you need any help with that, and sorry about the hacky workaround.</p>
+</blockquote>
+
+<p>『正直ハックですまんかった』とサポートの弁ですが、いやいや十分じゃあないですか。</p>
+
+<h2>
+<span id="やってみた" class="fragment"></span><a href="#%E3%82%84%E3%81%A3%E3%81%A6%E3%81%BF%E3%81%9F"><i class="fa fa-link"></i></a>やってみた</h2>
+
+<p>コンテナをパラレルで起動して、コンテナ番号によってバージョンが別れる様子をレポート。</p>
+
+<p>複数のコンテナを同時に起動するには、<code>Project Setting</code> &gt; <code>Parallelism</code> の設定を変更します。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe48a225d-72c1-c499-a63e-a430467de75c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5064538ab31f83a7b02766d7edebd506" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe48a225d-72c1-c499-a63e-a430467de75c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5064538ab31f83a7b02766d7edebd506" alt="Edit_settings_-_giraffi_ruby-orchestrate_io_-_CircleCI-3.png" title="Edit_settings_-_giraffi_ruby-orchestrate_io_-_CircleCI-3.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/e48a225d-72c1-c499-a63e-a430467de75c.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fe48a225d-72c1-c499-a63e-a430467de75c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=ff79c2960621d73aca898d94cb8b1ece 1x" loading="lazy"></a></p>
+
+<p>これでビルドすると。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F828a5842-cb84-4fed-15fd-7483f4bbc8f7.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ba62aca3b9f6a987f2c43053608de0c0" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F828a5842-cb84-4fed-15fd-7483f4bbc8f7.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=ba62aca3b9f6a987f2c43053608de0c0" alt="_33_-_giraffi_ruby-orchestrate_io_-_CircleCI.png" title="_33_-_giraffi_ruby-orchestrate_io_-_CircleCI.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/828a5842-cb84-4fed-15fd-7483f4bbc8f7.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F828a5842-cb84-4fed-15fd-7483f4bbc8f7.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0a00eb9aeba005d6f3d236c12186ffa6 1x" loading="lazy"></a></p>
+
+<p>おー、2コンテナで起動しました。</p>
+
+<p>テストも別々の表示で、平行に進みます。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3eef26c9-2d9e-e3b2-ac02-5f0dcd93aa7a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=58423aaf0c5601d013056fb0894c7d1a" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3eef26c9-2d9e-e3b2-ac02-5f0dcd93aa7a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=58423aaf0c5601d013056fb0894c7d1a" alt="_34_-_giraffi_ruby-orchestrate_io_-_CircleCI-4.png" title="_34_-_giraffi_ruby-orchestrate_io_-_CircleCI-4.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/3eef26c9-2d9e-e3b2-ac02-5f0dcd93aa7a.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F3eef26c9-2d9e-e3b2-ac02-5f0dcd93aa7a.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=14915e933f689b675dc7a5a6b752129d 1x" loading="lazy"></a></p>
+
+<p>コンテナ(0)はRuby2.0.0, コンテナ(1) はRuby1.9.3でテストが走りました！</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9c7927d8-c50a-9529-e7cb-bfbbb47d884c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4f1eab7e2d7a00d25d5785fd42ee4fa8" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9c7927d8-c50a-9529-e7cb-bfbbb47d884c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=4f1eab7e2d7a00d25d5785fd42ee4fa8" alt="_34_-_giraffi_ruby-orchestrate_io_-_CircleCI-6.png" title="_34_-_giraffi_ruby-orchestrate_io_-_CircleCI-6.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/9c7927d8-c50a-9529-e7cb-bfbbb47d884c.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9c7927d8-c50a-9529-e7cb-bfbbb47d884c.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=eef24c1ef2fa243fb3648afa8a032a59 1x" loading="lazy"></a></p>
+
+<p>Rcovによるカバレッジも、ファイル名の後にコンテナ番号がついで別々に収集。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1dae4e61-4d14-8a02-38f5-83f340c27396.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1daefc9eca2cab34a5ec62af47004863" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1dae4e61-4d14-8a02-38f5-83f340c27396.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=1daefc9eca2cab34a5ec62af47004863" alt="_33_-_giraffi_ruby-orchestrate_io_-_CircleCI-2.png" title="_33_-_giraffi_ruby-orchestrate_io_-_CircleCI-2.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1dae4e61-4d14-8a02-38f5-83f340c27396.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1dae4e61-4d14-8a02-38f5-83f340c27396.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=3fe020c16806b8b370453d9b4e8aafa0 1x" loading="lazy"></a></p>
+
+<p>無事、複数RubyでやってくれというDevの要望に答えることができました。</p>
+
+<p>コンテナIDで処理を分けるやり方は、他にも面白いことができそうですね。</p>

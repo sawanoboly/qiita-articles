@@ -1,0 +1,190 @@
+<p>サーバのプロビジョニングをテストする<a href="https://github.com/test-kitchen/test-kitchen" rel="nofollow noopener" target="_blank">Test-Kitchen</a>が、v1.4でテストのステップ(verify)を追加しやすい変更をいれてきました。<br>
+そこで一本<code>kitchen-verifier-shell</code>を作りました。(RubyGemは本家に取り込まれるまでの限定公開です。)</p>
+
+<h2>
+<span id="busserとserverspecinfrataster" class="fragment"></span><a href="#busser%E3%81%A8serverspecinfrataster"><i class="fa fa-link"></i></a>busserとServerspec、Infrataster</h2>
+
+<p>従来のTest-Kitchenのテストは<a href="https://github.com/test-kitchen/busser" rel="nofollow noopener" target="_blank">busser</a>というラッパを使って、テストスイートを対象のプラットホーム(VMなど)にインストールします。<br>
+馴染みのある例では<a href="https://github.com/test-kitchen/busser-serverspec" rel="nofollow noopener" target="_blank">busser-serverspec</a>などは、もはや公式のポジションですね。</p>
+
+<p>ただ、テスト対象に直接インストールするというあたりで時間がかかったり、少々トラブルも発生します。<br>
+元々、対象の外からつついてテストしようというServerspecや、外からテストしてなんぼというInfratasterは、できるならセットアップ済みの環境からさくっと叩きたい(※特にCapybaraリソース)です。</p>
+
+<p>busser自体、Ruby必須になってしまうのもちょっと。</p>
+
+<h2>
+<span id="kitchen-verifier-shell" class="fragment"></span><a href="#kitchen-verifier-shell"><i class="fa fa-link"></i></a>kitchen-verifier-shell</h2>
+
+<p>で、busserを介さないTest-Kitchenでのverifyステップがあってもいいなと。<br>
+本家Test-Kitehcnに<a href="https://github.com/test-kitchen/test-kitchen/pull/741" rel="nofollow noopener" target="_blank">プルリクエストを送り</a>つつ、<a href="https://rubygems.org/gems/kitchen-verifier-shell" rel="nofollow noopener" target="_blank">kitchen-verifier-shell</a>として公開しました。</p>
+
+<blockquote>
+<p>追記: Shell-Verifierは、インスタンスにスクリプトを送らず、Test-Kitchenを実行しているワークステーション上のコマンドを実行します。<br>
+インスタンスの中でスクリプトを実行したい場合、commandに<code>kitchen exec</code>を含むシェルを実行すればOKです。</p>
+
+<p>追記: 本家にマージされました。次回リリースからつかえそう。</p>
+</blockquote>
+
+<p>使うためのGemfile例はこちら。</p>
+
+<div class="code-frame" data-lang="Gemfile"><div class="highlight"><pre>source "https://rubygems.org"
+
+gem 'kitchen-verifier-shell'
+gem 'kitchen-vagrant'
+gem 'infrataster'
+</pre></div></div>
+
+<p>Verifierに標準のbusser以外の指定する場合、<code>.kitchen.yml</code>で<code>verifier</code>セクションを作成します。<br>
+軽く<a href="https://github.com/ryotarai/infrataster" rel="nofollow noopener" target="_blank">Infrataster</a>のVagrantfile例を踏襲した例がこちら。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">kitchen.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">vagrant</span>
+
+<span class="na">provisioner</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">shell</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">ubuntu-14.04</span>
+    <span class="na">driver</span><span class="pi">:</span>
+      <span class="na">network</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="pi">[</span><span class="s2">"</span><span class="s">private_network"</span><span class="pi">,</span> <span class="pi">{</span><span class="nv">ip</span><span class="pi">:</span> <span class="s2">"</span><span class="s">192.168.33.10"</span><span class="pi">}]</span>   <span class="c1">## このへんが踏襲</span>
+        <span class="c1"># - ["forwarded_port", {guest: 80, host: 8080}]</span>
+
+<span class="na">verifier</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">shell</span>
+  <span class="na">command</span><span class="pi">:</span> <span class="s">./bin/rspec -fd</span>    <span class="c1">## Infrataster実施</span>
+
+<span class="na">suites</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">default</span>
+    <span class="na">run_list</span><span class="pi">:</span>
+    <span class="na">attributes</span><span class="pi">:</span>
+</pre></div>
+</div>
+
+<p>プロビジョンに使う<code>bootstrap.sh</code>を、適当に。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">bootstrap.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+
+<span class="nb">sudo </span>apt-get update <span class="nt">-y</span>
+<span class="nb">sudo </span>apt-get <span class="nb">install </span>nginx <span class="nt">-y</span>
+</pre></div>
+</div>
+
+<p>これで<code>kitchen converge</code>まで済ませておくといいです。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ time ./bin/kitchen converge -l warn
+
+real    2m29.396s
+user    0m6.406s
+sys 0m1.849s
+</pre></div></div>
+
+<p>2分半ってとこですね。</p>
+
+<h2>
+<span id="infratasterでnginxのテストを作成" class="fragment"></span><a href="#infrataster%E3%81%A7nginx%E3%81%AE%E3%83%86%E3%82%B9%E3%83%88%E3%82%92%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>InfratasterでNginxのテストを作成</h2>
+
+<p>ジェネレータにひな形を作らせて、とりあえず<code>Welcome to nginx!</code>でも拾いましょうか。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">spec_helper.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'infrataster/rspec'</span>
+
+<span class="no">Infrataster</span><span class="o">::</span><span class="no">Server</span><span class="p">.</span><span class="nf">define</span><span class="p">(</span><span class="ss">:nginx</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">server</span><span class="o">|</span>
+  <span class="n">server</span><span class="p">.</span><span class="nf">address</span> <span class="o">=</span> <span class="s1">'192.168.33.10'</span>
+<span class="k">end</span>
+
+
+<span class="no">RSpec</span><span class="p">.</span><span class="nf">configure</span> <span class="k">do</span> <span class="o">|</span><span class="n">config</span><span class="o">|</span>
+  <span class="n">config</span><span class="p">.</span><span class="nf">treat_symbols_as_metadata_keys_with_true_values</span> <span class="o">=</span> <span class="kp">true</span>
+  <span class="n">config</span><span class="p">.</span><span class="nf">run_all_when_everything_filtered</span> <span class="o">=</span> <span class="kp">true</span>
+  <span class="n">config</span><span class="p">.</span><span class="nf">filter_run</span> <span class="ss">:focus</span>
+
+  <span class="n">config</span><span class="p">.</span><span class="nf">order</span> <span class="o">=</span> <span class="s1">'random'</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>このへんもサンプルドキュメントをほぼ踏襲で。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">nginx_spec.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'spec_helper'</span>
+
+<span class="n">describe</span> <span class="n">server</span><span class="p">(</span><span class="ss">:nginx</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">describe</span> <span class="n">http</span><span class="p">(</span><span class="s1">'http://nginx'</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">it</span> <span class="s2">"responds OK 200"</span> <span class="k">do</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="nf">status</span><span class="p">).</span><span class="nf">to</span> <span class="n">eq</span><span class="p">(</span><span class="mi">200</span><span class="p">)</span>
+    <span class="k">end</span>
+
+    <span class="n">it</span> <span class="s2">"responds content including 'Welcome to nginx!'"</span> <span class="k">do</span>
+      <span class="n">expect</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="nf">body</span><span class="p">).</span><span class="nf">to</span> <span class="kp">include</span><span class="p">(</span><span class="s1">'Welcome to nginx!'</span><span class="p">)</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h3>
+<span id="kitchen-verify-with-rspec" class="fragment"></span><a href="#kitchen-verify-with-rspec"><i class="fa fa-link"></i></a>kitchen verify with rspec</h3>
+
+<p>ではconverge後、初回のverifyをやってみましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ time ./bin/kitchen verify 
+-----&gt; Starting Kitchen (v1.4.1)
+-----&gt; Verifying &lt;default-ubuntu-1404&gt;...
+       [Shell] Verify on instance=#&lt;Kitchen::Instance:0x007faa63b2b9b0&gt; with state={:hostname=&gt;"127.0.0.1", :port=&gt;"2222", :username=&gt;"vagrant", :ssh_key=&gt;"/xxxx/kitchen_shell_verify/.kitchen/kitchen-vagrant/kitchen-kitchen_shell_verify-default-ubuntu-1404/.vagrant/machines/default/virtualbox/private_key", :last_action=&gt;"verify"}
+
+(※ Warning類カット)
+
+server 'nginx'
+  http 'http://nginx' with {:params=&gt;{}, :method=&gt;:get, :headers=&gt;{}}
+    responds content including 'Welcome to nginx!'
+    responds OK 200
+
+Finished in 0.00887 seconds (files took 0.3514 seconds to load)
+2 examples, 0 failures
+
+Randomized with seed 56543
+
+       Finished verifying &lt;default-ubuntu-1404&gt; (0m0.62s).
+-----&gt; Kitchen is finished. (0m0.84s)
+
+
+real    0m1.253s
+user    0m1.064s
+sys 0m0.157s
+
+</pre></div></div>
+
+<p>1秒ちょいすか。</p>
+
+<h2>
+<span id="環境変数vagrant以外のドライバで" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0vagrant%E4%BB%A5%E5%A4%96%E3%81%AE%E3%83%89%E3%83%A9%E3%82%A4%E3%83%90%E3%81%A7"><i class="fa fa-link"></i></a>環境変数、Vagrant以外のドライバで</h2>
+
+<p>Shell-Verifierがコマンドを実行する際、インスタンス(テスト対象)のパラメータが環境変数で渡るようにしています。<br>
+この記事で紹介している使用例では次のような内容。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>KITCHEN_HOSTNAME=127.0.0.1
+KITCHEN_PORT=2222
+KITCHEN_USERNAME=vagrant
+KITCHEN_SSH_KEY=/xxxxxxxxx/.kitchen/kitchen-vagrant/kitchen-kitchen_shell_verify-default-ubuntu-1404/.vagrant/machines/default/virtualbox/private_key
+KITCHEN_LAST_ACTION=setup
+</pre></div></div>
+
+<p>ServerspecのSSH接続情報としてこれら環境変数を使うことができますね。たとえばkitchen-ec2などのクラウド向けプラグインではPublicIPなどが渡ってくるのでそっちでも重宝します。</p>
+
+<h2>
+<span id="おわりに" class="fragment"></span><a href="#%E3%81%8A%E3%82%8F%E3%82%8A%E3%81%AB"><i class="fa fa-link"></i></a>おわりに</h2>
+
+<p>もちろんテスト対象の作成とテストを個別に実行、セットアップしてもかまわないんです。しかしTest-Kitchenでやると、<code>--destroy=always</code>などがつかえてCIに組み込みやすいのがいいんですよね。もちろん並列実行もOK。</p>
+
+<p>ちなみに作成の動機、<a href="https://github.com/matsumoto-r/ngx_mruby" rel="nofollow noopener" target="_blank">ngx_mruby</a>で作ったルーティングをInfratasterでさくさくとテストしやすくしたかったのです。</p>
+
+<p>さて、verifyステップが早くなったので、Vagrantドライバーではインスタンス作成に要する時間が目立ちます。<br>
+コーヒーのおかわりを汲みに行ってもいいんですが、ここでさらに<a href="https://github.com/marcy-terui/kitchen-docker_cli" rel="nofollow noopener" target="_blank">kitchen-docker_cli</a>などと併用すると、<code>kitchen test</code>が休憩を取る間もなく終わるようになりますね。</p>

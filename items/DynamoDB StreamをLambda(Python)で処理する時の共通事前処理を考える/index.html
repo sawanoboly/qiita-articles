@@ -1,0 +1,260 @@
+<p>AWSリソース同士の連携でLambdaをつかうのは便利だけどeventが毎度複雑でたいへん。<br>
+今回はDynamoDB StreamをPythonで拾うとき、主要な処理以外をなんとか簡潔に書けるようにしたいチャレンジ。</p>
+
+<p><a href="http://docs.aws.amazon.com/ja_jp/amazondynamodb/latest/developerguide/Streams.Lambda.html" rel="nofollow noopener" target="_blank">DynamoDB ストリーム と AWS Lambda のトリガー - Amazon DynamoDB</a></p>
+
+<blockquote>
+<p>この記事の内容はライブラリにしてPyPIに登録してあります。</p>
+
+<ul>
+<li><a href="https://pypi.org/project/dynamodb-stream-dispatcher/" rel="nofollow noopener" target="_blank">dynamodb-stream-dispatcher · PyPI</a></li>
+<li><a href="https://github.com/higanworks/dynamodb_stream_dispatcher" rel="nofollow noopener" target="_blank">github/higanworks/dynamodb_stream_dispatcher</a></li>
+</ul>
+</blockquote>
+
+<h2>
+<span id="共通処理の仕様" class="fragment"></span><a href="#%E5%85%B1%E9%80%9A%E5%87%A6%E7%90%86%E3%81%AE%E4%BB%95%E6%A7%98"><i class="fa fa-link"></i></a>共通処理の仕様</h2>
+
+<p>このあたりの処理を使いまわせば楽になりそう。</p>
+
+<ul>
+<li>対応する関数(lambda含む)を登録して、レコードごとに実行したい
+
+<ul>
+<li>呼ばれる側はコンテキスト決め打ちでよいので、分岐とか不要</li>
+</ul>
+</li>
+<li>Itemのデータを取り出しやすくする
+
+<ul>
+<li>ついでにDynamoおなじみの型付きでくるので、PythonのDictに変換する</li>
+</ul>
+</li>
+<li>(Option) 例外処理</li>
+</ul>
+
+<p>で、エントリーポイントは、こんな風に書けたらよいかなと。</p>
+
+<div class="code-frame" data-lang="python">
+<div class="code-lang"><span class="bold">handler(予定)</span></div>
+<div class="highlight"><pre><span class="k">def</span> <span class="nf">lambda_handler</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">DynamoStreamDispatcher</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">on_insert</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="k">lambda</span> <span class="n">rec</span><span class="p">:</span> <span class="k">print</span><span class="p">(</span><span class="n">rec</span><span class="o">.</span><span class="n">event_name</span><span class="p">))</span> <span class="c1"># lambda OK
+</span>    <span class="n">ds</span><span class="o">.</span><span class="n">on_remove</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">after_remove1</span><span class="p">)</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">on_remove</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">after_remove2</span><span class="p">)</span> <span class="c1">#複数の処理 OK
+</span>    <span class="n">ds</span><span class="o">.</span><span class="n">on_modify</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">after_modify</span><span class="p">)</span>
+
+
+    <span class="n">ds</span><span class="o">.</span><span class="n">dispatch</span><span class="p">()</span>
+    <span class="k">return</span> <span class="bp">True</span>
+</pre></div>
+</div>
+
+<p>ハンドラを登録してdispatchする感じ。</p>
+
+<h2>
+<span id="ざっくり作ってみる" class="fragment"></span><a href="#%E3%81%96%E3%81%A3%E3%81%8F%E3%82%8A%E4%BD%9C%E3%81%A3%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>ざっくり作ってみる</h2>
+
+<p>とりあえず当初にきめたlambda_handlerに書きたい内容を実装してみた。</p>
+
+<div class="code-frame" data-lang="python">
+<div class="code-lang"><span class="bold">lambda_function.py</span></div>
+<div class="highlight"><pre><span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">boto3.dynamodb.types</span> <span class="kn">import</span> <span class="n">TypeDeserializer</span>
+<span class="n">deser</span> <span class="o">=</span> <span class="n">TypeDeserializer</span><span class="p">()</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">'Loading function'</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">DeRecord</span><span class="p">:</span>
+    <span class="c1">## Itemをデシリアライズしたもの
+</span>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rec</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">event_name</span> <span class="o">=</span> <span class="n">rec</span><span class="p">[</span><span class="s">'eventName'</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">old</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_desi</span><span class="p">(</span><span class="n">rec</span><span class="p">[</span><span class="s">'dynamodb'</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'OldImage'</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_desi</span><span class="p">(</span><span class="n">rec</span><span class="p">[</span><span class="s">'dynamodb'</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'NewImage'</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_desi</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">image</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">image</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">image</span><span class="p">:</span>
+                <span class="n">d</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">deser</span><span class="o">.</span><span class="n">deserialize</span><span class="p">(</span><span class="n">image</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">d</span>
+
+
+<span class="k">class</span> <span class="nc">DynamoStreamDispatcher</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">on_insert</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">on_remove</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">on_modify</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">records</span>   <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">event</span><span class="p">[</span><span class="s">'Records'</span><span class="p">]:</span>
+            <span class="c1"># レコードはdictに加工しちゃう。
+</span>            <span class="bp">self</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">DeRecord</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">raw</span> <span class="o">=</span> <span class="n">event</span>
+
+    <span class="k">def</span> <span class="nf">dispatch</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">"""
+        synced dispatcher
+        """</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">records</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">runner</span> <span class="ow">in</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">'on_'</span> <span class="o">+</span> <span class="n">r</span><span class="o">.</span><span class="n">event_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()):</span>
+                    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">runner</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
+            <span class="k">except</span> <span class="nb">AttributeError</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">"Unknown event "</span> <span class="o">+</span> <span class="n">r</span><span class="o">.</span><span class="n">event_name</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+        <span class="k">return</span> <span class="n">results</span>
+
+
+<span class="c1">## ここから、個別Lambda用処理の関数サンプル。引数は加工済みのレコード
+</span><span class="k">def</span> <span class="nf">after_remove1</span><span class="p">(</span><span class="n">rec</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"deleted"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">None</span>
+
+<span class="k">def</span> <span class="nf">after_remove2</span><span class="p">(</span><span class="n">rec</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rec</span><span class="o">.</span><span class="n">old</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">None</span>
+
+
+<span class="k">def</span> <span class="nf">after_modify</span><span class="p">(</span><span class="n">rec</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"key updated..."</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rec</span><span class="o">.</span><span class="n">old</span><span class="p">[</span><span class="s">'Message'</span><span class="p">])</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rec</span><span class="o">.</span><span class="n">new</span><span class="p">[</span><span class="s">'Message'</span><span class="p">])</span>
+    <span class="k">return</span> <span class="bp">None</span>
+
+
+<span class="k">def</span> <span class="nf">lambda_handler</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">DynamoStreamDispatcher</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">on_insert</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="k">lambda</span> <span class="n">rec</span><span class="p">:</span> <span class="k">print</span><span class="p">(</span><span class="n">rec</span><span class="o">.</span><span class="n">event_name</span><span class="p">))</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">on_remove</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">after_remove1</span><span class="p">)</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">on_remove</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">after_remove2</span><span class="p">)</span>
+    <span class="n">ds</span><span class="o">.</span><span class="n">on_modify</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">after_modify</span><span class="p">)</span>
+
+    <span class="n">ds</span><span class="o">.</span><span class="n">dispatch</span><span class="p">()</span>
+    <span class="k">return</span> <span class="bp">True</span>
+</pre></div>
+</div>
+
+<p>Sample event templateからDynamoDB Update(※末尾に付属)を流してみる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>START RequestId: 6ed79996-0ecc-11e7-8985-db0ca21254c3 Version: $LATEST
+INSERT
+key updated...
+New item!
+This item has changed
+deleted
+{u'Message': u'This item has changed', u'Id': Decimal('101')}
+END RequestId: 6ed79996-0ecc-11e7-8985-db0ca21254c3
+</pre></div></div>
+
+<p>登録した関数がそれぞれ実行されてOK。</p>
+
+<p>ほぼ自分用ライブラリだけど、PyPIに似たようなのがなければ登録して使いまわそうかな。<br>
+あとは差分とかをうまいこと格納したいね。</p>
+
+<hr>
+
+<p>付録: DynamoDB Updateのサンプルイベント</p>
+
+<div class="code-frame" data-lang="json"><div class="highlight"><pre><span class="p">{</span><span class="w">
+  </span><span class="nl">"Records"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"eventID"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"dynamodb"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"Keys"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"Id"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"N"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"NewImage"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"Message"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"New item!"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+          </span><span class="nl">"Id"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"N"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"StreamViewType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NEW_AND_OLD_IMAGES"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"SequenceNumber"</span><span class="p">:</span><span class="w"> </span><span class="s2">"111"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"SizeBytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">26</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+      </span><span class="nl">"awsRegion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"us-west-2"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"INSERT"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventSourceARN"</span><span class="p">:</span><span class="w"> </span><span class="s2">"arn:aws:dynamodb:us-west-2:account-id:table/ExampleTableWithStream/stream/2015-06-27T00:48:05.899"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventSource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"aws:dynamodb"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"eventID"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"dynamodb"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"OldImage"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"Message"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"New item!"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+          </span><span class="nl">"Id"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"N"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"SequenceNumber"</span><span class="p">:</span><span class="w"> </span><span class="s2">"222"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"Keys"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"Id"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"N"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"SizeBytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">59</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"NewImage"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"Message"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"This item has changed"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+          </span><span class="nl">"Id"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"N"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"StreamViewType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NEW_AND_OLD_IMAGES"</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+      </span><span class="nl">"awsRegion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"us-west-2"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"MODIFY"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventSourceARN"</span><span class="p">:</span><span class="w"> </span><span class="s2">"arn:aws:dynamodb:us-west-2:account-id:table/ExampleTableWithStream/stream/2015-06-27T00:48:05.899"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventSource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"aws:dynamodb"</span><span class="w">
+    </span><span class="p">},</span><span class="w">
+    </span><span class="p">{</span><span class="w">
+      </span><span class="nl">"eventID"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"dynamodb"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="nl">"Keys"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"Id"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"N"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"SizeBytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">38</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"SequenceNumber"</span><span class="p">:</span><span class="w"> </span><span class="s2">"333"</span><span class="p">,</span><span class="w">
+        </span><span class="nl">"OldImage"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="nl">"Message"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"S"</span><span class="p">:</span><span class="w"> </span><span class="s2">"This item has changed"</span><span class="w">
+          </span><span class="p">},</span><span class="w">
+          </span><span class="nl">"Id"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
+            </span><span class="nl">"N"</span><span class="p">:</span><span class="w"> </span><span class="s2">"101"</span><span class="w">
+          </span><span class="p">}</span><span class="w">
+        </span><span class="p">},</span><span class="w">
+        </span><span class="nl">"StreamViewType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NEW_AND_OLD_IMAGES"</span><span class="w">
+      </span><span class="p">},</span><span class="w">
+      </span><span class="nl">"awsRegion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"us-west-2"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"REMOVE"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventSourceARN"</span><span class="p">:</span><span class="w"> </span><span class="s2">"arn:aws:dynamodb:us-west-2:account-id:table/ExampleTableWithStream/stream/2015-06-27T00:48:05.899"</span><span class="p">,</span><span class="w">
+      </span><span class="nl">"eventSource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"aws:dynamodb"</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+  </span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></pre></div></div>
+
+<p>参考:</p>
+
+<ul>
+<li><a href="http://stackoverflow.com/questions/36558646/how-to-convert-from-dynamodb-wire-protocol-to-native-python-object-manually-with" rel="nofollow noopener" target="_blank">How to convert from DynamoDB wire protocol to native Python object manually with boto3? - Stack Overflow</a></li>
+</ul>

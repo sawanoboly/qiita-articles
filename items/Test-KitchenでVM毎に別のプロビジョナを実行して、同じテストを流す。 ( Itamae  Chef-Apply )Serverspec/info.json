@@ -1,0 +1,1 @@
+{"created_at":"2015-03-02T18:37:09+09:00","id":"741fdb59c14736841b24","updated_at":"2015-03-05T16:13:52+09:00","title":"Test-KitchenでVM毎に別のプロビジョナを実行して、同じテストを流す。 ( Itamae | Chef-Apply )/Serverspec","tags":["Ruby","chef","chef-apply","test-kitchen","itamae"]}

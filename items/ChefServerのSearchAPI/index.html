@@ -1,0 +1,44 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>ChefServerがあると、Nodeの構成情報を管理・利用できる。</p>
+
+<p>構成情報の利用方法は幾つかかあるがレシピ内で使う場合、Searchメソッドが使える。</p>
+
+<h2>
+<span id="searchメソッド" class="fragment"></span><a href="#search%E3%83%A1%E3%82%BD%E3%83%83%E3%83%89"><i class="fa fa-link"></i></a>searchメソッド</h2>
+
+<p>任意のRoleに宛てられたノード達をArrayで返してもらう例。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">chef</span> <span class="o">&gt;</span> <span class="n">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"roles:zookeeper_servers"</span><span class="p">)</span>
+ <span class="o">=&gt;</span> <span class="p">[</span><span class="n">node</span><span class="p">[</span><span class="n">zk01</span><span class="p">.</span><span class="nf">example</span><span class="p">.</span><span class="nf">com</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="n">zk02</span><span class="p">.</span><span class="nf">example</span><span class="p">.</span><span class="nf">com</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="n">zk03</span><span class="p">.</span><span class="nf">example</span><span class="p">.</span><span class="nf">com</span><span class="p">]]</span> 
+</pre></div></div>
+
+<p>それぞれのアイテムは<code>Chef::Node</code>クラス。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">chef</span> <span class="o">&gt;</span> <span class="n">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"roles: zookeeper_servers"</span><span class="p">)[</span><span class="mi">0</span><span class="p">].</span><span class="nf">class</span>
+ <span class="o">=&gt;</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Node</span> 
+</pre></div></div>
+
+<p><code>Chef::Node</code>クラスということは、Attributesを持っているということなので、下記のようにレシピ内で利用したい情報を抽出できる。</p>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="n">chef</span> <span class="o">&gt;</span> <span class="n">search</span><span class="p">(</span><span class="ss">:node</span><span class="p">,</span> <span class="s2">"roles: zookeeper_servers"</span><span class="p">).</span><span class="nf">map</span> <span class="p">{</span><span class="o">|</span><span class="n">node</span><span class="o">|</span> <span class="n">node</span><span class="p">.</span><span class="nf">ipaddress</span><span class="p">}</span>
+ <span class="o">=&gt;</span> <span class="p">[</span><span class="s2">"192.168.1.10"</span><span class="p">,</span> <span class="s2">"192.168.1.20"</span><span class="p">,</span> <span class="s2">"192.168.1.45"</span><span class="p">]</span> 
+</pre></div></div>
+
+<h2>
+<span id="knifeから使う例" class="fragment"></span><a href="#knife%E3%81%8B%E3%82%89%E4%BD%BF%E3%81%86%E4%BE%8B"><i class="fa fa-link"></i></a>Knifeから使う例</h2>
+
+<p>knife ssh はSearchAPIのクエリを使い、対象ノードにssh越しのコマンド実行が出来る。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span>knife ssh <span class="s2">"roles:zookeeper_servers"</span>  <span class="nb">date
+</span>zk01.example.com Sun Apr  7 01:17:28 JST 2013
+zk02.example.com Sun Apr  7 01:17:28 JST 2013
+zk03.example.com Sun Apr  7 01:17:28 JST 2013
+
+</pre></div></div>
+
+<p>SearchはChefの奥義の一つだが、最近のChef対応を謳うサービスはSolo互換が主なので使えないのが残念。</p>

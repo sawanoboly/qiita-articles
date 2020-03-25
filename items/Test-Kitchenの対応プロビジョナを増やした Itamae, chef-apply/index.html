@@ -1,0 +1,215 @@
+<p><a href="http://kitchen.ci" rel="nofollow noopener" target="_blank">Test-Kithen</a>は、</p>
+
+<ul>
+<li>どこかにVMをつくって</li>
+<li>好きなプロビジョニングを適用して</li>
+<li>適当なテストスイートを実行する</li>
+</ul>
+
+<p>というツールです。</p>
+
+<h2>
+<span id="あらすじ" class="fragment"></span><a href="#%E3%81%82%E3%82%89%E3%81%99%E3%81%98"><i class="fa fa-link"></i></a>あらすじ</h2>
+
+<ol>
+<li>普段から<a href="http://kitchen.ci" rel="nofollow noopener" target="_blank">Test-Kithen</a>を色々な用途で使っているので、解説をまとめようと思った。</li>
+<li>拡張の仕方も説明できるかな ?
+
+<ul>
+<li>VMのドライバは作ったことがある： <a href="https://github.com/higanworks/kitchen-zcloudjp" rel="nofollow noopener" target="_blank">kitchen-zcloudjp</a>
+</li>
+<li>テストのプラグインも作ったことがある: <a href="https://github.com/OpsRockin/busser-shindo" rel="nofollow noopener" target="_blank">busser-shindo</a>
+</li>
+<li>プロビジョナは作ったことがない。</li>
+</ul>
+</li>
+<li>ついでだから何かプロビジョナの対応を作る。</li>
+</ol>
+
+<p>『何かプロビジョナ』、すでにTest-Kitchen対応があると思っていたが無かった次の２つにした。</p>
+
+<ul>
+<li><a href="http://itamae.kitchen/" rel="nofollow noopener" target="_blank">Itamae</a></li>
+<li><a href="https://docs.chef.io/ctl_chef_apply.html" rel="nofollow noopener" target="_blank">chef-apply</a></li>
+</ul>
+
+<h2>
+<span id="test-kitchenのプロビジョナづくり" class="fragment"></span><a href="#test-kitchen%E3%81%AE%E3%83%97%E3%83%AD%E3%83%93%E3%82%B8%E3%83%A7%E3%83%8A%E3%81%A5%E3%81%8F%E3%82%8A"><i class="fa fa-link"></i></a>Test-Kitchenのプロビジョナづくり。</h2>
+
+<p>Test-Kitchenの拡張は、基本的に対象のBaseを継承してから任意のメソッドを上書きすることで行います。</p>
+
+<p>プロビジョナ実行内のメソッドならこんな感じです。</p>
+
+<table>
+<thead>
+<tr>
+<th>Provisioerのメソッド(一部抜粋)</th>
+<th>軽い解説</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>install_command</td>
+<td>VM内にプロビジョナをインストールするコマンドライン(<code>sh -c</code>で実行)</td>
+</tr>
+<tr>
+<td>init_command</td>
+<td>VM内のSandboxを初期化するコマンドライン(<code>sh -c</code>で実行)</td>
+</tr>
+<tr>
+<td>prepare_command</td>
+<td>VM内でプロビジョナを実行する前に実行するコマンドライン(<code>sh -c</code>で実行)</td>
+</tr>
+<tr>
+<td>run_command</td>
+<td>VM内で実行するプロビジョナのコマンドライン(<code>sh -c</code>で実行)</td>
+</tr>
+<tr>
+<td>create_sandbox</td>
+<td>ホストOSでレシピ等を一時的に配置(Sandbox)するRubyコード</td>
+</tr>
+<tr>
+<td>cleanup_sandbox</td>
+<td>ホストOSのSandboxを掃除するRubyコード</td>
+</tr>
+</tbody>
+</table>
+
+<p>これらを次のような感じで上書き。</p>
+
+<ol>
+<li>VMにItamaeをインストール
+
+<ul>
+<li>Chef-ApplyはChefに便乗</li>
+</ul>
+</li>
+<li>
+<code>kitchen</code>以下のファイルをVMの<code>/tmp/kitchen</code>に転送</li>
+<li>事前準備があったらVM内で実行</li>
+<li>ランリストを元にItamae/Chef-Applyを実行</li>
+</ol>
+
+<h2>
+<span id="itamaeでプロビジョニング" class="fragment"></span><a href="#itamae%E3%81%A7%E3%83%97%E3%83%AD%E3%83%93%E3%82%B8%E3%83%A7%E3%83%8B%E3%83%B3%E3%82%B0"><i class="fa fa-link"></i></a>Itamaeでプロビジョニング</h2>
+
+<p><a href="https://github.com/OpsRockin/kitchen-itamae" rel="nofollow noopener" target="_blank">kitchen-itamae</a>はRubygemsで公開しました。</p>
+
+<p>実際に使って見る場合、<a href="https://github.com/OpsRockin/kitchen-itamae_playground" rel="nofollow noopener" target="_blank">kitchen-itamaeのデモ</a>として実装済の機能をほぼ試せるようにしてるので参考になるはずです。</p>
+
+<p>Test-KithenでItamaeプロビジョナを使用するには、<code>kitchen/(任意)</code>以下にItamaeのRecipeを配置します。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>kitchen/
+├── nodes
+│   ├── node1.json
+│   └── node2.json
+└── recipes
+    ├── package1.rb
+    └── package2.rb
+</pre></div></div>
+
+<p>で、<code>.kitchen.yml</code>の<code>provisioner</code>として<code>itamae</code>を指定。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.yml(itamae)</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">vagrant</span>
+  <span class="na">customize</span><span class="pi">:</span>
+    <span class="na">cpus</span><span class="pi">:</span> <span class="m">2</span>
+
+<span class="na">provisioner</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">itamae</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">ubuntu-14.04</span>
+    <span class="na">provisioner</span><span class="pi">:</span>
+      <span class="na">node_json</span><span class="pi">:</span> <span class="s">nodes/node1.json</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">centos-6.6</span>
+    <span class="na">provisioner</span><span class="pi">:</span>
+      <span class="na">node_json</span><span class="pi">:</span> <span class="s">nodes/node2.json</span>
+
+<span class="na">suites</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">default</span>
+    <span class="na">run_list</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">recipes/package1.rb</span>
+      <span class="pi">-</span> <span class="s">recipes/package2.rb</span>
+</pre></div>
+</div>
+
+<p>Test-Kitchenは定義ファイルの<code>.kitchen.yml</code>内にある、<code>driver</code>, <code>provisioner</code>, <code>platforms</code>, <code>suites</code>の各所から同じキーをマージするので色々な所で個別の設定を生やしておけます。<br>
+<code>kitchen diagnose</code>コマンドでコンフィグの重なり具合をいつでも確認できるので、何か変更したら都度確認してみるといいでしょう。</p>
+
+<p>ちなみに<code>run_list</code>、<code>attribute</code>だけは特別な名前で、アレイ同士が合成されたりと<a href="http://docs.chef.io/attributes.html#about-deep-merge" rel="nofollow noopener" target="_blank">ChefでのDeep Merge</a>を踏襲しています。</p>
+
+<blockquote>
+<p>追記：<br>
+<code>.kitchen.yml</code>に<code>attribute</code>を記述すると、node_jsonの中身とマージします。<br>
+同じキーは<code>attribute</code>のほうを優先し、ファイルの使い回しや、環境依存設定の上書きをしやすいように。</p>
+</blockquote>
+
+<p>あとは<code>kitchen converge</code>(kitchen test)でVM作成とItamaeが実行されます。</p>
+
+<h3>
+<span id="itamaeプラグインを使う" class="fragment"></span><a href="#itamae%E3%83%97%E3%83%A9%E3%82%B0%E3%82%A4%E3%83%B3%E3%82%92%E4%BD%BF%E3%81%86"><i class="fa fa-link"></i></a>Itamaeプラグインを使う</h3>
+
+<p>これは<a href="https://github.com/OpsRockin/kitchen-itamae_playground" rel="nofollow noopener" target="_blank">kitchen-itamaeのデモ</a>にあるとおり、<code>kitchen/</code>に<code>Gemfile</code>を設置すればItamae実行前にBundlerでインストールするようにしています。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>kitchen/
+├── Gemfile
+├── nodes
+│   ├── node1.json
+│   └── node2.json
+├── recipes
+│   ├── file.rb
+│   ├── git.rb
+│   ├── mail_alias.rb
+│   ├── package1.rb
+│   ├── package2.rb
+│   └── selinux.rb
+└── templates
+    └── template.erb
+</pre></div></div>
+
+<p><code>Gemfile</code>に使用するプラグインを書いたら、あとは<code>include_recipe</code>するなど好きなように。</p>
+
+<h2>
+<span id="chef-applyでプロビジョニング" class="fragment"></span><a href="#chef-apply%E3%81%A7%E3%83%97%E3%83%AD%E3%83%93%E3%82%B8%E3%83%A7%E3%83%8B%E3%83%B3%E3%82%B0"><i class="fa fa-link"></i></a>Chef-Applyでプロビジョニング</h2>
+
+<p>Test-Kitchenのプロビジョナ、よく見たら標準に<code>chef-apply</code>がありませんでした。<br>
+既にある<code>shell</code>プロビジョナでも普通にまかなえますけど、折角なのでこちらは単品公開ではなく本家にPRしています。</p>
+
+<p><a href="https://github.com/test-kitchen/test-kitchen/pull/623" title="Add Provisioner chef_apply by sawanoboly · Pull Request #623 · test-kitchen/test-kitchen" rel="nofollow noopener" target="_blank">Add Provisioner chef_apply by sawanoboly · Pull Request #623 · test-kitchen/test-kitchen</a></p>
+
+<p>Recipeを置くディレクトリは<code>apply/(変更可)</code>です。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>apply/
+├── hoge.rb
+├── recipe1.rb
+└── recipe2.rb
+</pre></div></div>
+
+<p>あとは<code>run_list</code>にレシピの名前を書いたらおわり。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">.kitchen.yml(chef_apply)</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">driver</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">vagrant</span>
+
+<span class="na">provisioner</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">chef_apply</span>
+
+<span class="na">platforms</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">ubuntu-12.04</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">centos-6.4</span>
+
+<span class="na">suites</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">default</span>
+    <span class="na">run_list</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">recipe1</span>
+      <span class="pi">-</span> <span class="s">recipe2</span>
+</pre></div>
+</div>
+
+<p>と、こんな感じの設定になりますね。</p>

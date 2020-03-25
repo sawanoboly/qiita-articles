@@ -1,0 +1,37 @@
+<p>S3にCSVファイルが置かれたら、ファイルをBigQueryにアップロードするタスクを仕掛けていたら、ある日を境にこけ始めた。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bq load --skip_leading_rows=1 --replace --sync --project_id mypj ...[以下省略]
+Upload complete.
+Waiting on bqjob_r42fb5f95fa2e4847_0000015a213d6a98_1 ... (89s) Current status: DONE   
+
+BigQuery error in load operation: Error processing job 'amimoto-dashboard:bqjob_r42fb5f95fa2e4847_0000015a213d6a98_1': Too many errors encountered.
+Failure details:
+- /gzip/subrange/file-00000000: Error detected while parsing row
+starting at position: 250878765. Error: Missing close double quote
+(") character.
+</pre></div></div>
+
+<p><code>Missing close double quote</code>。なんでやねんと思って調査。</p>
+
+<h2>
+<span id="改行" class="fragment"></span><a href="#%E6%94%B9%E8%A1%8C"><i class="fa fa-link"></i></a>改行。</h2>
+
+<p>csvファイルの行数は<code>1,117,796</code>、pandasでロードしたらレコード数は<code>1,117,768</code>。。。??</p>
+
+<p>で、あるカラムに改行を発見。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>"foobarstring\n"
+</pre></div></div>
+
+<p>なるほど。</p>
+
+<h2>
+<span id="--allow_quoted_newlinesをつけて対応できるケースだった" class="fragment"></span><a href="#--allow_quoted_newlines%E3%82%92%E3%81%A4%E3%81%91%E3%81%A6%E5%AF%BE%E5%BF%9C%E3%81%A7%E3%81%8D%E3%82%8B%E3%82%B1%E3%83%BC%E3%82%B9%E3%81%A0%E3%81%A3%E3%81%9F"><i class="fa fa-link"></i></a><code>--allow_quoted_newlines</code>をつけて対応できるケースだった</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ bq load --skip_leading_rows=1 --allow_quoted_newlines --replace --sync --project_id mypj ...[以下省略]
+
+Upload complete.
+Waiting on bqjob_r1680e9a9697238aa_0000015a214b406d_1 ... (168s) Current status: DONE  
+</pre></div></div>
+
+<p>ちなみに改行が混入したのはAWSの請求データで、<code>user:Name</code>とされているカラムでした。リソースタグに<code>\n</code>とか入れたら請求のCSVに記述されて、どこかで何かがこけちゃうぞ！</p>

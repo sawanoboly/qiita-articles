@@ -1,0 +1,21 @@
+<p>癖で普段から沢山ターミナルを開いています。しかし、イベントでの発表とか、<a href="https://www.twitch.tv/nobolycloud" rel="nofollow noopener" target="_blank">ちょっとした都合</a>で自分の端末を映像配信・録音に使うなどのため、できるだけ負担を減らす目的で全部閉じることがあります。</p>
+
+<p>で、閉じる前何やってたっけ。。があるのでダンプしておくことにしよう。</p>
+
+<p>lsofでcwdつき出力して、あとは良くあるフィルタのワンライナーで実施。</p>
+
+<div class="code-frame" data-lang="bash"><div class="highlight"><pre><span class="nv">$ </span><span class="k">for </span>x <span class="k">in</span> <span class="si">$(</span>pidof bash<span class="si">)</span><span class="p">;</span> <span class="k">do </span>lsof <span class="nt">-a</span> <span class="nt">-d</span> cwd <span class="nt">-p</span> <span class="nv">$x</span> <span class="p">;</span> <span class="k">done</span> |  <span class="nb">grep </span>bash | <span class="nb">awk</span> <span class="s1">'{print $9}'</span> | <span class="nb">sort</span> | <span class="nb">uniq</span>
+/Users/sawanoboly
+/Users/sawanoboly/develop/src/git.example.com/kafka-docker
+/Users/sawanoboly/develop/src/git.example.com/zookeeper-docker/stack
+/Users/sawanoboly/develop/src/git.example.com/sawanoboly/kafka-miscs
+/Users/sawanoboly/develop/src/git.example.com/sawanoboly/kafka-miscs/landloop
+/Users/sawanoboly/develop/src/github.com/confluentinc/cp-docker-images
+/Users/sawanoboly/develop/src/github.com/getshifter/base
+/Users/sawanoboly/sandbox/kafka-leaning/fluentd
+/Users/sawanoboly/sandbox/spot/opencv
+/Users/sawanoboly/sandbox/spot/opencv/face_recognition/examples
+/Users/sawanoboly/sandbox/spinnaker
+</pre></div></div>
+
+<p>脳内コンテキスト復旧の手助けになるよう。</p>

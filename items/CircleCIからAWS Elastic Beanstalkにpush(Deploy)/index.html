@@ -1,0 +1,116 @@
+<blockquote>
+<p>こっちのほうがスマートなのでおすすめする。 &gt; <a href="http://qiita.com/mikamix/items/31849dc94a3e39575240" title="CircleCI経由でElasticBeanstalkにデプロイする方法 - Qiita" id="reference-9a5fdb4bdb3d19f35eeb">CircleCI経由でElasticBeanstalkにデプロイする方法 - Qiita</a><br>
+ここの記事は参考程度に。</p>
+</blockquote>
+
+<p>背景はさておき、PRをマージしたらさっさとElastic Beanstalkを更新しておいてもいいアプリもあるでしょう。<br>
+じゃあCircleCIからpushしておこう。</p>
+
+<h2>
+<span id="circleyml" class="fragment"></span><a href="#circleyml"><i class="fa fa-link"></i></a>circle.yml</h2>
+
+<p>circle.ymlはこんな感じ。<br>
+関連ツールのセットアップ＆キャッシュ、デプロイコマンドの組み合わせです。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">circle.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">dependencies</span><span class="pi">:</span>
+  <span class="na">pre</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">ci/01_eb_command.sh</span>
+    <span class="pi">-</span> <span class="s">ci/02_credencial_for_eb.sh</span>
+  <span class="na">cache_directories</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">~/awstools</span>
+<span class="na">deployment</span><span class="pi">:</span>
+  <span class="na">my_environment</span><span class="pi">:</span>
+    <span class="na">branch</span><span class="pi">:</span> <span class="s">master</span>
+    <span class="na">commands</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">git aws.push</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="ebコマンドをインストールする-01_eb_commandsh" class="fragment"></span><a href="#eb%E3%82%B3%E3%83%9E%E3%83%B3%E3%83%89%E3%82%92%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%81%99%E3%82%8B-01_eb_commandsh"><i class="fa fa-link"></i></a>ebコマンドをインストールする (<code>01_eb_command.sh</code>)</h2>
+
+<blockquote>
+<p>[更新]<br>
+sudo pip install awsebcliで良かった模様。これはナイス。<br>
+参考： <a href="http://qiita.com/mikamix/items/31849dc94a3e39575240" title="CircleCI経由でElasticBeanstalkにデプロイする方法 - Qiita">CircleCI経由でElasticBeanstalkにデプロイする方法 - Qiita</a></p>
+</blockquote>
+
+<p>ツールのセットアップその、ebコマンド。良くある外部ツールの導入ですね。<br>
+Elastic Beanstalk的には<code>RepositorySetup</code>が大事。<br>
+このあたり、ビルドで毎回やることとキャッシュしておきたいこと、環境変数から取りたいことの住み分けで色々工夫の余地はあります。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">ci/01_eb_command.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+<span class="nb">set</span> <span class="nt">-ex</span>
+
+<span class="nv">EB_VERSION</span><span class="o">=</span><span class="s2">"2.6.4"</span>
+<span class="nv">EB_BASE</span><span class="o">=</span><span class="s2">"AWS-ElasticBeanstalk-CLI-</span><span class="k">${</span><span class="nv">EB_VERSION</span><span class="k">}</span><span class="s2">"</span>
+<span class="nv">HOME</span><span class="o">=</span><span class="k">${</span><span class="nv">HOME</span><span class="k">:-</span><span class="p">/home/ubuntu</span><span class="k">}</span>
+
+<span class="c">## botoがいるので入れておく</span>
+<span class="nb">sudo </span>pip <span class="nb">install </span>boto
+
+<span class="nb">mkdir</span> <span class="nt">-p</span> <span class="k">${</span><span class="nv">HOME</span><span class="k">}</span>/awstools
+<span class="nb">cd</span> <span class="nv">$HOME</span>/awstools
+
+<span class="c">## ebダウンロード済みならスキップ</span>
+<span class="k">if</span> <span class="o">!</span> <span class="o">[</span> <span class="nt">-d</span> <span class="k">${</span><span class="nv">HOME</span><span class="k">}</span>/awstools/<span class="k">${</span><span class="nv">EB_BASE</span><span class="k">}</span> <span class="o">]</span><span class="p">;</span> <span class="k">then
+  </span>wget https://s3.amazonaws.com/elasticbeanstalk/cli/<span class="k">${</span><span class="nv">EB_BASE</span><span class="k">}</span>.zip
+  unzip <span class="k">${</span><span class="nv">EB_BASE</span><span class="k">}</span>.zip
+<span class="k">fi</span>
+
+<span class="c">## ebコマンドをパスが通っている場所にリンク</span>
+<span class="nb">sudo ln</span> <span class="nt">-fs</span> <span class="k">${</span><span class="nv">HOME</span><span class="k">}</span>/awstools/<span class="k">${</span><span class="nv">EB_BASE</span><span class="k">}</span>/eb/linux/python2.7/eb <span class="k">${</span><span class="nv">HOME</span><span class="k">}</span>/bin/
+
+<span class="c">## gitのプラグインを`.git/AWSDevTools/`に入れる(eb init相当)</span>
+<span class="nb">cd</span> <span class="nv">$HOME</span>/<span class="k">${</span><span class="nv">CIRCLE_PROJECT_REPONAME</span><span class="k">}</span>
+bash <span class="nt">-ex</span> <span class="k">${</span><span class="nv">HOME</span><span class="k">}</span>/awstools/<span class="k">${</span><span class="nv">EB_BASE</span><span class="k">}</span>/AWSDevTools/Linux/AWSDevTools-RepositorySetup.sh
+</pre></div>
+</div>
+
+<h2>
+<span id="eb用のcredentialsファイルを生成する-02_credencial_for_ebsh" class="fragment"></span><a href="#eb%E7%94%A8%E3%81%AEcredentials%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E7%94%9F%E6%88%90%E3%81%99%E3%82%8B-02_credencial_for_ebsh"><i class="fa fa-link"></i></a>eb用のcredentialsファイルを生成する (<code>02_credencial_for_eb.sh</code>)</h2>
+
+<p>CircleCIのプロジェクト設定にはAWSキーを入れるところがあり、<code>~/.aws/config</code>,<code>~/.aws/credentials</code>を自動で置いてくれる。<br>
+ですが、ebコマンドからは直接読めない(..はず)、環境変数にも入らない。</p>
+
+<p>今回はありもの(<code>~/.aws/credentials</code>)を流用、整形することにしました。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">ci/02_credencial_for_eb.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+<span class="nb">set</span> <span class="nt">-ex</span>
+
+<span class="k">if</span> <span class="o">[</span> <span class="nt">-f</span> ~/.aws/credentials <span class="o">]</span><span class="p">;</span> <span class="k">then
+  </span><span class="nb">sed</span> <span class="nt">-e</span> <span class="s1">'s/\[default\]//'</span> <span class="nt">-e</span> <span class="s1">'s/aws_access_key_id = /AWSAccessKeyId=/'</span> <span class="nt">-e</span> <span class="s1">'s/aws_secret_access_key = /AWSSecretKey=/'</span> ~/.aws/credentials | <span class="nb">sed</span> <span class="s1">':loop; N; $!b loop; ;s/^\s*\n//'</span> <span class="o">&gt;</span> ~/.aws/eb_credentials.txt
+  <span class="nb">chmod </span>0600 ~/.aws/eb_credentials.txt
+<span class="k">fi</span>
+</pre></div>
+</div>
+
+<p>キー側を変更、余分な改行とスペースを消しています。</p>
+
+<h3>
+<span id="環境変数のaws_credential_fileをセットしておく" class="fragment"></span><a href="#%E7%92%B0%E5%A2%83%E5%A4%89%E6%95%B0%E3%81%AEaws_credential_file%E3%82%92%E3%82%BB%E3%83%83%E3%83%88%E3%81%97%E3%81%A6%E3%81%8A%E3%81%8F"><i class="fa fa-link"></i></a>環境変数の<code>AWS_CREDENTIAL_FILE</code>をセットしておく</h3>
+
+<p>ebは環境変数の<code>AWS_CREDENTIAL_FILE</code>があればそのファイルからcredentialsを取り込むので、プロジェクトの設定に１つ追加しておきます。</p>
+
+<div class="code-frame" data-lang="Environment_variables_on_CircleCI"><div class="highlight"><pre>AWS_CREDENTIAL_FILE=/home/ubuntu/.aws/eb_credentials.txt
+</pre></div></div>
+
+<h2>
+<span id="git-awspush" class="fragment"></span><a href="#git-awspush"><i class="fa fa-link"></i></a>git aws.push</h2>
+
+<p>この場合、デフォルトではignoreされる<code>./.elasticbeanstalk/config</code>はGitリポジトリに含めています。</p>
+
+<p>含めたくない場合でもブランチ名とEnvironmentの対応があればいいので、CircleCI上で生成してもかまいません。</p>
+
+<p>参考: <a href="http://docs.aws.amazon.com/ja_jp/elasticbeanstalk/latest/dg/command-reference-branch-environment.html" title="Git ブランチを特定の環境にデプロイする - AWS Elastic Beanstalk" rel="nofollow noopener" target="_blank">Git ブランチを特定の環境にデプロイする - AWS Elastic Beanstalk</a></p>
+
+<p>これで任意のブランチがすぐEBにpushされるようになりました。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbe989638-2116-2713-bdad-c50c343b29c4.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8d5e7b8e6f4815e4307bd8831b5a4108" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbe989638-2116-2713-bdad-c50c343b29c4.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8d5e7b8e6f4815e4307bd8831b5a4108" alt="circleci_eb_png.png" title="circleci_eb_png.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/be989638-2116-2713-bdad-c50c343b29c4.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Fbe989638-2116-2713-bdad-c50c343b29c4.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=847b07edaab02b67af4c656b20b74ace 1x" loading="lazy"></a></p>

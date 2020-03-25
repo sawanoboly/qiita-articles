@@ -1,0 +1,236 @@
+<p>最近<a href="https://github.com/opscode/omnibus" title="opscode/omnibus" rel="nofollow noopener" target="_blank">opscode/omnibus</a>でServerspecの非公式パッケージを作っています。</p>
+
+<p><a href="https://github.com/opscode/omnibus" title="opscode/omnibus" rel="nofollow noopener" target="_blank">opscode/omnibus</a>については大体の説明はこちら。3以降はまたちょっと方針違います。</p>
+
+<blockquote>
+<p><a href="http://qiita.com/sawanoboly/items/a2c258a235824b91b70f" title="Omnibus-rubyプロジェクトでツールの周辺依存をまるごとrpm,debに固める - Qiita" id="reference-91f9d2dfb8052e39c9bf">Omnibus-rubyプロジェクトでツールの周辺依存をまるごとrpm,debに固める - Qiita</a></p>
+</blockquote>
+
+<p>パッケージ作成とリリースを、手元でやるとうるさいのでCircleCIにやらせてみた記録。</p>
+
+<p>リポジトリはここ： <a href="https://github.com/OpsRockin/omnibus-serverspec" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/OpsRockin/omnibus-serverspec</a></p>
+
+<h2>
+<span id="circleymlを晒す" class="fragment"></span><a href="#circleyml%E3%82%92%E6%99%92%E3%81%99"><i class="fa fa-link"></i></a>circle.ymlを晒す</h2>
+
+<p><code>circle.yml</code>本体に特殊な要素はなし。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">circle.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="nn">---</span>
+<span class="na">general</span><span class="pi">:</span>
+  <span class="na">artifacts</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s2">"</span><span class="s">pkg"</span>
+<span class="na">machine</span><span class="pi">:</span>
+  <span class="na">ruby</span><span class="pi">:</span>
+    <span class="na">version</span><span class="pi">:</span> <span class="s">2.1.5</span>
+<span class="na">dependencies</span><span class="pi">:</span>
+  <span class="na">pre</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">wget https://dl.bintray.com/mitchellh/vagrant/vagrant_1.6.5_x86_64.deb</span>
+    <span class="pi">-</span> <span class="s">sudo dpkg -i vagrant_1.6.5_x86_64.deb</span>
+    <span class="pi">-</span> <span class="s">if [ ! -d /home/ubuntu/.vagrant.d/gems/gems/vagrant-digitalocean-0.7.1 ] ; then sudo vagrant plugin install vagrant-digitalocean ; fi</span>
+  <span class="na">cache_directories</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s2">"</span><span class="s">.kitchen"</span>
+    <span class="pi">-</span> <span class="s2">"</span><span class="s">~/.vagrant.d/"</span>
+<span class="na">test</span><span class="pi">:</span>
+  <span class="na">override</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s2">"</span><span class="s">ci/circle_build_parallel.sh"</span><span class="pi">:</span>
+        <span class="na">timeout</span><span class="pi">:</span> <span class="m">1200</span>
+        <span class="na">parallel</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="pi">-</span> <span class="s2">"</span><span class="s">bundle</span><span class="nv"> </span><span class="s">exec</span><span class="nv"> </span><span class="s">rake</span><span class="nv"> </span><span class="s">sync"</span><span class="pi">:</span>
+        <span class="na">parallel</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="pi">-</span> <span class="s2">"</span><span class="s">ci/circle_release.sh"</span><span class="pi">:</span>
+        <span class="na">parallel</span><span class="pi">:</span> <span class="no">true</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="パッケージ並行ビルド-circle_build_parallelsh" class="fragment"></span><a href="#%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E4%B8%A6%E8%A1%8C%E3%83%93%E3%83%AB%E3%83%89-circle_build_parallelsh"><i class="fa fa-link"></i></a>パッケージ並行ビルド: circle_build_parallel.sh</h2>
+
+<p>ビルドの手口はTest-KitchenとVagrant-DigitalOceanです。<br>
+omnibusはポータビリティー面で良いのですが、初回のビルドにはすごく時間がかかります。</p>
+
+<p>CircleCIはビルドを30分で終わらせないとコンテナが停止するので、rpmとdebを並行して作ることにしました。</p>
+
+<p>Test-Kitchenのconvergeでそれぞれ準備をさせたら、それぞれのDroplet内で<code>omnibus build</code>をするため<code>kitchen exec</code>をかけました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>#!/usr/bin/env bash
+
+set -e
+case $CIRCLE_NODE_INDEX in
+  0) TARGET="centos"
+    ;;
+  1) TARGET="ubuntu"
+    ;;
+esac
+
+RUBYPATH="/opt/rubies/ruby-2.1.5/bin"
+
+bundle exec kitchen destroy ${TARGET}
+bundle exec kitchen converge ${TARGET}
+
+bundle exec kitchen exec ${TARGET} -c "export PATH=${RUBYPATH}:\$PATH; gem install bundler --no-ri --no-rdoc"
+bundle exec kitchen exec ${TARGET} -c "export PATH=${RUBYPATH}:\$PATH; cd /home/vagrant/serverspec; bundle install --jobs=2 --verbose --binstubs --without development"
+bundle exec kitchen exec ${TARGET} -c "export PATH=${RUBYPATH}:\$PATH; cd /home/vagrant/serverspec; ./bin/omnibus build serverspec"
+</pre></div></div>
+
+<p>omnibusの2回目以降は変更点以外キャッシュをつかうのですぐ終わります。実際の所ビルドサーバは必要な時にスタート、終わったらストップにするのがよいです。<br>
+が、今回は毎回破棄コースで。</p>
+
+<h3>
+<span id="kitchenyml" class="fragment"></span><a href="#kitchenyml"><i class="fa fa-link"></i></a>.kitchen.yml</h3>
+
+<p>結局Dropletは<code>8GB</code>でないと、ビルドが安定して30分を切らなかった。<br>
+あとは普通の複数プラットフォーム用<code>.kitchen.yml</code>ですね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>driver:
+  name: vagrant
+  provider: digital_ocean
+  box: digital_ocean
+  box_url: https://github.com/smdahlen/vagrant-digitalocean/raw/master/box/digital_ocean.box
+  vagrantfile_erb: &lt;%= File.join(File.dirname(__FILE__), "templates/Vagrantfile.erb") %&gt;
+  digitalocean:
+    provider:
+      token: &lt;%= ENV['DIGITALOCEAN_TOKEN'] %&gt;
+      ssh_key_name: &lt;%= ENV['DO_SSH_KEY_NAME'] %&gt;
+      size: 8GB
+      region: nyc3
+    override:
+      ssh.private_key_path: &lt;%= ENV['DO_SSH_KEY'] %&gt;
+  synced_folders:
+    - ['./', '/home/vagrant/serverspec']
+
+provisioner:
+  require_chef_omnibus: 11.16.4
+
+platforms:
+  - name: ubuntu-14.04
+    run_list: apt::default
+    driver:
+      digitalocean:
+        provider:
+          image: ubuntu-14-04-x64
+  - name: centos-6.5
+    driver:
+      digitalocean:
+        provider:
+          image: centos-6-5-x64
+
+suites:
+  - name: default
+    run_list: omnibus::default
+    attributes:
+      omnibus:
+        build_user:  vagrant
+        build_dir:   /home/vagrant/serverspec
+        install_dir: /opt/serverspec
+        ruby_version: 2.1.5
+</pre></div></div>
+
+<h2>
+<span id="パッケージ回収-rakeタスク" class="fragment"></span><a href="#%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E5%9B%9E%E5%8F%8E-rake%E3%82%BF%E3%82%B9%E3%82%AF"><i class="fa fa-link"></i></a>パッケージ回収: rakeタスク</h2>
+
+<p>omnibusは作成したパッケージをDroplet内に放置します。<br>
+Vagrant+VirtualBoxとかなら共有ディレクトリに指定すればOKですが、相手先によっては回収するかその場でリリースさせます。</p>
+
+<p>今回はTest-Kitchenのインスタンスステータスを利用して、(pkgが作成されていることを信じて)RsyncでCircleCIのコンテナ側に回収しました。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>require 'yaml'
+require 'json'
+require 'open-uri'
+
+platforms = Dir.glob('.kitchen/*.yml')
+@instances = []
+platforms.each do |platform|
+  @instances &lt;&lt; YAML.load(File.read(platform))
+end
+
+...
+
+desc "collect packages from remote server"
+task :sync do
+  # puts @instances
+  remote_user = ENV['REMOTE_USER_NAME'] || 'root'
+  @instances.each do |instance|
+    system "rsync -avz --progress -e 'ssh -oStrictHostKeyChecking=no -C -i #{ENV['DO_SSH_KEY']}' #{remote_user}@#{instance['hostname']}:/home/vagrant/serverspec/pkg/ ./pkg"
+  end
+end
+
+...
+</pre></div></div>
+
+<p>Dropletから回収さえできれば、とりあえずartifactsとして保管してもらえるので、リリースがこけてもまあなんとか。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9d32c10e-04d5-1c72-5138-f96ff26e3045.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5502f4331a303e1218d363c8b03fb4ba" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9d32c10e-04d5-1c72-5138-f96ff26e3045.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=5502f4331a303e1218d363c8b03fb4ba" alt="OpsRockin_omnibus-serverspec__22_-_CircleCI.png" title="OpsRockin_omnibus-serverspec__22_-_CircleCI.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/9d32c10e-04d5-1c72-5138-f96ff26e3045.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F9d32c10e-04d5-1c72-5138-f96ff26e3045.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=0cb411b40f049f9cc5cd71286f18ce3c 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="packagecloudにリリース-circle_releasesh" class="fragment"></span><a href="#packagecloud%E3%81%AB%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9-circle_releasesh"><i class="fa fa-link"></i></a>Packagecloudにリリース: circle_release.sh</h2>
+
+<p>これも並行コンテナごと、<code>package_cloud</code>コマンドで普通にpushするだけ。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">circle_release.sh</span></div>
+<div class="highlight"><pre><span class="c">#!/usr/bin/env bash</span>
+
+<span class="nb">set</span> <span class="nt">-e</span>
+<span class="k">if</span> <span class="o">[</span> <span class="s2">"</span><span class="k">${</span><span class="nv">CIRCLE_BRANCH</span><span class="k">}</span><span class="s2">"</span> <span class="o">==</span> <span class="s2">"master"</span> <span class="o">]</span><span class="p">;</span> <span class="k">then
+  case</span> <span class="nv">$CIRCLE_NODE_INDEX</span> <span class="k">in
+    </span>0<span class="p">)</span> <span class="nv">TARGET</span><span class="o">=</span><span class="s2">"centos"</span>
+      bundle <span class="nb">exec </span>kitchen destroy <span class="k">${</span><span class="nv">TARGET</span><span class="k">}</span>
+      bundle <span class="nb">exec </span>package_cloud push omnibus-serverspec/dummy_with_ci/el/6 pkg/<span class="k">*</span>.rpm
+      <span class="p">;;</span>
+    1<span class="p">)</span> <span class="nv">TARGET</span><span class="o">=</span><span class="s2">"ubuntu"</span>
+      bundle <span class="nb">exec </span>kitchen destroy <span class="k">${</span><span class="nv">TARGET</span><span class="k">}</span>
+      bundle <span class="nb">exec </span>package_cloud push omnibus-serverspec/dummy_with_ci/ubuntu/trusty pkg/<span class="k">*</span>.deb
+      <span class="p">;;</span>
+  <span class="k">esac</span>
+<span class="k">elif</span> <span class="o">[</span> <span class="s2">"</span><span class="k">${</span><span class="nv">CIRCLE_BRANCH</span><span class="k">}</span><span class="s2">"</span> <span class="o">==</span> <span class="s2">"release_package"</span> <span class="o">]</span><span class="p">;</span> <span class="k">then
+  case</span> <span class="nv">$CIRCLE_NODE_INDEX</span> <span class="k">in
+    </span>0<span class="p">)</span> <span class="nv">TARGET</span><span class="o">=</span><span class="s2">"centos"</span>
+      bundle <span class="nb">exec </span>kitchen destroy <span class="k">${</span><span class="nv">TARGET</span><span class="k">}</span>
+      bundle <span class="nb">exec </span>package_cloud push omnibus-serverspec/serverspec/el/6 pkg/<span class="k">*</span>.rpm
+      <span class="p">;;</span>
+    1<span class="p">)</span> <span class="nv">TARGET</span><span class="o">=</span><span class="s2">"ubuntu"</span>
+      bundle <span class="nb">exec </span>kitchen destroy <span class="k">${</span><span class="nv">TARGET</span><span class="k">}</span>
+      bundle <span class="nb">exec </span>package_cloud push omnibus-serverspec/serverspec/ubuntu/trusty pkg/<span class="k">*</span>.deb
+      <span class="p">;;</span>
+  <span class="k">esac</span>
+<span class="k">fi</span>
+</pre></div>
+</div>
+
+<p>で、こんな感じで置かれます。</p>
+
+<p><a href="https://packagecloud.io/omnibus-serverspec/serverspec" class="autolink" rel="nofollow noopener" target="_blank">https://packagecloud.io/omnibus-serverspec/serverspec</a></p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff09a564c-9caf-0172-117e-1c99a941a628.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=85cb965be8972a152de08c6c88f96c72" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff09a564c-9caf-0172-117e-1c99a941a628.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=85cb965be8972a152de08c6c88f96c72" alt="omnibus-serverspec_serverspec_-_Packages.png" title="omnibus-serverspec_serverspec_-_Packages.png" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/f09a564c-9caf-0172-117e-1c99a941a628.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2Ff09a564c-9caf-0172-117e-1c99a941a628.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=a1c6de2b8154101e8728b35fd8717580 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="残課題" class="fragment"></span><a href="#%E6%AE%8B%E8%AA%B2%E9%A1%8C"><i class="fa fa-link"></i></a>残課題</h2>
+
+<ul>
+<li>パッケージがちゃんと動くかのテストは自動でしてない。
+
+<ul>
+<li>
+<code>kitchen verify</code>で結合テストはかけなくもない。</li>
+</ul>
+</li>
+<li>バージョン同じ、リビジョン違いに対応してない。(pushこける)
+
+<ul>
+<li>packagecloudから一覧をとるAPIが見当たらないので困っている。</li>
+</ul>
+</li>
+<li>Serverspec本体のリリースと連動してない。
+
+<ul>
+<li>Rubygems Feed =&gt; IFTTT =&gt; CricleCIキックを画策。</li>
+<li>ベータ版とかでたぶんこける。</li>
+<li>Specinfraだけ更新されたときどうしよう。</li>
+</ul>
+</li>
+</ul>
+
+<p>そのうち困ったら更新しよう。</p>

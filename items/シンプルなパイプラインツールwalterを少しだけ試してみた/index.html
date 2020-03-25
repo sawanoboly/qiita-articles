@@ -1,0 +1,145 @@
+<p>walterってツールがあるよと聞いたので、どんな感じかと触ってみました。</p>
+
+<p><a href="http://atl.recruit-tech.co.jp/blog/2631/" title="シンプルなビルドパイプラインツールwalterをリリースしました | Advanced Technology Lab" rel="nofollow noopener" target="_blank">シンプルなビルドパイプラインツールwalterをリリースしました | Advanced Technology Lab</a></p>
+
+<p>walterはGo言語で作られているので色々なプラットフォームで動くし、一旦ビルドしてしまえば単体で動くので楽ですね。</p>
+
+<ul>
+<li>設定は<code>pipeline.yml</code>
+</li>
+<li>notificationがコンフィグに内包される</li>
+<li>パイプライン中のタスクは順に実行、それぞれ事後処理を並行に実行</li>
+</ul>
+
+<h2>
+<span id="walterのバイナリをjenkinsユーザ用に設置" class="fragment"></span><a href="#walter%E3%81%AE%E3%83%90%E3%82%A4%E3%83%8A%E3%83%AA%E3%82%92jenkins%E3%83%A6%E3%83%BC%E3%82%B6%E7%94%A8%E3%81%AB%E8%A8%AD%E7%BD%AE"><i class="fa fa-link"></i></a>walterのバイナリをjenkinsユーザ用に設置</h2>
+
+<p>とりあえずビルドして、そのへんのJenkinsサーバに設置してみました。</p>
+
+<blockquote>
+<p>ビルド済みのバイナリがちゃんとありました..</p>
+
+<p><a href="https://github.com/walter-cd/walter/releases" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/walter-cd/walter/releases</a></p>
+</blockquote>
+
+<p>jenkinsユーザから<code>~/bin/walter</code>で叩けるように設置。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>ln -s PATH_TO_WALTER_BUILD_DIR/bin/walter $HOME/bin/
+</pre></div></div>
+
+<p>動きましたね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ id
+uid=107(jenkins) gid=65534(nogroup) groups=65534(nogroup)
+
+$ ~/bin/walter -v
+Walter version v0.1.0-12-gf55bda5
+
+</pre></div></div>
+
+<h2>
+<span id="適当なパイプラインを実行してみる" class="fragment"></span><a href="#%E9%81%A9%E5%BD%93%E3%81%AA%E3%83%91%E3%82%A4%E3%83%97%E3%83%A9%E3%82%A4%E3%83%B3%E3%82%92%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>適当なパイプラインを実行してみる</h2>
+
+<p>とりあえずstepを順に実行しつつ、平行に<code>run_after</code>してみます。<br>
+設定ファイルの<code>pipeline.yml</code>をこんな感じで用意しました。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">pipeline.yml</span></div>
+<div class="highlight"><pre><span class="nn">---</span>
+<span class="na">messenger</span><span class="pi">:</span> 
+   <span class="na">type</span><span class="pi">:</span> <span class="s">fake</span>
+
+<span class="na">pipeline</span><span class="pi">:</span>
+  <span class="c1"># step 1</span>
+  <span class="pi">-</span> <span class="na">stage_name</span><span class="pi">:</span> <span class="s">Notify the beggining of process pipeline</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="s">echo "build pipeline is started"</span>
+    <span class="na">message</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="na">run_after</span><span class="pi">:</span>
+      <span class="pi">-</span>  <span class="na">stage_name</span><span class="pi">:</span> <span class="s">concurrent task</span>
+         <span class="na">command</span><span class="pi">:</span> <span class="s">echo "hogehoge 1"</span>
+      <span class="pi">-</span>  <span class="na">stage_name</span><span class="pi">:</span> <span class="s">concurrent task</span>
+         <span class="na">command</span><span class="pi">:</span> <span class="s">echo "hogehoge 2"</span>
+      <span class="pi">-</span>  <span class="na">stage_name</span><span class="pi">:</span> <span class="s">concurrent task</span>
+         <span class="na">command</span><span class="pi">:</span> <span class="s">echo "hogehoge 3"</span>
+      <span class="pi">-</span>  <span class="na">stage_name</span><span class="pi">:</span> <span class="s">concurrent task</span>
+         <span class="na">command</span><span class="pi">:</span> <span class="s">echo "hogehoge 4"</span>
+      <span class="pi">-</span>  <span class="na">stage_name</span><span class="pi">:</span> <span class="s">concurrent task</span>
+         <span class="na">command</span><span class="pi">:</span> <span class="s">echo "hogehoge 5"</span>
+  <span class="pi">-</span> <span class="na">stage_name</span><span class="pi">:</span> <span class="s">Notify the finish of process pipeline</span>
+    <span class="na">message</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="s">echo "build pipeline is finished"</span>
+</pre></div>
+</div>
+
+<p>で。実行と。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ ~/bin/walter 
+17:14:13  INFO Found messenger block
+17:14:13  INFO type of reporter is fake
+17:14:13  INFO running Walter
+17:14:13  INFO geting starting to run pipeline process...
+17:14:13  INFO [command] exec: echo "build pipeline is started"
+17:14:13  INFO [command] output: build pipeline is started
+17:14:13  INFO [command] exec: echo "hogehoge 1"
+17:14:13  INFO [command] exec: echo "hogehoge 2"
+17:14:13  INFO [command] exec: echo "hogehoge 3"
+17:14:13  INFO [command] exec: echo "hogehoge 4"
+17:14:13  INFO [command] exec: echo "hogehoge 5"
+17:14:13  INFO [command] output: hogehoge 3    # 順番がバラバラ
+17:14:13  INFO [command] output: hogehoge 1    # 順番がバラバラ
+17:14:13  INFO [command] output: hogehoge 2    # 順番がバラバラ
+17:14:13  INFO [command] output: hogehoge 4    # 順番がバラバラ
+17:14:13  INFO [command] output: hogehoge 5    # 順番がバラバラ
+17:14:13  INFO [command] exec: echo "build pipeline is finished"
+17:14:13  INFO [command] output: build pipeline is finished
+17:14:13  INFO finished to run pipeline process...
+17:14:13  INFO succeded to finish Walter
+</pre></div></div>
+
+<p>run_afterのところはバッチリ並行してますね。冒頭のブログのサンプルではコードのテストとデプロイ先のサーバ設定を平行に実施していて、なるほどと思いました。</p>
+
+<h2>
+<span id="walterどうつかおう" class="fragment"></span><a href="#walter%E3%81%A9%E3%81%86%E3%81%A4%E3%81%8B%E3%81%8A%E3%81%86"><i class="fa fa-link"></i></a>walterどうつかおう</h2>
+
+<p>今のところ、設定ファイルに通知とタスクが書けつつ、小さいバイナリで持ち運び可能なことが特徴です。</p>
+
+<p>CIで実行するアレコレの可搬性を考えると、タスクはまずまず共通化もしやすいけども、通知やHookはCIサーバ・サービス側に設定することが多い=&gt; 移住性がイマイチです。</p>
+
+<p>walterでは<code>pipeline.yml</code>さえ作ればCIサービス検討先の各種hookの対応状況とかを気にせず持ち運べるので、walter本体の対応先が増えると嬉しいのかな？<br>
+通常のCIサービスでは設定自体の失敗で待ち時間が発生したりしますけど、walterはパイプラインをローカルでも試せる(≒自前CIサーバでもOK)のもポイント高いです。</p>
+
+<p>ただ、messengerの対応先はpacker plugin構想みたいにしないと管理が大変そうですよね。</p>
+
+<hr>
+
+<h2>
+<span id="追記-とりあえず導入してみた" class="fragment"></span><a href="#%E8%BF%BD%E8%A8%98-%E3%81%A8%E3%82%8A%E3%81%82%E3%81%88%E3%81%9A%E5%B0%8E%E5%85%A5%E3%81%97%E3%81%A6%E3%81%BF%E3%81%9F"><i class="fa fa-link"></i></a>追記: とりあえず導入してみた。</h2>
+
+<p>開発/プレビュー用途のサーバをリスタートしたとき、(基本じゃんじゃんデプロイするので)自動起動にしてなかった開発中Railsアプリを上げるのがcap cap cap で面倒だったのでwalter導入。</p>
+
+<p>並行性を活かしてcap三連装としてみた。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">ci/walter/hoge01_after_restart_vm.yml</span></div>
+<div class="highlight"><pre><span class="na">messenger</span><span class="pi">:</span>
+  <span class="na">type</span><span class="pi">:</span> <span class="s">fake</span>
+
+<span class="na">pipeline</span><span class="pi">:</span>
+  <span class="pi">-</span> <span class="na">stage_name</span><span class="pi">:</span> <span class="s">start myapp</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="s">ssh hoge01.example.com id</span>
+    <span class="na">message</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="na">run_after</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="na">stage_name</span><span class="pi">:</span> <span class="s">start puma</span>
+        <span class="na">command</span><span class="pi">:</span> <span class="s">cap sandbox puma:start</span>
+      <span class="pi">-</span> <span class="na">stage_name</span><span class="pi">:</span> <span class="s">start sidekiq</span>
+        <span class="na">command</span><span class="pi">:</span> <span class="s">cap sandbox sidekiq:start</span>
+      <span class="pi">-</span> <span class="na">stage_name</span><span class="pi">:</span> <span class="s">start puma</span>
+        <span class="na">command</span><span class="pi">:</span> <span class="s">cap sandbox amqp_worker:start</span>
+</pre></div>
+</div>
+
+<p>で、こんな感じで叩けるように。</p>
+
+<p><code>walter -c ci/walter/hoge01_after_restart_vm.yml</code></p>
+
+<p>少しだけ楽 &amp; 処理が早くなった。</p>

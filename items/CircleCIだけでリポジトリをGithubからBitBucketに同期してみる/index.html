@@ -1,0 +1,84 @@
+<p>普段Githubを使っているがたまにメンテなので、とりあえずのざっくりミラーをBitBucketに作るというタスクをCircieCIのDeploymentにやらせてみた。なんともスクリプトがカオスに。</p>
+
+<p>他に直接デプロイしないという前提で、とりあえず<code>circle.yml</code>。</p>
+
+<div class="code-frame" data-lang="yaml">
+<div class="code-lang"><span class="bold">circle.yml</span></div>
+<div class="highlight"><pre><span class="na">deployment</span><span class="pi">:</span>
+  <span class="na">all_branches</span><span class="pi">:</span>
+    <span class="na">branch</span><span class="pi">:</span> <span class="s">/.*/</span>
+    <span class="na">commands</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">ci/99_sync_bitbucket.sh</span>
+  <span class="na">all_tags</span><span class="pi">:</span>
+    <span class="na">tag</span><span class="pi">:</span> <span class="s">/.*/</span>
+    <span class="na">commands</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">ci/99_sync_bitbucket.sh</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="bitbucket側準備" class="fragment"></span><a href="#bitbucket%E5%81%B4%E6%BA%96%E5%82%99"><i class="fa fa-link"></i></a>BitBucket側準備</h2>
+
+<ul>
+<li>org/name が同じリポジトリを用意する</li>
+<li>同期専用のユーザをひとつ用意する
+
+<ul>
+<li>ssh_keyにCircleCIのデプロイキーから作った公開鍵をセット</li>
+<li>リポジトリにはこのユーザを対象にwrite権限を付ける</li>
+</ul>
+</li>
+</ul>
+
+<p>CircleCIはGithubのリポジトリが公開/非公開にかかわらずGithubにDeployキー(プロジェクト単位のR/Oキー)を登録する。プロジェクト単位でユニークかつ、どうせオーナーにしかわからないので、使い回しました。</p>
+
+<h2>
+<span id="同期用スクリプト" class="fragment"></span><a href="#%E5%90%8C%E6%9C%9F%E7%94%A8%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%97%E3%83%88"><i class="fa fa-link"></i></a>同期用スクリプト</h2>
+
+<p>Gitリポジトリ同期でありがちな次の2点になんとか対応しようと思った。</p>
+
+<ul>
+<li>force push</li>
+<li>tagの削除、または同名で別Commitへの付け替え</li>
+</ul>
+
+<p>なのでBitBucket側での歴史の一貫性などは無視するということで書いたスクリプトが次。</p>
+
+<div class="code-frame" data-lang="shell">
+<div class="code-lang"><span class="bold">99_sync_bitbucket.sh</span></div>
+<div class="highlight"><pre><span class="k">if</span> <span class="o">[</span> <span class="s2">"</span><span class="k">${</span><span class="nv">CI</span><span class="k">}</span><span class="s2">"</span> <span class="o">==</span> <span class="s2">"true"</span> <span class="o">]</span><span class="p">;</span> <span class="k">then
+
+</span><span class="nb">set</span> <span class="nt">-e</span>
+
+<span class="nb">cat</span> <span class="o">&lt;&lt;</span> <span class="no">EOL</span><span class="sh"> &gt;&gt; ~/.ssh/config
+
+Host bitbucket.org
+IdentitiesOnly yes
+IdentityFile /home/ubuntu/.ssh/id_circleci_github
+</span><span class="no">EOL
+
+</span><span class="k">if</span> <span class="o">!</span> git remote | <span class="nb">grep</span> <span class="nt">-q</span> bitbucket <span class="p">;</span> <span class="k">then
+  </span>git remote add bitbucket <span class="sb">`</span>git remote get-url origin | <span class="nb">sed</span> <span class="s1">'s/github.com/bitbucket.org/'</span><span class="sb">`</span>
+<span class="k">fi
+</span>git fetch origin <span class="nt">--prune</span>
+<span class="k">for </span>tag <span class="k">in</span> <span class="sb">`</span>git tag<span class="sb">`</span> <span class="p">;</span> <span class="k">do </span>git tag <span class="nt">-d</span> <span class="nv">$tag</span> <span class="p">;</span> <span class="k">done
+</span>git fetch origin <span class="nt">--tags</span> <span class="nt">--prune</span>
+<span class="k">for </span>branch <span class="k">in</span> <span class="sb">`</span>git branch <span class="nt">-a</span> | <span class="nb">grep </span>remotes/origin | <span class="nb">grep</span> <span class="nt">-v</span> HEAD | <span class="nb">grep</span> <span class="nt">-v</span> master<span class="sb">`</span> <span class="p">;</span> <span class="k">do
+  </span>git branch <span class="nt">--track</span> <span class="k">${</span><span class="nv">branch</span><span class="p">#remotes/origin/</span><span class="k">}</span> <span class="nv">$branch</span> <span class="o">||</span> <span class="nb">true
+</span><span class="k">done
+</span>git push bitbucket <span class="nt">--mirror</span> <span class="nt">--prune</span> <span class="nt">--follow-tags</span>
+git push bitbucket <span class="nt">--mirror</span> <span class="nt">--prune</span> <span class="nt">--follow-tags</span>
+
+<span class="k">fi</span>
+</pre></div>
+</div>
+
+<p>フェッチプルーンフェッチプルーン。継ぎ足しで適当に確認しながら作ったのでどれか無駄かもしれない。</p>
+
+<p>CircleCIは基本的にgitリポジトリをキャッシュするので、tagやらremoteの情報を保持していたり、ブランチによってはしていなかったりする。タグは結局pruneで追えないっぽいので、一回ローカルのを破棄することで対応。</p>
+
+<p>最後のpushは1回めでBitBucket側がさっぱり消えて、2回目でブランチ同期、という挙動になった。これ全く個別のディレクトリで作業するほうがマシかも。</p>
+
+<p><code>--mirror</code>の使い方として合っているのか多少気がかりだが、ブランチ、タグ等々これで追えたようなので、ゆるいミラーとしては一旦これでよし。ただリポジトリのサイズが大きいと時間がかかりそうな気もする。</p>
+
+<p>ブランチ/タグを削除するだけ、というイベントではCIが動かない(tag pushはOK)とか、Deploymentでやるとテストがこけたら(テストがある場合)同期しない点に注意と。</p>

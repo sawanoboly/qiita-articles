@@ -1,0 +1,163 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>サンプルコードはこちら。</p>
+
+<p><a href="https://github.com/higanworks/cucumber_specinfra_example" class="autolink" rel="nofollow noopener" target="_blank">https://github.com/higanworks/cucumber_specinfra_example</a></p>
+
+<p>specinfraの使い方ついてはこちらもどうぞ。<a href="http://qiita.com/sawanoboly/items/d1e7794739d9d31a5316" title="specinfraを使ってみよう - Qiita" id="reference-829fda42714dbb757e0f">specinfraを使ってみよう - Qiita</a></p>
+
+<h2>
+<span id="まずはenv" class="fragment"></span><a href="#%E3%81%BE%E3%81%9A%E3%81%AFenv"><i class="fa fa-link"></i></a>まずはEnv</h2>
+
+<p>spcinfraの<code>.backend</code>をステップでお手軽に使えるよう、モジュールにしてWorldで読み込んだ。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/support/env.rb</span></div>
+<div class="highlight"><pre><span class="nb">require</span> <span class="s1">'specinfra'</span>
+<span class="nb">require</span> <span class="s1">'net/ssh'</span>
+
+<span class="k">module</span> <span class="nn">InfraHelper</span>
+  <span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">DetectOS</span>
+  <span class="kp">include</span> <span class="no">SpecInfra</span><span class="o">::</span><span class="no">Helper</span><span class="o">::</span><span class="no">Ssh</span>
+
+  <span class="k">def</span> <span class="nf">default_backend</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">user</span> <span class="o">=</span> <span class="s1">'root'</span><span class="p">,</span> <span class="n">ssh_opts</span> <span class="o">=</span> <span class="p">{})</span>
+    <span class="no">SpecInfra</span><span class="p">.</span><span class="nf">configuration</span><span class="p">.</span><span class="nf">ssh</span> <span class="o">=</span> <span class="no">Net</span><span class="o">::</span><span class="no">SSH</span><span class="p">.</span><span class="nf">start</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">ssh_opts</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="no">World</span><span class="p">(</span><span class="no">InfraHelper</span><span class="p">)</span>
+</pre></div>
+</div>
+
+<p>Githubのサンプルコードでは、Givenで対象ホストを指定するためにつくった<code>#return_backend</code>が残ってます。</p>
+
+<h2>
+<span id="そしてbefore" class="fragment"></span><a href="#%E3%81%9D%E3%81%97%E3%81%A6before"><i class="fa fa-link"></i></a>そしてBefore</h2>
+
+<p>とりあえず対象が1台なのと、コードをそのまま公開するために、Beforeからバックエンド設定をしてみました。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/support/hooks.rb</span></div>
+<div class="highlight"><pre><span class="no">Before</span> <span class="k">do</span>
+  <span class="n">default_backend</span><span class="p">(</span><span class="no">ENV</span><span class="p">[</span><span class="s1">'CUCUMBER_REMOTE_HOST'</span><span class="p">])</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>複数ならBackgroundに並べるなり、対象を変更しながら叩くなり色々やり方があると思います。</p>
+
+<h2>
+<span id="シナリオへ" class="fragment"></span><a href="#%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA%E3%81%B8"><i class="fa fa-link"></i></a>シナリオへ</h2>
+
+<h3>
+<span id="サンプルシナリオ1" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA1"><i class="fa fa-link"></i></a>サンプルシナリオ1</h3>
+
+<p>ではサンプルその一、OSファミリーが<code>SmartOS</code>であることを確かめるシナリオを、ちょっと汎用的なStepで作ってみます。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/_get_os_family.feature</span></div>
+<div class="highlight"><pre><span class="kd">Feature</span><span class="p">:</span> Get OS Family
+
+  <span class="kn">Scenario</span><span class="p">:</span> Success Login
+    <span class="nf">When </span>I ask to backend with <span class="s">"check_os"</span>
+    <span class="nf">Then </span>I will found <span class="s">"SmartOS"</span> from backend at <span class="s">"family"</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="ステップ1" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%971"><i class="fa fa-link"></i></a>ステップ1</h4>
+
+<p>ハッシュで返ってくるメソッドに対して、任意のキーの中身を確かめます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/step_definitions/ask_with_step.rb</span></div>
+<div class="highlight"><pre><span class="no">When</span><span class="p">(</span><span class="sr">/^I ask to backend with "(.*)"$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="nb">method</span><span class="o">|</span>
+  <span class="vi">@result</span> <span class="o">=</span> <span class="n">backend</span><span class="p">.</span><span class="nf">send</span><span class="p">(</span><span class="nb">method</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">)</span>
+<span class="k">end</span>
+
+<span class="no">Then</span><span class="p">(</span><span class="sr">/^I will found "(.*)" from backend at "(.*)"$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">exp</span><span class="p">,</span> <span class="n">key</span><span class="o">|</span>
+  <span class="k">raise</span> <span class="k">unless</span> <span class="vi">@result</span><span class="p">[</span><span class="n">key</span><span class="p">.</span><span class="nf">to_sym</span><span class="p">]</span> <span class="o">==</span> <span class="n">exp</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>ネストしたキーや、型も合わせたい場合はそれ用に工夫したステップが必要ですね。</p>
+
+<h3>
+<span id="サンプルシナリオ2" class="fragment"></span><a href="#%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA2"><i class="fa fa-link"></i></a>サンプルシナリオ2</h3>
+
+<p>特定バージョンのパッケージがインストールされていることを確かめます。<br>
+こちらは<code>specinfra</code>の<code>check_installed</code>を決め打ちする代わりに、シナリオアウトラインでまとめて記述できるようにしてみました。</p>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/check_package.feature</span></div>
+<div class="highlight"><pre><span class="kd">Feature</span><span class="p">:</span> Check package
+
+  <span class="kn">Scenario Outline</span><span class="p">:</span> Detect package
+    <span class="nf">Given </span>I check package <span class="s">"&lt;package&gt;"</span> installed with <span class="s">"&lt;version&gt;"</span>
+
+    <span class="nn">Scenarios</span><span class="p">:</span> Installed
+      <span class="p">|</span> <span class="nv">package</span>  <span class="p">|</span> <span class="nv">version</span>   <span class="p">|</span>
+      <span class="p">|</span> <span class="n">openssl</span>  <span class="p">|</span> <span class="n">1.0.1fnb1</span> <span class="p">|</span>
+      <span class="p">|</span> <span class="n">nginx</span>    <span class="p">|</span> <span class="n">1.5.7</span>     <span class="p">|</span>
+      <span class="p">|</span> <span class="n">gmake</span>    <span class="p">|</span> <span class="n">4.0</span>       <span class="p">|</span>
+      <span class="p">|</span> <span class="n">gcc47</span>    <span class="p">|</span> <span class="n">4.7.3nb1</span>  <span class="p">|</span>
+      <span class="p">|</span> <span class="n">autoconf</span> <span class="p">|</span> <span class="n">2.69nb3</span>   <span class="p">|</span>
+</pre></div>
+</div>
+
+<h4>
+<span id="ステップ2" class="fragment"></span><a href="#%E3%82%B9%E3%83%86%E3%83%83%E3%83%972"><i class="fa fa-link"></i></a>ステップ2</h4>
+
+<p><code>specinfra</code>がブーリアンで返してくれるので、ステップ側は一行で済みます。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/step_definitions/check_by_step.rb</span></div>
+<div class="highlight"><pre><span class="no">When</span><span class="p">(</span><span class="sr">/^I check package "(.*)" installed with "(.*)"$/</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">pkg</span><span class="p">,</span> <span class="n">version</span><span class="o">|</span>
+  <span class="k">raise</span> <span class="k">unless</span> <span class="n">backend</span><span class="p">.</span><span class="nf">check_installed</span><span class="p">(</span><span class="n">pkg</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>ステップが完結でかつ、対象が他のOSでも使いまわせるためとても助かります。</p>
+
+<h2>
+<span id="結果発表" class="fragment"></span><a href="#%E7%B5%90%E6%9E%9C%E7%99%BA%E8%A1%A8"><i class="fa fa-link"></i></a>結果発表</h2>
+
+<p>環境変数<code>CUCUMBER_REMOTE_HOST</code>をセットして、いざcucumber。</p>
+
+<div class="code-frame" data-lang="bash">
+<div class="code-lang"><span class="bold">cucumber-result</span></div>
+<div class="highlight"><pre><span class="nv">$ </span>cucumber 
+Feature: Get OS Family
+
+  Scenario: Success Login                                <span class="c"># features/_get_os_family.feature:3</span>
+    When I ask to backend with <span class="s2">"check_os"</span>                <span class="c"># features/step_definitions/ask_with_step.rb:1</span>
+    Then I will found <span class="s2">"SmartOS"</span> from backend at <span class="s2">"family"</span> <span class="c"># features/step_definitions/ask_with_step.rb:5</span>
+
+Feature: Check package
+
+  Scenario Outline: Detect package                               <span class="c"># features/check_package.feature:3</span>
+    Given I check package <span class="s2">"&lt;package&gt;"</span> installed with <span class="s2">"&lt;version&gt;"</span> <span class="c"># features/step_definitions/check_by_step.rb:1</span>
+
+    Scenarios: Installed
+      | package  | version   |
+      | openssl  | 1.0.1fnb1 |
+      | nginx    | 1.5.7     |
+      | gmake    | 4.0       |
+      | gcc47    | 4.7.3nb1  |
+      | autoconf | 2.69nb3   |
+
+6 scenarios <span class="o">(</span>6 passed<span class="o">)</span>
+7 steps <span class="o">(</span>7 passed<span class="o">)</span>
+0m14.372s
+</pre></div>
+</div>
+
+<p>ナイスグリーン。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F33643567-be70-ce6f-6869-b849da72da93.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8dc1224c8988f589396e8711146895ab" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F33643567-be70-ce6f-6869-b849da72da93.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=8dc1224c8988f589396e8711146895ab" alt="nice green." title="nice green." data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/33643567-be70-ce6f-6869-b849da72da93.png" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F33643567-be70-ce6f-6869-b849da72da93.png?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=f894198fb19c9f0fd94f2fe78b03520f 1x" loading="lazy"></a></p>

@@ -1,0 +1,114 @@
+<p>最近、Amazon ECSのコンソールに </p>
+
+<blockquote>
+<p>ECS now supports Docker 1.9 ...</p>
+</blockquote>
+
+<p>って出ます。</p>
+
+<p>Dockerは1.9でlog-driverにAWSの<a href="https://docs.aws.amazon.com/ja_jp/AmazonCloudWatch/latest/DeveloperGuide/CWL_GettingStarted.html" rel="nofollow noopener" target="_blank">CloudWatch Logs</a>を指定できるようになった。</p>
+
+<p>ただECSは1.7系だったので、しばらく次のようなプロバイダ逆転現象で使っていたんです。</p>
+
+<ul>
+<li>さくらのクラウド(等)においてあるDocker-Machine: Dockerのlog-driverでawslogs指定。
+
+<ul>
+<li>=&gt; CloudWatch Logsとの連携楽ちん</li>
+</ul>
+</li>
+<li>Amazon ECSで動かしているサービス: syslog経由でlogsコンテナからawslogsへ。
+
+<ul>
+<li>=&gt; 連携がなんかめんどっちい</li>
+</ul>
+</li>
+</ul>
+
+<p>ベースAMIのDocker1.9への更新で、専用のlogsコンテナもういらなくなったはずだと思うので少し調べることにした。</p>
+
+<h2>
+<span id="ecsで使われるamiからインスタンスを作成" class="fragment"></span><a href="#ecs%E3%81%A7%E4%BD%BF%E3%82%8F%E3%82%8C%E3%82%8Bami%E3%81%8B%E3%82%89%E3%82%A4%E3%83%B3%E3%82%B9%E3%82%BF%E3%83%B3%E3%82%B9%E3%82%92%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>ECSで使われるAMIからインスタンスを作成</h2>
+
+<p>ECS用のAMIはマーケットプレイスにいるので、選んで起動します。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F484e4ed8-e356-34d4-d33d-243d9c005ac7.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=76892ce3b7e039c6323df62cc1959775" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F484e4ed8-e356-34d4-d33d-243d9c005ac7.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=76892ce3b7e039c6323df62cc1959775" alt="EC2_Management_Console.jpg" title="EC2_Management_Console.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/484e4ed8-e356-34d4-d33d-243d9c005ac7.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F484e4ed8-e356-34d4-d33d-243d9c005ac7.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=f93cfc39e9fd49a013aeb0c8f45bd0a5 1x" loading="lazy"></a></p>
+
+<p>ついでに次のようなポリシーをアタッチしたInstance Roleで行きましょう。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ]
+}
+</pre></div></div>
+
+<h2>
+<span id="ec2インスタンスから取り急ぎ送信の確認" class="fragment"></span><a href="#ec2%E3%82%A4%E3%83%B3%E3%82%B9%E3%82%BF%E3%83%B3%E3%82%B9%E3%81%8B%E3%82%89%E5%8F%96%E3%82%8A%E6%80%A5%E3%81%8E%E9%80%81%E4%BF%A1%E3%81%AE%E7%A2%BA%E8%AA%8D"><i class="fa fa-link"></i></a>EC2インスタンスから、取り急ぎ送信の確認</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ yum -y install awscli awslogs
+
+...
+
+Complete!
+</pre></div></div>
+
+<p>log_groupとリージョンあたりを編集して、</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># service awslogs start
+Starting awslogs:                                          [  OK  ]
+</pre></div></div>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># logger -p local1.info LOGGER
+</pre></div></div>
+
+<p>ちょい連打してしまった。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1b627b6a-7741-41cd-a969-06a7ec4a3515.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=def2546fd90c7843a42ac46bd0e6c7e1" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1b627b6a-7741-41cd-a969-06a7ec4a3515.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=def2546fd90c7843a42ac46bd0e6c7e1" alt="CloudWatch_Management_Console.jpg" title="CloudWatch_Management_Console.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/1b627b6a-7741-41cd-a969-06a7ec4a3515.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F1b627b6a-7741-41cd-a969-06a7ec4a3515.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=e2afc511ad6066ffe5da71f35d593bfd 1x" loading="lazy"></a></p>
+
+<p>まずインスタンスロールには問題ないことを確認。</p>
+
+<h2>
+<span id="dockerデーモンから直接cloudwatch-logsへ" class="fragment"></span><a href="#docker%E3%83%87%E3%83%BC%E3%83%A2%E3%83%B3%E3%81%8B%E3%82%89%E7%9B%B4%E6%8E%A5cloudwatch-logs%E3%81%B8"><i class="fa fa-link"></i></a>Dockerデーモンから直接CloudWatch Logsへ</h2>
+
+<p>DockerとCloudWatch Logsの連携、(AWS外から送信する場合)通常は<code>/etc/(sysconfig|default)/docker</code>などに環境設定、AWSアクセスキーなどを置いてからDockerデーモンを再起動する仕込みが必要だ。</p>
+
+<p>今回はその段取りをまるっと無視しておもむろにlog-driver指定のdocker runしてみる。インスタンスロールが使われるならこれでいいはず。</p>
+
+<p>ざっくりDockerfileを作ってビルド。</p>
+
+<div class="code-frame" data-lang="Dockerfile"><div class="highlight"><pre><span class="k">FROM</span><span class="s"> ubuntu</span>
+
+<span class="k">RUN </span>apt-get <span class="nt">-y</span> update <span class="o">&amp;&amp;</span> apt-get <span class="nb">install</span> <span class="nt">-y</span> nginx
+
+<span class="k">CMD</span><span class="s"> ['/bin/bash']</span>
+</pre></div></div>
+
+<p>その後、<code>log-driver</code>,<code>log-opt</code>でグループ等のオプションをわたしてrun。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo docker run -it --rm --log-driver=awslogs --log-opt awslogs-region=ap-northeast-1 --log-opt awslogs-group=ecs-test --log-opt awslogs-stream=ecs nginx nginx -V
+
+## 以下出力
+
+nginx version: nginx/1.4.6 (Ubuntu)
+built by gcc 4.8.4 (Ubuntu 4.8.4-2ubuntu1~14.04) 
+TLS SNI support enabled
+configure arguments: --with-cc-opt='-g -O2 -fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-Bsymbolic-functions -Wl,-z,relro' --prefix=/usr/share/nginx --conf-path=/etc/nginx/nginx.conf --http-log-path=/var/log/nginx/access.log --error-log-path=/var/log/nginx/error.log --lock-path=/var/lock/nginx.lock --pid-path=/run/nginx.pid --http-client-body-temp-path=/var/lib/nginx/body --http-fastcgi-temp-path=/var/lib/nginx/fastcgi --http-proxy-temp-path=/var/lib/nginx/proxy --http-scgi-temp-path=/var/lib/nginx/scgi --http-uwsgi-temp-path=/var/lib/nginx/uwsgi --with-debug --with-pcre-jit --with-ipv6 --with-http_ssl_module --with-http_stub_status_module --with-http_realip_module --with-http_addition_module --with-http_dav_module --with-http_geoip_module --with-http_gzip_static_module --with-http_image_filter_module --with-http_spdy_module --with-http_sub_module --with-http_xslt_module --with-mail --with-mail_ssl_module
+</pre></div></div>
+
+<p>↓お、イケるじゃないの。</p>
+
+<p><a href="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F85c5b887-c13e-1cd6-ba90-5b36b9514d5f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7330f1d033c6ce4be2298eca3d715d04" target="_blank" rel="nofollow noopener"><img src="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F85c5b887-c13e-1cd6-ba90-5b36b9514d5f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;s=7330f1d033c6ce4be2298eca3d715d04" alt="CloudWatch_Management_Console.jpg" title="CloudWatch_Management_Console.jpg" data-canonical-src="https://qiita-image-store.s3.amazonaws.com/0/7454/85c5b887-c13e-1cd6-ba90-5b36b9514d5f.jpeg" srcset="https://qiita-user-contents.imgix.net/https%3A%2F%2Fqiita-image-store.s3.amazonaws.com%2F0%2F7454%2F85c5b887-c13e-1cd6-ba90-5b36b9514d5f.jpeg?ixlib=rb-1.2.2&amp;auto=format&amp;gif-q=60&amp;q=75&amp;w=1400&amp;fit=max&amp;s=396f7b38335d2cd0f350c9321065182b 1x" loading="lazy"></a></p>
+
+<h2>
+<span id="結論" class="fragment"></span><a href="#%E7%B5%90%E8%AB%96"><i class="fa fa-link"></i></a>結論</h2>
+
+<p>Amazon ECSでも(log-driver=awslogsのオプションが渡りさえすれば)Logs連携がいける。インスタンスロールでOK。</p>

@@ -1,0 +1,74 @@
+<p>今日は次のような仕様でnginxにリバースプロキシさせたかった。</p>
+
+<ul>
+<li>
+<a href="http://foo.example.higan.works/index.html" class="autolink" rel="nofollow noopener" target="_blank">http://foo.example.higan.works/index.html</a> で来たリクエストに対して、 (fooは任意)</li>
+<li>コンテンツを バックエンド <code>example.higan.works</code> の <code>/foo/index.html</code> から取ってくる。
+
+<ul>
+<li>バックエンドへのリクエストは =&gt; <code>http://example.higan.works/foo/index.html</code> になる</li>
+</ul>
+</li>
+</ul>
+
+<p>仕組みはこうしてみればいいか。</p>
+
+<ul>
+<li>ディレクトリ名の抽出</li>
+<li>
+<code>Host:</code>ヘッダの付け替え(バックエンドが名前ベースなので)</li>
+<li>uriにディレクトリ名を挟む</li>
+</ul>
+
+<p>nginx単品でもifからの補足マッチで頑張ればできそうな気がしたが、ngx_mrubyが使える環境なので使ってみた。</p>
+
+<div class="code-frame" data-lang="nginx"><div class="highlight"><pre><span class="k">--</span> <span class="s">snip</span> <span class="s">--</span>
+
+<span class="s">env</span> <span class="s">UPSTREAM_DOMAIN</span><span class="p">;</span>
+
+<span class="k">--</span> <span class="s">snip</span> <span class="s">--</span>
+
+<span class="s">http</span> <span class="p">{</span>
+
+<span class="kn">--</span> <span class="s">snip</span> <span class="s">--</span>
+
+    <span class="s">server</span> <span class="p">{</span>
+        <span class="kn">listen</span>       <span class="mi">80</span><span class="p">;</span>
+        <span class="kn">server_name</span>  <span class="s">localhost</span><span class="p">;</span>
+
+        <span class="kn">location</span> <span class="n">/</span> <span class="p">{</span>
+          <span class="kn">resolver</span> <span class="mi">8</span><span class="s">.8.8.8</span><span class="p">;</span>
+          <span class="kn">mruby_set_code</span> <span class="nv">$backend</span> <span class="s">'</span>
+            <span class="s">ENV["UPSTREAM_DOMAIN"]</span>
+          <span class="s">'</span><span class="p">;</span>
+
+          <span class="kn">mruby_set_code</span> <span class="nv">$subdir_name</span> <span class="s">'</span>
+            <span class="s">r</span> <span class="p">=</span> <span class="s">Nginx::Request.new</span>
+            <span class="s">subdir_name</span> <span class="p">=</span>  <span class="s">r.headers_in["Host"].split(".").first</span>
+            <span class="s">r.headers_in["Host"]</span> <span class="p">=</span> <span class="s">ENV["UPSTREAM_DOMAIN"]</span>
+            <span class="s">subdir_name</span>
+          <span class="s">'</span><span class="p">;</span>
+
+          <span class="kn">rewrite</span> <span class="s">^(.*)</span>$ <span class="n">/</span><span class="nv">$subdir_name$1</span> <span class="s">break</span><span class="p">;</span>
+          <span class="kn">proxy_pass</span> <span class="s">http://</span><span class="nv">$backend</span><span class="p">;</span>
+          <span class="kn">proxy_intercept_errors</span> <span class="no">on</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="c1"># redirect server error pages</span>
+        <span class="kn">error_page</span>   <span class="mi">500</span> <span class="mi">502</span> <span class="mi">503</span> <span class="mi">504</span>  <span class="n">/50x.html</span><span class="p">;</span>
+        <span class="kn">location</span> <span class="p">=</span> <span class="n">/50x.html</span> <span class="p">{</span>
+            <span class="kn">root</span>   <span class="s">html</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kn">error_page</span>  <span class="mi">404</span>              <span class="n">/404.html</span><span class="p">;</span>
+        <span class="kn">location</span> <span class="p">=</span> <span class="n">/404.html</span> <span class="p">{</span>
+            <span class="kn">root</span>   <span class="s">html</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kn">error_page</span>  <span class="mi">403</span>              <span class="n">/403.html</span><span class="p">;</span>
+        <span class="kn">location</span> <span class="p">=</span> <span class="n">/403.html</span> <span class="p">{</span>
+            <span class="kn">root</span>   <span class="s">html</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div></div>
+
+<p>まあ何とか読みやすい。mruby_set_code内でヘッダを付け替えるのはどーなんだろと思いつつ動いたのでよし。</p>

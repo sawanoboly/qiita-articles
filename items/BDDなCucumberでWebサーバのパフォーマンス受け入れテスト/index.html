@@ -1,0 +1,208 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p><a href="http://cukes.info/" rel="nofollow noopener" target="_blank">Cucumber</a>は、"このようになっていてくれ"という内容を記述して、それを実際にやってみた結果を判断するツール。</p>
+
+<h2>
+<span id="featureとしてシナリオを記述" class="fragment"></span><a href="#feature%E3%81%A8%E3%81%97%E3%81%A6%E3%82%B7%E3%83%8A%E3%83%AA%E3%82%AA%E3%82%92%E8%A8%98%E8%BF%B0"><i class="fa fa-link"></i></a>featureとしてシナリオを記述</h2>
+
+<div class="code-frame" data-lang="cucumber">
+<div class="code-lang"><span class="bold">features/websv.feature</span></div>
+<div class="highlight"><pre><span class="c"># language: ja</span>
+<span class="kd">機能</span><span class="p">:</span> 静的コンテンツ配信
+<span class="kn">シナリオ</span><span class="p">:</span> 秒辺りのレスポンスが規定以上かチェック
+  <span class="err">前提</span><span class="p">:</span> <span class="err">ウェブサーバアドレスが</span> <span class="err">127.0.0.1</span> <span class="err">のとき</span>
+  <span class="err">もし</span><span class="p">:</span> <span class="err">10</span> <span class="err">台のクライアントが同時に</span> <span class="err">1000</span> <span class="err">アクセスした</span>
+  <span class="err">ならば</span><span class="p">:</span> <span class="err">サーバのレスポンスが</span> <span class="err">3000</span> <span class="err">rps以上で</span>
+  <span class="err">かつ</span><span class="p">:</span> <span class="err">レスポンスコード</span> <span class="err">5xx</span> <span class="err">がない</span>
+</pre></div>
+</div>
+
+<p>とりあえずシナリオを作成し、cucumberを実行する。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># cucumber 
+Using the default profile...
+# language: ja
+機能: 静的コンテンツ配信
+
+  シナリオ: 秒辺りのレスポンスが規定以上かチェック         # features/websv.feature:3
+    前提 ウェブサーバアドレスが 127.0.0.1 のとき   # features/websv.feature:4
+    もし 10 台のクライアントが同時に 1000 アクセスした # features/websv.feature:5
+    ならば サーバのレスポンスが 3000 rps以上で     # features/websv.feature:6
+    かつ レスポンスコード 5xx がない            # features/websv.feature:7
+
+1 scenario (1 undefined)
+4 steps (4 undefined)
+0m0.002s
+
+You can implement step definitions for undefined steps with these snippets:
+
+前提 /^ウェブサーバアドレスが (\d+)\.(\d+)\.(\d+)\.(\d+) のとき$/ do |arg1, arg2, arg3, arg4|
+  pending # express the regexp above with the code you wish you had
+end
+
+もし /^(\d+) 台のクライアントが同時に (\d+) アクセスした$/ do |arg1, arg2|
+  pending # express the regexp above with the code you wish you had
+end
+
+ならば /^サーバのレスポンスが (\d+) rps以上で$/ do |arg1|
+  pending # express the regexp above with the code you wish you had
+end
+
+ならば /^レスポンスコード (\d+)xx がない$/ do |arg1|
+  pending # express the regexp above with the code you wish you had
+end
+
+If you want snippets in a different programming language,
+just make sure a file with the appropriate file extension
+exists where cucumber looks for step definitions.
+</pre></div></div>
+
+<p><strong>これらを定義しなさい</strong>と促されるのでstepsを作成する。</p>
+
+<h3>
+<span id="steps作成" class="fragment"></span><a href="#steps%E4%BD%9C%E6%88%90"><i class="fa fa-link"></i></a>steps作成</h3>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">features/websv.steps.rb</span></div>
+<div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+<span class="err">前提</span> <span class="o">/^</span><span class="p">:</span> <span class="err">ウェブサーバアドレスが</span> <span class="p">([\</span><span class="n">w</span><span class="p">\.</span><span class="nf">-</span><span class="p">]</span><span class="o">+</span><span class="p">)</span> <span class="err">のとき</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="o">|</span>
+  <span class="n">pending</span> <span class="c1"># express the regexp above with the code you wish you had</span>
+<span class="k">end</span>
+
+<span class="err">もし</span> <span class="o">/^</span><span class="p">:</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span> <span class="err">台のクライアントが同時に</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span> <span class="err">アクセスした</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="p">,</span> <span class="n">arg2</span><span class="o">|</span>
+  <span class="n">pending</span> <span class="c1"># express the regexp above with the code you wish you had</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span> <span class="o">/^</span><span class="p">:</span> <span class="err">サーバのレスポンスが</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span> <span class="n">rps</span><span class="err">以上で</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="o">|</span>
+  <span class="n">pending</span> <span class="c1"># express the regexp above with the code you wish you had</span>
+<span class="k">end</span>
+
+<span class="err">ならば</span> <span class="o">/^</span><span class="p">:</span> <span class="err">レスポンスコード</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span><span class="n">xx</span> <span class="err">がない</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="o">|</span>
+  <span class="n">pending</span> <span class="c1"># express the regexp above with the code you wish you had</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<p>"ウェブサーバアドレス" の所だけパラメータ抽出表現を変えて作成。<br>
+これで作成してみる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># cucumber 
+Using the default profile...
+# language: ja
+機能: 静的コンテンツ配信
+
+  シナリオ: 秒辺りのレスポンスが規定以上かチェック         # features/websv.feature:3
+    前提: ウェブサーバアドレスが 127.0.0.1 のとき   # features/websv.steps.rb:2
+      TODO (Cucumber::Pending)
+      ./features/websv.steps.rb:3:in `/^: ウェブサーバアドレスが ([\w\.-]+) のとき$/'
+      features/websv.feature:4:in `前提: ウェブサーバアドレスが 127.0.0.1 のとき'
+    もし: 10 台のクライアントが同時に 1000 アクセスした # features/websv.steps.rb:6
+    ならば: サーバのレスポンスが 3000 rps以上で     # features/websv.steps.rb:10
+    かつ: レスポンスコード 5xx がない            # features/websv.steps.rb:14
+
+1 scenario (1 pending)
+4 steps (3 skipped, 1 pending)
+0m0.003s
+</pre></div></div>
+
+<p>テスト内容がpendingとなる。</p>
+
+<h3>
+<span id="pendingを実装していく" class="fragment"></span><a href="#pending%E3%82%92%E5%AE%9F%E8%A3%85%E3%81%97%E3%81%A6%E3%81%84%E3%81%8F"><i class="fa fa-link"></i></a>pendingを実装していく</h3>
+
+<p>ベンチマークにhttperfを使うので、rubyバインディング<a href="https://github.com/rubyops/httperfrb" rel="nofollow noopener" target="_blank">httperfrb</a>を準備してスタート。</p>
+
+<h4>
+<span id="ウェブサーバアドレスが-w--のとき" class="fragment"></span><a href="#%E3%82%A6%E3%82%A7%E3%83%96%E3%82%B5%E3%83%BC%E3%83%90%E3%82%A2%E3%83%89%E3%83%AC%E3%82%B9%E3%81%8C-w--%E3%81%AE%E3%81%A8%E3%81%8D"><i class="fa fa-link"></i></a>ウェブサーバアドレスが ([\w.-]+) のとき</h4>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="c1"># coding: utf-8</span>
+<span class="nb">require</span> <span class="s1">'open3'</span>
+<span class="nb">require</span> <span class="s1">'httperf'</span>
+
+<span class="err">前提</span> <span class="o">/^</span><span class="err">ウェブサーバアドレスが</span> <span class="p">([\</span><span class="n">w</span><span class="p">\.</span><span class="nf">-</span><span class="p">]</span><span class="o">+</span><span class="p">)</span> <span class="err">のとき</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="o">|</span>
+   <span class="vi">@perf</span> <span class="o">=</span> <span class="no">HTTPerf</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span> <span class="s2">"server"</span> <span class="o">=&gt;</span> <span class="n">arg1</span><span class="p">,</span> <span class="s2">"uri"</span> <span class="o">=&gt;</span> <span class="s2">"/"</span><span class="p">)</span>     
+<span class="k">end</span>  
+</pre></div></div>
+
+<h4>
+<span id="d-台のクライアントが同時に-d-アクセスした" class="fragment"></span><a href="#d-%E5%8F%B0%E3%81%AE%E3%82%AF%E3%83%A9%E3%82%A4%E3%82%A2%E3%83%B3%E3%83%88%E3%81%8C%E5%90%8C%E6%99%82%E3%81%AB-d-%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B9%E3%81%97%E3%81%9F"><i class="fa fa-link"></i></a>(\d+) 台のクライアントが同時に (\d+) アクセスした</h4>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="err">もし</span> <span class="o">/^</span><span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span> <span class="err">台のクライアントが同時に</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span> <span class="err">アクセスした</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="p">,</span> <span class="n">arg2</span><span class="o">|</span>
+  <span class="vi">@perf</span><span class="p">.</span><span class="nf">update_option</span><span class="p">(</span><span class="s2">"num-conns"</span><span class="p">,</span> <span class="n">arg1</span><span class="p">)</span>
+  <span class="vi">@perf</span><span class="p">.</span><span class="nf">update_option</span><span class="p">(</span><span class="s2">"num-calls"</span><span class="p">,</span> <span class="n">arg2</span><span class="p">)</span>
+<span class="k">end</span>
+</pre></div></div>
+
+<h4>
+<span id="サーバのレスポンスが-d-rps以上で" class="fragment"></span><a href="#%E3%82%B5%E3%83%BC%E3%83%90%E3%81%AE%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9%E3%81%8C-d-rps%E4%BB%A5%E4%B8%8A%E3%81%A7"><i class="fa fa-link"></i></a>サーバのレスポンスが (\d+) rps以上で</h4>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="err">ならば</span> <span class="o">/^</span><span class="err">サーバのレスポンスが</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span> <span class="n">rps</span><span class="err">以上で</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="o">|</span>
+  <span class="vi">@results</span> <span class="o">=</span> <span class="no">HTTPerf</span><span class="o">::</span><span class="no">Parser</span><span class="p">.</span><span class="nf">parse</span><span class="p">(</span><span class="vi">@perf</span><span class="p">.</span><span class="nf">run</span><span class="p">)</span>
+  <span class="nb">puts</span> <span class="s2">"INFO: Request_rate is "</span> <span class="o">+</span> <span class="vi">@results</span><span class="p">[</span><span class="ss">:request_rate_per_sec</span><span class="p">]</span>
+  <span class="k">raise</span> <span class="s2">"server is too slow."</span> <span class="k">if</span> <span class="vi">@results</span><span class="p">[</span><span class="ss">:request_rate_per_sec</span><span class="p">].</span><span class="nf">to_i</span> <span class="o">&lt;</span> <span class="n">arg1</span><span class="p">.</span><span class="nf">to_i</span>
+<span class="k">end</span>
+</pre></div></div>
+
+<h3>
+<span id="レスポンスコード-dxx-がない" class="fragment"></span><a href="#%E3%83%AC%E3%82%B9%E3%83%9D%E3%83%B3%E3%82%B9%E3%82%B3%E3%83%BC%E3%83%89-dxx-%E3%81%8C%E3%81%AA%E3%81%84"><i class="fa fa-link"></i></a>レスポンスコード (\d+)xx がない</h3>
+
+<div class="code-frame" data-lang="ruby"><div class="highlight"><pre><span class="err">ならば</span> <span class="o">/^</span><span class="err">レスポンスコード</span> <span class="p">(\</span><span class="n">d</span><span class="o">+</span><span class="p">)</span><span class="n">xx</span> <span class="err">がない</span><span class="vg">$/</span> <span class="k">do</span> <span class="o">|</span><span class="n">arg1</span><span class="o">|</span>
+  <span class="k">raise</span> <span class="s2">"Response code 5xx found!!"</span> <span class="k">unless</span> <span class="vi">@results</span><span class="p">[</span><span class="ss">:reply_status_5xx</span><span class="p">].</span><span class="nf">to_i</span> <span class="o">==</span> <span class="mi">0</span>
+<span class="k">end</span>
+</pre></div></div>
+
+<p>こんな感じで<code>features/websv.steps.rb</code>にて実装する。</p>
+
+<h2>
+<span id="cucumber実行結果" class="fragment"></span><a href="#cucumber%E5%AE%9F%E8%A1%8C%E7%B5%90%E6%9E%9C"><i class="fa fa-link"></i></a>cucumber実行結果</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># cucumber 
+Using the default profile...
+# language: ja
+機能: 静的コンテンツ配信
+
+  シナリオ: 秒辺りのレスポンスが規定以上かチェック       # features/websv.feature:3
+    前提ウェブサーバアドレスが 127.0.0.1 のとき   # features/websv.steps.rb:5
+    もし10 台のクライアントが同時に 1000 アクセスした # features/websv.steps.rb:9
+    ならばサーバのレスポンスが 3000 rps以上で     # features/websv.steps.rb:14
+      INFO: Request_rate is 16281.4
+    かつレスポンスコード 5xx がない            # features/websv.steps.rb:20
+
+1 scenario (1 passed)
+4 steps (4 passed)
+0m0.073s
+</pre></div></div>
+
+<p>想定仕様は3000rpsで、実際のレスポンスは16000rps。<br>
+非機能要件をクリアしていると言える。</p>
+
+<h2>
+<span id="付録featureswebsvstepsrb-の全行" class="fragment"></span><a href="#%E4%BB%98%E9%8C%B2featureswebsvstepsrb-%E3%81%AE%E5%85%A8%E8%A1%8C"><i class="fa fa-link"></i></a>付録：features/websv.steps.rb の全行</h2>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre># coding: utf-8
+require 'open3'
+require 'httperf'
+
+前提 /^ウェブサーバアドレスが ([\w\.-]+) のとき$/ do |arg1|
+   @perf = HTTPerf.new( "server" =&gt; arg1, "uri" =&gt; "/")
+end
+
+もし /^(\d+) 台のクライアントが同時に (\d+) アクセスした$/ do |arg1, arg2|
+  @perf.update_option("num-conns", arg1)
+  @perf.update_option("num-calls", arg2)
+end
+
+ならば /^サーバのレスポンスが (\d+) rps以上で$/ do |arg1|
+  @results = HTTPerf::Parser.parse(@perf.run)
+  puts "INFO: Request_rate is " + @results[:request_rate_per_sec]
+  raise "server is too slow." if @results[:request_rate_per_sec].to_i &lt; arg1.to_i
+end
+
+ならば /^レスポンスコード (\d+)xx がない$/ do |arg1|
+  raise "Response code 5xx found!!" unless @results[:reply_status_5xx].to_i == 0
+end
+</pre></div></div>

@@ -1,0 +1,276 @@
+
+
+<blockquote>
+<p><strong>この記事は最終更新から1年以上経過しています。</strong> 気をつけてね。</p>
+</blockquote>
+
+<p>Chef-Clientがfailで終了したらロールバックしたいという要望をよくもらう、そもそもChefってそういうもんじゃあないよと思いながらも。</p>
+
+<p>バックアップをとるファイル系など、例外ハンドラでリカバリさせることもできるリソースもあるっちゃあるなとサンプルを書いてみた。</p>
+
+<h2>
+<span id="failするレシピの例" class="fragment"></span><a href="#fail%E3%81%99%E3%82%8B%E3%83%AC%E3%82%B7%E3%83%94%E3%81%AE%E4%BE%8B"><i class="fa fa-link"></i></a>Failするレシピの例</h2>
+
+<p>例えばこんなレシピだと、<code>tmp/hoge</code>と<code>/tmp/piyo</code>が更新されたあとにChef-ClientがFailするので、すべての定義に対して中途半端にノードが更新された状態がつくれる。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>file '/tmp/hoge' do
+  content lazy {Time.now.to_s + "\n"}
+  owner 'root
+end
+
+template '/tmp/piyo' do
+  local true
+  source File.expand_path('../time.erb', __FILE__)
+end
+
+
+## Failするリソース(親パスが無い)
+file '/tmp/tmp/tmp/hoge' do
+  content 'mission failure...'
+end
+</pre></div></div>
+
+<p>※ レシピ中のテンプレートソース</p>
+
+<div class="code-frame" data-lang="erb">
+<div class="code-lang"><span class="bold">time.erb</span></div>
+<div class="highlight"><pre><span class="cp">&lt;%=</span> <span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span> <span class="cp">%&gt;</span>
+</pre></div>
+</div>
+
+<blockquote>
+<p>ちなみに<code>--why-run</code>ではこういうFailケースはスルーされる、仕方ないね。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ sudo FAIL=true chef-client -z recipe.rb --why-run
+
+...
+
+Chef Client finished, 3/3 resources would have been updated
+</pre></div></div>
+</blockquote>
+
+<h2>
+<span id="リカバリサンプルのrecipeはこんな感じ" class="fragment"></span><a href="#%E3%83%AA%E3%82%AB%E3%83%90%E3%83%AA%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%E3%81%AErecipe%E3%81%AF%E3%81%93%E3%82%93%E3%81%AA%E6%84%9F%E3%81%98"><i class="fa fa-link"></i></a>リカバリサンプルのRecipeはこんな感じ</h2>
+
+<p>じゃあ半端な状態のノードになったら、任意のリソースだけChef-Client実行前に一応戻してみよう。</p>
+
+<p>例外ハンドラを記述して、<code>recipe.rb</code>はこうなった。</p>
+
+<div class="code-frame" data-lang="ruby">
+<div class="code-lang"><span class="bold">recipe.rb</span></div>
+<div class="highlight"><pre><span class="c1">## ファイルのリストアをする例外ハンドラ</span>
+<span class="k">class</span> <span class="nc">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">RollBacker</span> <span class="o">&lt;</span> <span class="o">::</span><span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span>
+  <span class="k">def</span> <span class="nf">report</span>
+    <span class="n">run_data</span> <span class="o">=</span> <span class="n">data</span>
+
+    <span class="c1">## 更新済みリソースの列挙、ハンドラ共通処理</span>
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s1">'======= Update Resources are following...'</span>
+    <span class="n">run_data</span><span class="p">[</span><span class="ss">:updated_resources</span><span class="p">].</span><span class="nf">each</span><span class="p">.</span><span class="nf">with_index</span> <span class="k">do</span> <span class="o">|</span><span class="n">r</span><span class="p">,</span><span class="n">idx</span><span class="o">|</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="p">].</span><span class="nf">join</span><span class="p">(</span><span class="s1">':'</span><span class="p">)</span>
+    <span class="k">end</span>
+
+    <span class="c1">## Chef-Clientが例外で終わった時の処理</span>
+    <span class="k">if</span> <span class="n">exception</span>
+      <span class="c1">## 更新済みのリソースに対して順番に処理する</span>
+      <span class="n">run_data</span><span class="p">[</span><span class="ss">:updated_resources</span><span class="p">].</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">r</span><span class="o">|</span>
+        <span class="k">case</span> <span class="n">r</span><span class="p">.</span><span class="nf">resource_name</span>
+        <span class="c1">## リソースタイプがファイル系リソースだった場合はリストアを試みる</span>
+        <span class="k">when</span> <span class="ss">:file</span><span class="p">,</span> <span class="ss">:template</span><span class="p">,</span> <span class="ss">:cookbook_file</span>
+          <span class="c1">## backupにfalseがセットされているものはスキップ</span>
+          <span class="k">next</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"==== Skkipped restore </span><span class="si">#{</span><span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2"> due to no backup"</span> <span class="k">unless</span> <span class="n">r</span><span class="p">.</span><span class="nf">backup</span>
+          <span class="n">restore_file_from_backup</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="k">end</span>
+      <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">get_last_backup</span><span class="p">(</span><span class="n">resource</span><span class="p">,</span> <span class="n">num</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="c1">## バックアップ先のディレクトリから指定した世代前のファイルを取得</span>
+    <span class="n">prefix</span> <span class="o">=</span> <span class="no">File</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:file_backup_path</span><span class="p">],</span> <span class="n">resource</span><span class="p">.</span><span class="nf">path</span><span class="p">)</span>
+    <span class="no">Dir</span><span class="p">.</span><span class="nf">glob</span><span class="p">(</span><span class="n">prefix</span> <span class="o">+</span> <span class="s1">'**'</span><span class="p">).</span><span class="nf">sort</span><span class="p">[</span><span class="o">-</span><span class="n">num</span><span class="p">]</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">restore_file_from_backup</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+    <span class="n">backup_file</span> <span class="o">=</span>  <span class="n">get_last_backup</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+    <span class="c1">## 初回など、バックアップファイルが存在しないケースではスキップ</span>
+    <span class="k">return</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"==== Skkipped restore </span><span class="si">#{</span><span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2"> due to backup file not found"</span> <span class="k">unless</span> <span class="n">backup_file</span>
+
+    <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"=== Restore: </span><span class="si">#{</span><span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2"> from Backup..."</span>
+    <span class="k">begin</span>
+      <span class="c1">## バックアップパスから元の場所にファイルをコピーする</span>
+      <span class="no">FileUtils</span><span class="p">.</span><span class="nf">cp</span><span class="p">(</span><span class="n">backup_file</span><span class="p">,</span> <span class="n">r</span><span class="p">.</span><span class="nf">path</span><span class="p">,</span> <span class="p">{</span><span class="ss">:verbose</span> <span class="o">=&gt;</span> <span class="kp">true</span><span class="p">,</span> <span class="ss">:preserve</span> <span class="o">=&gt;</span> <span class="kp">true</span> <span class="p">})</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"=== Restore Success!! </span><span class="si">#{</span><span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">rescue</span>
+      <span class="no">Chef</span><span class="o">::</span><span class="no">Log</span><span class="p">.</span><span class="nf">warn</span> <span class="s2">"=== Restore Fail!! </span><span class="si">#{</span><span class="n">r</span><span class="p">.</span><span class="nf">to_s</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="c1">## 例外ハンドラの登録</span>
+<span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:report_handlers</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">RollBacker</span><span class="p">.</span><span class="nf">new</span>
+<span class="no">Chef</span><span class="o">::</span><span class="no">Config</span><span class="p">[</span><span class="ss">:exception_handlers</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="no">Chef</span><span class="o">::</span><span class="no">Handler</span><span class="o">::</span><span class="no">RollBacker</span><span class="p">.</span><span class="nf">new</span>
+
+
+<span class="c1">## このへんから普通のレシピ</span>
+<span class="n">file</span> <span class="s1">'/tmp/hoge'</span> <span class="k">do</span>
+  <span class="n">content</span> <span class="n">lazy</span> <span class="p">{</span><span class="no">Time</span><span class="p">.</span><span class="nf">now</span><span class="p">.</span><span class="nf">to_s</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">}</span>
+  <span class="n">owner</span> <span class="p">[</span><span class="s1">'root'</span><span class="p">,</span> <span class="s1">'fluentd'</span><span class="p">].</span><span class="nf">sample</span>
+  <span class="n">backup</span> <span class="kp">false</span>  <span class="c1">## 動作サンプル用にバックアップをfalseにしています。</span>
+<span class="k">end</span>
+
+<span class="n">template</span> <span class="s1">'/tmp/piyo'</span> <span class="k">do</span>
+  <span class="n">local</span> <span class="kp">true</span>
+  <span class="n">source</span> <span class="no">File</span><span class="p">.</span><span class="nf">expand_path</span><span class="p">(</span><span class="s1">'../time.erb'</span><span class="p">,</span> <span class="kp">__FILE__</span><span class="p">)</span>
+<span class="k">end</span>
+
+
+<span class="c1">## Failするリソース(Parent nothing)</span>
+<span class="k">if</span> <span class="no">ENV</span><span class="p">[</span><span class="s1">'FAIL'</span><span class="p">]</span>
+  <span class="n">file</span> <span class="s1">'/tmp/tmp/tmp/hoge'</span> <span class="k">do</span>
+    <span class="n">content</span> <span class="s1">'mission failure...'</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+</div>
+
+<h2>
+<span id="実行してみる" class="fragment"></span><a href="#%E5%AE%9F%E8%A1%8C%E3%81%97%E3%81%A6%E3%81%BF%E3%82%8B"><i class="fa fa-link"></i></a>実行してみる</h2>
+
+<p>ひとまず<code>tmp/hoge</code>と<code>/tmp/piyo</code>を作るため、Failしないように普通に実行させてみる。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo </span>chef-client <span class="nt">-z</span> recipe.rb
+
+Starting Chef Client, version 11.14.6
+
+...
+
+Converging 2 resources
+Recipe: @recipe_files::/root/rollbacker/recipe.rb
+
+
+  <span class="k">*</span> file[/tmp/hoge] action create
+    - create new file /tmp/hoge
+    - update content <span class="k">in </span>file /tmp/hoge from none to c9b647
+    <span class="nt">---</span> /tmp/hoge   2014-09-01 xx:04:18.065927966 +0000
+    +++ /tmp/.hoge20140901-29657-1vejvln    2014-09-01 xx:04:18.069927890 +0000
+    @@ <span class="nt">-1</span> +1,2 @@
+    +2014-09-01 xx:04:18 +0000
+    - change owner from <span class="s1">''</span> to <span class="s1">'fluentd'</span>
+
+
+  <span class="k">*</span> template[/tmp/piyo] action create
+    - create new file /tmp/piyo
+    - update content <span class="k">in </span>file /tmp/piyo from none to c9b647
+    <span class="nt">---</span> /tmp/piyo   2014-09-01 xx:04:18.077927738 +0000
+    +++ /tmp/chef-rendered-template20140901-29657-eq7f91    2014-09-01 xx:04:18.101927281 +0000
+    @@ <span class="nt">-1</span> +1,2 @@
+    +2014-09-01 xx:04:18 +0000
+
+Running handlers:
+
+<span class="c">## ハンドラのレポート</span>
+<span class="o">[</span>2014-09-01Txx:04:18+00:00] WARN: <span class="o">=======</span> Update Resources are following...
+<span class="o">[</span>2014-09-01Txx:04:18+00:00] WARN: 0:file[/tmp/hoge]
+<span class="o">[</span>2014-09-01Txx:04:18+00:00] WARN: 1:template[/tmp/piyo]
+  - Chef::Handler::RollBacker
+Running handlers <span class="nb">complete
+</span>Chef Client finished, 2/2 resources updated <span class="k">in </span>3.268531754 seconds
+</pre></div></div>
+
+<p>次にChef-ClientがFailするリソースを含めたレシピを実行した。</p>
+
+<div class="code-frame" data-lang="shell"><div class="highlight"><pre><span class="nv">$ </span><span class="nb">sudo </span><span class="nv">FAIL</span><span class="o">=</span><span class="nb">true </span>chef-client <span class="nt">-z</span> recipe.rb 
+
+Starting Chef Client, version 11.14.6
+
+Converging 3 resources
+
+Recipe: @recipe_files::/root/rollbacker/recipe.rb
+
+  <span class="k">*</span> file[/tmp/hoge] action create
+    - update content <span class="k">in </span>file /tmp/hoge from c9b647 to 6317af
+    <span class="nt">---</span> /tmp/hoge   2014-09-01 xx:04:18.069927890 +0000
+    +++ /tmp/.hoge20140901-30004-m7jw0g 2014-09-01 xx:06:06.975857156 +0000
+    @@ <span class="nt">-1</span>,2 +1,2 @@
+    <span class="nt">-2014-09-01</span> xx:04:18 +0000
+    +2014-09-01 xx:06:06 +0000
+    - change owner from <span class="s1">'fluentd'</span> to <span class="s1">'root'</span>
+
+  <span class="k">*</span> template[/tmp/piyo] action create
+    - update content <span class="k">in </span>file /tmp/piyo from c9b647 to 6317af
+    <span class="nt">---</span> /tmp/piyo   2014-09-01 xx:04:18.101927281 +0000
+    +++ /tmp/chef-rendered-template20140901-30004-1v8gk6n   2014-09-01 xx:06:06.983857004 +0000
+    @@ <span class="nt">-1</span>,2 +1,2 @@
+    <span class="nt">-2014-09-01</span> xx:04:18 +0000
+    +2014-09-01 xx:06:06 +0000
+
+  <span class="k">*</span> file[/tmp/tmp/tmp/hoge] action create
+    <span class="k">*</span> Parent directory /tmp/tmp/tmp does not exist.
+    <span class="o">================================================================================</span>
+    Error executing action <span class="sb">`</span>create<span class="sb">`</span> on resource <span class="s1">'file[/tmp/tmp/tmp/hoge]'</span>
+    <span class="o">================================================================================</span>
+
+    Chef::Exceptions::EnclosingDirectoryDoesNotExist
+    <span class="nt">------------------------------------------------</span>
+    Parent directory /tmp/tmp/tmp does not exist.      <span class="c">## 親パスが無いので失敗した</span>
+
+...    
+
+
+<span class="c">## 例外ハンドラ起動</span>
+Running handlers:
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] ERROR: Running exception handlers
+
+
+<span class="c">## Chef-ClientはFailで終わったけど、更新したリソースが２つある</span>
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] WARN: <span class="o">=======</span> Update Resources are following...
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] WARN: 0:file[/tmp/hoge]
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] WARN: 1:template[/tmp/piyo]
+
+<span class="c">## このへんからリストア処理</span>
+
+<span class="c">### 1つ目はバックアップをとって無いからスキップ</span>
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] WARN: <span class="o">====</span> Skkipped restore file[/tmp/hoge] due to <span class="nb">false </span>is <span class="nb">set </span>to backup
+
+
+<span class="c">### 2つ目はバックアップから新しいのを見繕って戻す</span>
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] WARN: <span class="o">===</span> Restore: template[/tmp/piyo] from Backup...
+<span class="nb">cp</span> <span class="nt">-p</span> /root/.chef/local-mode-cache/backup/tmp/piyo.chef-20140901100606.990466 /tmp/piyo
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] WARN: <span class="o">===</span> Restore Success!! template[/tmp/piyo]
+
+  - Chef::Handler::RollBacker
+Running handlers <span class="nb">complete</span>
+
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] ERROR: Exception handlers <span class="nb">complete</span>
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] FATAL: Stacktrace dumped to /root/.chef/local-mode-cache/cache/chef-stacktrace.out
+Chef Client failed. 2 resources updated <span class="k">in </span>3.268363143 seconds
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] ERROR: file[/tmp/tmp/tmp/hoge] <span class="o">(</span>@recipe_files::/root/rollbacker/recipe.rb line 58<span class="o">)</span> had an error: Chef::Exceptions::EnclosingDirectoryDoesNotExist: Parent directory /tmp/tmp/tmp does not exist.
+<span class="o">[</span>2014-09-01Txx:06:07+00:00] FATAL: Chef::Exceptions::ChildConvergeError: Chef run process exited unsuccessfully <span class="o">(</span><span class="nb">exit </span>code 1<span class="o">)</span>
+</pre></div></div>
+
+<h2>
+<span id="リストアされたかチェック" class="fragment"></span><a href="#%E3%83%AA%E3%82%B9%E3%83%88%E3%82%A2%E3%81%95%E3%82%8C%E3%81%9F%E3%81%8B%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF"><i class="fa fa-link"></i></a>リストアされたかチェック</h2>
+
+<p><code>/tmp/piyo</code>は次の記述どおりなら<code>2014-09-01 xx:06:06 +0000</code>という中身に変わっているはず。<br>
+ただ、ファイルが置き換えられる際にバックアップが取られている。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>  * template[/tmp/piyo] action create
+...
+    -2014-09-01 xx:04:18 +0000
+    +2014-09-01 xx:06:06 +0000
+</pre></div></div>
+
+<p>例外ハンドラによって、バックアップからとりあえず一番新しいっぽいファイルを元の場所に置いたので元通りにはなっている。</p>
+
+<div class="code-frame" data-lang="text"><div class="highlight"><pre>$ cat /tmp/piyo 
+2014-09-01 xx:04:18 +0000
+</pre></div></div>
+
+<p>場合によってはファイル系リソースと一緒に<code>service</code>あたりを拾って適切な処理を書けば十分ロールバックになる気もする。packegeなど、その他のリソースはそれこそ混乱のタネになるので気にしないほうがよさそう。</p>
+
+<p>そういえば、同じファイルパスに対するアクションが２回以上ある場合は、その回数前のバックアップを取らないといけないね。</p>
+
+<h2>
+<span id="ひとこと" class="fragment"></span><a href="#%E3%81%B2%E3%81%A8%E3%81%93%E3%81%A8"><i class="fa fa-link"></i></a>ひとこと</h2>
+
+<p>Chef-Containerなどでコンテナ単位が対象とかなら、例えば例外ハンドラ内で前回のコンテナをデプロイし直すとかすればリカバリできるので例外ハンドラの処理も結構やりやすいのかもね。</p>
